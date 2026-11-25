@@ -59,7 +59,7 @@ pub async fn run(commands: Commands, events: Events) -> Result<(), String> {
     lock.try_lock()
         .map_err(|_| "This profile is already open.")?;
 
-    let key = uuid::Uuid::new_v4().to_string() + &uuid::Uuid::new_v4().to_string();
+    let key = uuid::Uuid::new_v4().to_string() + uuid::Uuid::new_v4().to_string().as_str();
     let mut child = Command::new(exe);
     #[cfg(windows)]
     child.creation_flags(0x08000000); // CREATE_NO_WINDOW for the console backend.
