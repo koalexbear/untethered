@@ -12,6 +12,7 @@ mod browser;
 mod keyring;
 #[cfg(test)]
 mod live_test;
+mod messaging;
 mod rooms;
 mod session;
 mod timeline;
@@ -124,6 +125,49 @@ pub enum Command {
         method: BrowserMethod,
     },
     CancelBrowserLogin,
+    /// Add our reaction with `key` to an event, or remove it if present.
+    React {
+        id: i64,
+        room: String,
+        event: String,
+        key: String,
+    },
+    /// Replace the text of one of our messages.
+    Edit {
+        id: i64,
+        room: String,
+        event: String,
+        body: String,
+    },
+    Report {
+        id: i64,
+        room: String,
+        event: String,
+        reason: String,
+    },
+    /// Read receipt (public or private) and fully-read marker at `event`.
+    MarkRead {
+        id: i64,
+        room: String,
+        event: String,
+        public: bool,
+    },
+    MarkUnread {
+        id: i64,
+        room: String,
+    },
+    /// Messages around an event outside the loaded timeline, as
+    /// [`Event::Context`].
+    Context {
+        id: i64,
+        room: String,
+        event: String,
+    },
+    /// Whether read receipts are public, synced as account data.
+    ShareReads {
+        id: i64,
+        public: bool,
+    },
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -152,6 +196,14 @@ pub enum Event {
     RecoveryKey(String),
     Devices(Vec<DeviceInfo>),
     LoginOptions(LoginOptions),
+    /// Messages around `event`, oldest first.
+    Context {
+        room: String,
+        event: String,
+        messages: Vec<Message>,
+    },
+    /// The account's read receipt preference.
+    ReadSharing(bool),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -260,6 +312,8 @@ pub struct RoomSummary {
     pub notifications: u64,
     pub highlights: u64,
     pub marked_unread: bool,
+    /// The `m.fully_read` marker.
+    pub fully_read: Option<String>,
 }
 
 #[derive(Clone)]
@@ -285,6 +339,18 @@ pub struct Message {
     pub delivery: Delivery,
     pub edited: bool,
     pub reply_to: Option<Reply>,
+    /// (key, count, includes ours), in first-seen order.
+    pub reactions: Vec<(String, u64, bool)>,
+    /// An `m.text` message (only those can be edited here).
+    pub text: bool,
+    /// The SDK allows us to edit it.
+    pub editable: bool,
+    /// `m.mentions`: user IDs and `@room`.
+    pub mentions: Option<(Vec<String>, bool)>,
+    /// The newest edit's event ID, which reports refer to.
+    pub edit_id: Option<String>,
+    /// Read receipts on this event: (user, timestamp).
+    pub receipts: Vec<(String, i64)>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -457,6 +523,7 @@ impl Engine {
         let mut tasks = Tasks::default();
         tasks.spawn(account_updates(client.clone(), self.events.clone()));
         tasks.spawn(rooms::updates(client.clone(), self.events.clone()));
+        tasks.spawn(messaging::read_sharing(client.clone(), self.events.clone()));
         tasks.spawn(sync_status(sync.clone(), self.events.clone()));
         tasks.spawn(session_changes(
             client.clone(),
@@ -650,7 +717,98 @@ impl Engine {
                     self.done(id, Err(Failure::Cancelled)).await;
                 }
             }
+            Command::React {
+                id,
+                room,
+                event,
+                key,
+            } => {
+                self.job(id, move |_, timelines, _| async move {
+                    timelines.react(&room, &event, &key).await
+                })
+                .await
+            }
+            Command::Edit {
+                id,
+                room,
+                event,
+                body,
+            } => {
+                self.job(id, move |_, timelines, _| async move {
+                    timelines.edit(&room, &event, body).await
+                })
+                .await
+            }
+            Command::Report {
+                id,
+                room,
+                event,
+                reason,
+            } => {
+                self.job(id, move |client, _, _| async move {
+                    messaging::report(&client, &room, &event, &reason).await
+                })
+                .await
+            }
+            Command::MarkRead {
+                id,
+                room,
+                event,
+                public,
+            } => {
+                self.job(id, move |client, _, _| async move {
+                    messaging::mark_read(&client, &room, &event, public).await
+                })
+                .await
+            }
+            Command::MarkUnread { id, room } => {
+                self.job(id, move |client, _, _| async move {
+                    messaging::mark_unread(&client, &room).await
+                })
+                .await
+            }
+            Command::Context { id, room, event } => {
+                self.job(id, move |client, _, events| async move {
+                    let messages = messaging::context(&client, &room, &event).await?;
+                    let _ = events
+                        .send(Event::Context {
+                            room,
+                            event,
+                            messages,
+                        })
+                        .await;
+                    Ok(())
+                })
+                .await
+            }
+            Command::ShareReads { id, public } => {
+                self.job(id, move |client, _, _| async move {
+                    messaging::share_reads(&client, public).await
+                })
+                .await
+            }
         }
+    }
+
+    /// Run a request against the signed-in session off the command loop and
+    /// answer it with `Event::Done`.
+    async fn job<F, Fut>(&self, id: i64, work: F)
+    where
+        F: FnOnce(Client, Arc<timeline::Timelines>, Sender<Event>) -> Fut + Send + 'static,
+        Fut: Future<Output = Result<(), Failure>> + Send + 'static,
+    {
+        let Some(live) = &self.live else {
+            return self.done(id, Err(Failure::Unavailable)).await;
+        };
+        let (client, timelines, events) = (
+            live.client.clone(),
+            live.timelines.clone(),
+            self.events.clone(),
+        );
+        tokio::spawn(async move {
+            let result = work(client, timelines, events.clone()).await;
+            let _ = events.send(Event::Done { id, result }).await;
+        });
     }
 
     /// Commands that end with a new recovery key.

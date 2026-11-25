@@ -28,6 +28,7 @@ from pathlib import Path
 import secrets
 import shutil
 import socket
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -115,6 +116,15 @@ class Gomuks:
             if time.monotonic() > end:
                 raise RuntimeError(f"gomuks never synced {room}")
             self.frame(1)
+
+    def find(self, label, matches, timeout=60):
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            for e in self.events:
+                if matches(e):
+                    return e
+            self.frame(1)
+        raise RuntimeError(f"gomuks never saw {label}")
 
     def decrypted(self, body, timeout=60):
         end = time.monotonic() + timeout
@@ -312,6 +322,7 @@ sso:
         for i in range(history):
             seed.rpc("send_message", {"room_id": room, "text": f"history {i}"})
         seed.decrypted(f"history {history - 1}")
+        old_event = seed.decrypted("history 3")["event_id"]
         time.sleep(3)  # let gomuks upload the new Megolm session to key backup
         seed.close()
         peers.remove(seed)
@@ -327,7 +338,8 @@ sso:
         fixture.write_text(json.dumps(dict(server=hs, username=alice.split(":")[0][1:], password=alice_pwd, key=key,
                                            room=room, space=space, dm=dm, unread_room=unread, peer=bob,
                                            history=history, fresh_username=fresh.split(":")[0][1:],
-                                           fresh_password=fresh_pwd, sso_user=f"@{SSO_USER}:{SERVER_NAME}")))
+                                           fresh_password=fresh_pwd, sso_user=f"@{SSO_USER}:{SERVER_NAME}",
+                                           old_event=old_event)))
         bus = stack.enter_context(private_keyring(tmp))
         isolated = {**os.environ, "UNTETHERED_QA_FIXTURE": str(fixture)}
         if bus:
@@ -349,12 +361,38 @@ sso:
         mine = (signals / "sdk-sent").read_text()
         event = peer.decrypted(mine)
         assert event["type"] == "m.room.encrypted" and event["sender"] == alice, event
-        print(f"gomuks peer decrypted the matrix-sdk message {event['event_id']}", flush=True)
+        assert "<strong>matrix-sdk</strong>" in event["decrypted"].get("formatted_body", ""), event["decrypted"]
+        print(f"gomuks peer decrypted the matrix-sdk message {event['event_id']} with its Markdown", flush=True)
         theirs = f"gomuks to matrix-sdk {secrets.token_hex(6)}"
         peer.rpc("send_message", {"room_id": room, "text": theirs})
         (signals / "peer-sent").write_text(theirs)
+        while not (signals / "sdk-acted").is_file():
+            if test.poll() is not None:
+                break
+            peer.frame(.5)
+        if (signals / "sdk-acted").is_file():
+            acted = json.loads((signals / "sdk-acted").read_text())
+            content = lambda e: e.get("decrypted") or e.get("content") or {}
+            peer.find("the edit", lambda e: content(e).get("m.new_content", {}).get("body") == acted["edit"]
+                      and content(e).get("m.relates_to", {}).get("event_id") == acted["edited"])
+            peer.find("the reaction", lambda e: "m.reaction" in (e.get("type"), e.get("decrypted_type"))
+                      and content(e).get("m.relates_to", {}).get("event_id") == acted["reacted"]
+                      and content(e).get("m.relates_to", {}).get("key") == acted["key"])
+            (signals / "peer-confirmed").write_text("")
+            print("gomuks peer decrypted the matrix-sdk edit and reaction", flush=True)
         while test.poll() is None:
             peer.frame(.5)
+        if (signals / "sdk-reported").is_file():
+            reported = (signals / "sdk-reported").read_text()
+            db = sqlite3.connect(tmp / "homeserver.db")
+            reports = db.execute("SELECT reason FROM event_reports WHERE event_id = ? AND user_id = ?",
+                                 (reported, alice)).fetchall()
+            receipts = db.execute("SELECT receipt_type FROM receipts_linearized WHERE event_id = ? AND user_id = ?",
+                                  (reported, alice)).fetchall()
+            db.close()
+            assert reports == [("qa report",)], reports
+            assert ("m.read.private",) in receipts, receipts
+            print("Synapse holds the report and the private read receipt", flush=True)
         if test.returncode:
             failed.append("matrix_sdk_login_restore_and_encrypted_round_trip")
         flows = {**isolated, "UNTETHERED_KEYRING": "off", "UNTETHERED_QA_PROFILES": str(tmp / "profiles")}

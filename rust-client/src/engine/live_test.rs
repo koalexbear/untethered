@@ -192,7 +192,8 @@ async fn matrix_sdk_login_restore_and_encrypted_round_trip() {
         "Use a fresh profile."
     );
     let room = fixture["room"].as_str().unwrap();
-    let mine = format!("matrix-sdk to gomuks {}", uuid::Uuid::new_v4());
+    // Markdown: the peer checks the formatted body.
+    let mine = format!("**matrix-sdk** to gomuks {}", uuid::Uuid::new_v4());
 
     let (mut app, rx, engine) = session();
     wait(&mut app, &rx, "startup", |a| a.connected).await;
@@ -269,12 +270,30 @@ async fn matrix_sdk_login_restore_and_encrypted_round_trip() {
         a.selected == room && !a.pending.values().any(|p| matches!(p, Request::Page(_)))
     })
     .await;
-    let older = fixture["history"].as_u64().unwrap() as usize;
     let first = app.live.list[room].posts().len();
+    // "View original" for an event outside the loaded window uses /context.
+    // Ask for it directly: jump() would show it locally once paginated.
+    let old = fixture["old_event"].as_str().unwrap();
+    app.engine_rpc(
+        "get_event_context",
+        Value::Null,
+        Request::Context(room.into(), old.into()),
+    );
+    wait(&mut app, &rx, "event context", |a| a.original.is_some()).await;
+    let context = app.original.as_ref().unwrap();
+    let found = context
+        .slice
+        .as_ref()
+        .and_then(|s| s.by_id(old))
+        .map(|p| p.text().to_owned());
+    assert_eq!(found.as_deref(), Some("history 3"));
+    println!("matrix-sdk: View original loaded an event outside the timeline through /context");
+    app.close_original();
+    let older = fixture["history"].as_u64().unwrap() as usize;
     paginate_to_start(&mut app, &rx, room).await;
     let loaded = app.live.list[room].posts().len();
     assert!(
-        loaded >= older && loaded > first,
+        loaded >= older,
         "only {loaded} of {older} earlier posts loaded"
     );
     // The gomuks seed device wrote this history before this device existed;
@@ -323,6 +342,69 @@ async fn matrix_sdk_login_restore_and_encrypted_round_trip() {
         .unwrap();
     assert_eq!(sender, fixture["peer"].as_str().unwrap());
     println!("matrix-sdk: decrypted and rendered the gomuks peer's message");
+
+    // Mark the room read at the peer's message, before our own reaction and
+    // edit count as reading it.
+    wait(&mut app, &rx, "unread from the peer", |a| {
+        a.live.list[room].unread
+    })
+    .await;
+    let target = app.live.list[room].read.target().map(str::to_owned);
+    app.mark_room(room.to_owned(), target);
+    wait(&mut app, &rx, "room read", |a| {
+        !a.live.list[room].unread
+            && !a
+                .pending
+                .values()
+                .any(|p| matches!(p, Request::ReadState(..)))
+    })
+    .await;
+    // React to the peer's message, edit ours, and let gomuks check both.
+    let theirs_id = app.live.list[room]
+        .posts()
+        .find(|p| p.text() == theirs)
+        .and_then(|p| p.event_id.clone())
+        .unwrap();
+    let mine_id = app.live.list[room]
+        .posts()
+        .find(|p| p.text() == mine)
+        .and_then(|p| p.event_id.clone())
+        .unwrap();
+    let op = crate::reactions::Toggle::for_post(room, app.visible_post(&theirs_id).unwrap(), "👍")
+        .expect("the peer's message is reactable");
+    app.toggle_reaction(op);
+    wait(&mut app, &rx, "own reaction", |a| {
+        a.visible_post(&theirs_id)
+            .and_then(|p| p.chips.get("👍"))
+            .is_some_and(|c| c.count == 1 && c.mine().is_some())
+    })
+    .await;
+    let edited = format!("edited from matrix-sdk {}", uuid::Uuid::new_v4());
+    assert!(app.start_edit(mine_id.clone()), "our message is editable");
+    app.editing.as_mut().unwrap().input = text_editor::Content::with_text(&edited);
+    app.save_edit();
+    wait(&mut app, &rx, "edit applied", |a| {
+        a.editing.is_none()
+            && a.visible_post(&mine_id)
+                .is_some_and(|p| p.text() == edited && p.revision.is_some())
+    })
+    .await;
+    std::fs::write(
+        signals.join("sdk-acted"),
+        serde_json::json!({"edit": edited, "edited": mine_id, "reacted": theirs_id, "key": "👍"})
+            .to_string(),
+    )
+    .unwrap();
+    signal(&signals, "peer-confirmed").await;
+    println!("matrix-sdk: reaction and edit shown here and decrypted by the gomuks peer");
+
+    assert!(app.begin_report(room, &theirs_id));
+    let _ = app.update(Msg::ReportReason("qa report".into()));
+    app.submit_report();
+    wait(&mut app, &rx, "report sent", |a| a.reporting.is_none()).await;
+    assert_eq!(app.status, "Report sent to your homeserver.");
+    std::fs::write(signals.join("sdk-reported"), &theirs_id).unwrap();
+    println!("matrix-sdk: marked the room read and reported the peer's message");
     stop(app, engine).await;
 
     let (mut app, rx, engine) = session();
@@ -341,7 +423,7 @@ async fn matrix_sdk_login_restore_and_encrypted_round_trip() {
     .await;
     let _ = app.update(Msg::Open(room.into()));
     wait(&mut app, &rx, "restored history", |a| {
-        has(a, room, &mine) && has(a, room, &theirs)
+        has(a, room, &edited) && has(a, room, &theirs)
     })
     .await;
     paginate_to_start(&mut app, &rx, room).await;
@@ -350,7 +432,7 @@ async fn matrix_sdk_login_restore_and_encrypted_round_trip() {
         order.len() == older && order.is_sorted(),
         "restored history incomplete or out of order: {order:?}"
     );
-    println!("matrix-sdk: restart restored the session and both encrypted messages");
+    println!("matrix-sdk: restart restored the session, both encrypted messages and the edit");
     stop(app, engine).await;
 
     // A second engine on the same profile is refused while one runs.

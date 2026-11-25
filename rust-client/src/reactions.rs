@@ -65,6 +65,20 @@ fn valid_key(key: &str) -> bool {
     !key.trim().is_empty() && key.len() <= 255 && !key.chars().any(char::is_control)
 }
 
+/// A chip from an engine that aggregates reactions itself (matrix-sdk-ui).
+/// It toggles by key, so our own reaction needs no event ID.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn engine_chip(count: u64, mine: bool) -> Chip {
+    Chip {
+        count,
+        mine: if mine {
+            BTreeSet::from(["own".to_owned()])
+        } else {
+            BTreeSet::new()
+        },
+    }
+}
+
 #[derive(Clone, PartialEq, Eq)]
 pub struct Toggle {
     room: String,
@@ -73,6 +87,11 @@ pub struct Toggle {
     remove: Option<String>,
 }
 impl Toggle {
+    /// Room, reacted-to event and key.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn parts(&self) -> (&str, &str, &str) {
+        (&self.room, &self.target, &self.key)
+    }
     pub fn for_post(room: &str, post: &Post, key: &str) -> Option<Self> {
         if !post.reactable || !valid_key(key) {
             return None;

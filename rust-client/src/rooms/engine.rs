@@ -4,7 +4,7 @@
 use super::{Post, Quote, Room, Rooms};
 use crate::engine::{Delivery, Kind, Message, RoomList};
 use chrono::{DateTime, Local};
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
 impl Rooms {
@@ -47,6 +47,7 @@ impl Rooms {
             {
                 room.dm_peer = s.dm_peer;
             }
+            room.read.fully_read = s.fully_read;
             room.read.marked = s.marked_unread;
             room.read.messages = s.unread_messages;
             room.read.highlights = s.unread_mentions.max(s.highlights);
@@ -69,6 +70,22 @@ impl Room {
         self.order.clear();
         self.event_rows.clear();
         self.related.clear();
+        let sent = |m: &Message| m.event_id.clone().filter(|_| m.delivery == Delivery::Sent);
+        let events: Vec<String> = messages.iter().filter_map(sent).collect();
+        let receipts: Vec<(String, String, i64)> = messages
+            .iter()
+            .filter_map(|m| Some((sent(m)?, &m.receipts)))
+            .flat_map(|(id, rs)| {
+                rs.iter()
+                    .map(move |(user, ts)| (id.clone(), user.clone(), *ts))
+            })
+            .collect();
+        self.read.apply_engine(
+            events.iter().map(String::as_str),
+            receipts
+                .iter()
+                .map(|(e, u, t)| (e.as_str(), u.as_str(), *t)),
+        );
         // `order` is sorted by (time, row). Keep the SDK's order even when
         // origin_server_ts goes backwards by never letting the key decrease.
         let mut floor = i64::MIN;
@@ -116,18 +133,28 @@ fn post(m: Message, time: i64) -> Post {
         Delivery::Sending => body.push_str("  ·  Sending…"),
         Delivery::Failed => body.push_str("  ·  Failed to send"),
     }
-    let revision = (m.edited && m.kind == Kind::Text)
-        .then(|| std::sync::Arc::new(crate::edits::Revision::applied(body.clone())));
+    let event_id = m.event_id.filter(|_| m.delivery == Delivery::Sent);
+    let revision = (m.edited && m.kind == Kind::Text).then(|| {
+        let id = m.edit_id.or_else(|| event_id.clone()).unwrap_or_default();
+        std::sync::Arc::new(crate::edits::Revision::applied(body.clone(), id))
+    });
     Post {
-        // Reactions and edits move onto the SDK timeline in a later step;
-        // until then their controls stay hidden on this engine.
-        reactable: false,
-        chips: Default::default(),
-        text_message: false,
+        reactable: event_id.is_some()
+            && matches!(m.kind, Kind::Text | Kind::Attachment | Kind::Sticker),
+        chips: m
+            .reactions
+            .into_iter()
+            .map(|(key, count, mine)| (key, crate::reactions::engine_chip(count, mine)))
+            .collect(),
+        // Only gates the Edit button, so follow the SDK's own rule.
+        text_message: m.text && m.kind == Kind::Text && m.editable,
         encrypted: m.encrypted,
-        mentions: Value::Null,
+        mentions: m.mentions.map_or(
+            Value::Null,
+            |(users, room)| json!({"user_ids": users, "room": room}),
+        ),
         revision,
-        event_id: m.event_id.filter(|_| m.delivery == Delivery::Sent),
+        event_id,
         reply: m.reply_to.map(|r| r.event_id),
         media: None,
         sender: m.sender,
@@ -172,6 +199,12 @@ mod tests {
             delivery: Delivery::Sent,
             edited: false,
             reply_to: None,
+            reactions: Vec::new(),
+            text: true,
+            editable: false,
+            mentions: None,
+            edit_id: None,
+            receipts: Vec::new(),
         }
     }
 

@@ -6,7 +6,9 @@ use async_channel::Sender;
 use matrix_sdk::{
     Client, Room,
     deserialized_responses::SyncOrStrippedState,
-    ruma::events::{SyncStateEvent, space::child::SpaceChildEventContent},
+    ruma::events::{
+        SyncStateEvent, fully_read::FullyReadEventContent, space::child::SpaceChildEventContent,
+    },
 };
 use std::{collections::BTreeSet, time::Duration};
 use tokio::sync::broadcast::error::RecvError;
@@ -77,6 +79,13 @@ async fn summary(room: &Room) -> RoomSummary {
         notifications: counts.notification_count,
         highlights: counts.highlight_count,
         marked_unread: room.is_marked_unread(),
+        fully_read: room
+            .account_data_static::<FullyReadEventContent>()
+            .await
+            .ok()
+            .flatten()
+            .and_then(|raw| raw.deserialize().ok())
+            .map(|e| e.content.event_id.to_string()),
         id,
     }
 }

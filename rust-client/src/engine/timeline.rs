@@ -8,17 +8,20 @@ use async_channel::Sender;
 use futures_util::StreamExt;
 use matrix_sdk::{
     Client,
+    room::edit::EditedContent,
     ruma::{
         EventId, OwnedRoomId, RoomId,
-        events::room::message::{MessageType, RoomMessageEventContent},
+        events::room::message::{
+            MessageType, RoomMessageEventContent, RoomMessageEventContentWithoutRelation,
+        },
     },
 };
 use matrix_sdk_ui::{
     Timeline,
     eyeball_im::Vector,
     timeline::{
-        EventSendState, EventTimelineItem, MsgLikeKind, RoomExt, TimelineDetails, TimelineItem,
-        TimelineItemContent,
+        EventSendState, EventTimelineItem, MsgLikeKind, RoomExt, TimelineDetails,
+        TimelineEventItemId, TimelineItem, TimelineItemContent,
     },
 };
 use std::{
@@ -72,6 +75,10 @@ impl Timelines {
         let refresh = Arc::new(Notify::new());
         let forwarder = tokio::spawn(forward(
             room.to_owned(),
+            self.client
+                .user_id()
+                .map(ToString::to_string)
+                .unwrap_or_default(),
             timeline.clone(),
             start.clone(),
             refresh.clone(),
@@ -108,30 +115,62 @@ impl Timelines {
         reply_to: Option<String>,
     ) -> Result<(), Failure> {
         let open = self.get(room).await?;
-        // Plain text, never slash commands: gomuks parity for replies and a
-        // literal body for ordinary messages. Markdown rendering is a gap.
-        let content = RoomMessageEventContent::text_plain(body);
         match reply_to {
+            // Replies stay literal text, as with gomuks's base_content: a
+            // slash or Markdown in a reply is never a command.
             Some(target) => {
                 let target = EventId::parse(target).map_err(|_| Failure::Unavailable)?;
                 open.timeline
-                    .send_reply(content.into(), target)
+                    .send_reply(
+                        RoomMessageEventContentWithoutRelation::text_plain(body),
+                        target,
+                    )
                     .await
                     .map_err(|_| Failure::Failed)?;
             }
+            // Messages render Markdown like gomuks's send_message.
             None => {
                 open.timeline
-                    .send(content.into())
+                    .send(RoomMessageEventContent::text_markdown(body).into())
                     .await
                     .map_err(|_| Failure::Failed)?;
             }
         }
         Ok(())
     }
+
+    fn item(event: &str) -> Result<TimelineEventItemId, Failure> {
+        Ok(TimelineEventItemId::EventId(
+            EventId::parse(event).map_err(|_| Failure::Unavailable)?,
+        ))
+    }
+
+    pub async fn react(&self, room: &str, event: &str, key: &str) -> Result<(), Failure> {
+        let open = self.get(room).await?;
+        open.timeline
+            .toggle_reaction(&Self::item(event)?, key)
+            .await
+            .map(|_| ())
+            .map_err(|_| Failure::Failed)
+    }
+
+    pub async fn edit(&self, room: &str, event: &str, body: String) -> Result<(), Failure> {
+        let open = self.get(room).await?;
+        open.timeline
+            .edit(
+                &Self::item(event)?,
+                EditedContent::RoomMessage(RoomMessageEventContentWithoutRelation::text_markdown(
+                    body,
+                )),
+            )
+            .await
+            .map_err(|_| Failure::Failed)
+    }
 }
 
 async fn forward(
     room: String,
+    me: String,
     timeline: Arc<Timeline>,
     start: Arc<AtomicBool>,
     refresh: Arc<Notify>,
@@ -140,7 +179,7 @@ async fn forward(
     let (mut items, mut stream) = timeline.subscribe().await;
     let mut rows = Rows::default();
     loop {
-        let snapshot = snapshot(&room, &items, &mut rows, start.load(Ordering::Acquire));
+        let snapshot = snapshot(&room, &me, &items, &mut rows, start.load(Ordering::Acquire));
         if events.send(Event::Timeline(snapshot)).await.is_err() {
             return;
         }
@@ -178,6 +217,7 @@ impl Rows {
 
 fn snapshot(
     room: &str,
+    me: &str,
     items: &Vector<Arc<TimelineItem>>,
     rows: &mut Rows,
     start: bool,
@@ -189,16 +229,18 @@ fn snapshot(
             .iter()
             .filter_map(|item| {
                 let event = item.as_event()?;
-                message(event, rows.get(&item.unique_id().0))
+                message(event, rows.get(&item.unique_id().0), me)
             })
             .collect(),
     }
 }
 
-fn message(item: &EventTimelineItem, row: i64) -> Option<Message> {
+fn message(item: &EventTimelineItem, row: i64, me: &str) -> Option<Message> {
     let TimelineItemContent::MsgLike(content) = item.content() else {
         return None;
     };
+    let mut text = false;
+    let mut mentions = None;
     let (kind, body, edited) = match &content.kind {
         MsgLikeKind::Message(m) => {
             let kind = match m.msgtype() {
@@ -208,6 +250,10 @@ fn message(item: &EventTimelineItem, row: i64) -> Option<Message> {
                 | MessageType::Video(_) => Kind::Attachment,
                 _ => Kind::Text,
             };
+            text = matches!(m.msgtype(), MessageType::Text(_));
+            mentions = m
+                .mentions()
+                .map(|m| (m.user_ids.iter().map(ToString::to_string).collect(), m.room));
             (kind, m.body().to_owned(), m.is_edited())
         }
         MsgLikeKind::Sticker(s) => (Kind::Sticker, s.content().body.clone(), false),
@@ -216,6 +262,17 @@ fn message(item: &EventTimelineItem, row: i64) -> Option<Message> {
         // Polls, live locations and custom events have no Post form yet.
         _ => return None,
     };
+    let reactions = content
+        .reactions
+        .iter()
+        .map(|(key, senders)| {
+            (
+                key.clone(),
+                senders.len() as u64,
+                senders.keys().any(|u| u.as_str() == me),
+            )
+        })
+        .collect();
     let delivery = match item.send_state() {
         None | Some(EventSendState::Sent { .. }) => Delivery::Sent,
         Some(EventSendState::NotSentYet { .. }) => Delivery::Sending,
@@ -246,5 +303,22 @@ fn message(item: &EventTimelineItem, row: i64) -> Option<Message> {
         delivery,
         edited,
         reply_to,
+        reactions,
+        text,
+        editable: item.is_editable(),
+        mentions,
+        edit_id: item
+            .latest_edit_json()
+            .and_then(|raw| raw.get_field::<String>("event_id").ok().flatten()),
+        receipts: item
+            .read_receipts()
+            .iter()
+            .map(|(user, receipt)| {
+                (
+                    user.to_string(),
+                    receipt.ts.map_or(0, |t| u64::from(t.0) as i64),
+                )
+            })
+            .collect(),
     })
 }

@@ -21,6 +21,23 @@ pub struct State {
     readers: BTreeMap<String, (String, i64)>,
 }
 impl State {
+    /// Timeline order and receipts from the matrix-sdk engine's snapshot:
+    /// `events` are sent events in timeline order, `receipts` are
+    /// (event, reader, timestamp).
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn apply_engine<'a>(
+        &mut self,
+        events: impl Iterator<Item = &'a str>,
+        receipts: impl Iterator<Item = (&'a str, &'a str, i64)>,
+    ) {
+        self.timeline = events.zip(1..).map(|(id, n)| (n, id.to_owned())).collect();
+        self.preview = None;
+        for (event, user, ts) in receipts {
+            if self.readers.get(user).is_none_or(|(_, old)| ts >= *old) {
+                self.readers.insert(user.to_owned(), (event.to_owned(), ts));
+            }
+        }
+    }
     pub fn position(&mut self, t: i64, e: &Value) {
         if t != 0 && rooms::server_confirmed(e) {
             self.timeline.insert(t, rooms::string(&e["event_id"]));
@@ -131,6 +148,11 @@ pub struct Sharing {
     revision: u64,
 }
 impl Sharing {
+    /// The preference as synced by the matrix-sdk engine.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_from_engine(&mut self, public: bool) {
+        self.update(public)
+    }
     pub fn sync(&mut self, d: &Value) {
         if let Some(p) = d["account_data"].get(PREF) {
             self.update(p["content"]["public"] == true)

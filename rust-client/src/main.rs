@@ -495,7 +495,7 @@ impl App {
     fn rpc(&mut self, cmd: &str, data: Value, req: Request) {
         #[cfg(not(target_arch = "wasm32"))]
         if self.sdk.is_some() {
-            return self.engine_unsupported(req);
+            return self.engine_rpc(cmd, data, req);
         }
         self.seq += 1;
         if self.connected
@@ -1134,7 +1134,13 @@ impl App {
             Msg::InlineReady(epoch, key, img) => self.inline.complete(epoch, key, img),
             Msg::ShowInline(key) => self.inline.request(key),
             #[cfg(not(target_arch = "wasm32"))]
-            Msg::Engine(event) => self.engine_event(event),
+            Msg::Engine(event) => {
+                let jumped = matches!(event, engine::Event::Context { .. });
+                self.engine_event(event);
+                if jumped && self.original.is_some() {
+                    return self.anchor_history();
+                }
+            }
             #[cfg(not(target_arch = "wasm32"))]
             Msg::Sdk(action) => return self.sdk_action(action),
             Msg::Frame(f) => {

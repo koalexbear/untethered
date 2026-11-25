@@ -2,8 +2,9 @@
 //! to typed commands, and apply its events to the same `App` state and
 //! `rooms::Rooms` model the gomuks frames fill.
 use super::{Account, Command, Connection, Event, Failure, Recovery, run};
-use crate::{App, Msg, Request, account};
+use crate::{App, Msg, Request, account, replies::Original, rooms};
 use iced::{Task, widget::text_editor};
+use serde_json::Value;
 
 impl App {
     pub(crate) fn boot_engine() -> (Self, Task<Msg>) {
@@ -39,6 +40,83 @@ impl App {
             self.pending.insert(self.seq, request);
         } else {
             self.status = "Could not queue the request. Try again.".into();
+        }
+    }
+
+    /// Requests the App builds as gomuks RPCs, sent to the engine as typed
+    /// commands. Until the call sites build commands themselves, this is
+    /// the translation between the two.
+    pub(crate) fn engine_rpc(&mut self, cmd: &str, data: Value, request: Request) {
+        let text = |v: &Value| v.as_str().unwrap_or_default().to_owned();
+        match &request {
+            Request::Reaction(op) => {
+                let (room, event, key) = op.parts();
+                let (room, event, key) = (room.to_owned(), event.to_owned(), key.to_owned());
+                self.command(
+                    |id| Command::React {
+                        id,
+                        room,
+                        event,
+                        key,
+                    },
+                    request,
+                );
+            }
+            Request::Edit(room, event) => {
+                let (room, event) = (room.clone(), event.clone());
+                let body = text(&data["content"]["m.new_content"]["body"]);
+                self.command(
+                    |id| Command::Edit {
+                        id,
+                        room,
+                        event,
+                        body,
+                    },
+                    request,
+                );
+            }
+            Request::Report => {
+                let (room, event, reason) = (
+                    text(&data["room_id"]),
+                    text(&data["event_id"]),
+                    text(&data["reason"]),
+                );
+                self.command(
+                    |id| Command::Report {
+                        id,
+                        room,
+                        event,
+                        reason,
+                    },
+                    request,
+                );
+            }
+            Request::ReadState(room, Some(event)) if cmd == "mark_read" => {
+                let (room, event) = (room.clone(), event.clone());
+                let public = data["receipt_type"] == "m.read";
+                self.command(
+                    |id| Command::MarkRead {
+                        id,
+                        room,
+                        event,
+                        public,
+                    },
+                    request,
+                );
+            }
+            Request::ReadState(room, None) => {
+                let room = room.clone();
+                self.command(|id| Command::MarkUnread { id, room }, request);
+            }
+            Request::Context(room, event) => {
+                let (room, event) = (room.clone(), event.clone());
+                self.command(|id| Command::Context { id, room, event }, request);
+            }
+            Request::ShareReads(public, _) => {
+                let public = *public;
+                self.command(|id| Command::ShareReads { id, public }, request);
+            }
+            _ => self.engine_unsupported(request),
         }
     }
 
@@ -228,6 +306,12 @@ impl App {
             }
             Event::Devices(list) => self.sdk_ui.devices = Some(list),
             Event::LoginOptions(options) => self.sdk_login_options(options),
+            Event::Context {
+                room,
+                event,
+                messages,
+            } => self.engine_context(room, event, messages),
+            Event::ReadSharing(public) => self.read_sharing.set_from_engine(public),
         }
     }
 
@@ -317,8 +401,63 @@ impl App {
             (Request::Send(..), Err(_)) => {
                 self.status = "Could not send. Your draft has been kept.".into();
             }
+            // The timeline snapshot carries the new chips and text.
+            (Request::Reaction(_), Ok(())) => {}
+            (Request::Reaction(_), Err(_)) => {
+                self.status = "Could not change this reaction. Try again.".into();
+            }
+            (Request::Edit(..), Ok(())) => {
+                if let Some(d) = &self.editing
+                    && d.pending == Some(id)
+                {
+                    self.editing = None;
+                    self.status.clear();
+                }
+            }
+            (Request::Edit(room, event), Err(_)) => {
+                self.finish_edit(id, &room, &event, &Value::Null)
+            }
+            (Request::Report, result) => self.report_result(result.is_ok()),
+            (Request::ReadState(room, event), result) => {
+                self.read_result(room, event, result.is_ok())
+            }
+            (Request::Context(..), Ok(())) => {}
+            (Request::Context(..), Err(_)) => {
+                self.status =
+                    "Could not load the selected message. Try opening it again.".into();
+            }
+            (Request::ShareReads(public, revision), Ok(())) => {
+                self.read_sharing.saved(public, revision)
+            }
+            (Request::ShareReads(..), Err(_)) => {
+                self.status =
+                    "Could not save your read receipt preference. Try again.".into();
+            }
             _ => {}
         }
+    }
+}
+
+impl App {
+    /// Messages around a reply's original, for "View original" when it is
+    /// outside the loaded timeline.
+    fn engine_context(&mut self, room: String, event: String, messages: Vec<super::Message>) {
+        if self.selected != room {
+            return;
+        }
+        let mut slice = rooms::Room::default();
+        slice.apply_engine(messages, false);
+        if slice.by_id(&event).is_none() {
+            self.status = "The original message is unavailable in this room.".into();
+            return;
+        }
+        self.status.clear();
+        self.original = Some(Original {
+            room,
+            event,
+            slice: Some(slice),
+            preceding: false,
+        });
     }
 }
 
@@ -478,11 +617,24 @@ mod tests {
                 delivery: crate::engine::Delivery::Sent,
                 edited: false,
                 reply_to: None,
+                reactions: vec![("👍".into(), 1, false)],
+                text: true,
+                editable: false,
+                mentions: None,
+                edit_id: None,
+                receipts: vec![("@you:example".into(), 1)],
             }],
         }));
         app.engine_event(Event::Done { id, result: Ok(()) });
         let r = &app.live.list[&room];
         assert!(r.end && r.posts().next().unwrap().body == "hello");
+        let post = r.posts().next().unwrap();
+        assert!(post.reactable && post.chips["👍"].count == 1 && post.chips["👍"].mine().is_none());
+        assert!(
+            !post.may_edit("@me:example"),
+            "only our own messages are editable"
+        );
+        assert_eq!(post.report_id("@me:example"), Some("$1"));
 
         app.editor = text_editor::Content::with_text("hi there");
         let _ = app.update(Msg::Reply("$1".into()));
@@ -499,6 +651,50 @@ mod tests {
         );
         app.engine_event(Event::Done { id, result: Ok(()) });
         assert!(app.editor.text().trim().is_empty() && app.reply_drafts.is_empty());
+
+        // Step 3: the existing controls reach typed commands.
+        let op = crate::reactions::Toggle::for_post(&room, app.visible_post("$1").unwrap(), "👍")
+            .unwrap();
+        app.toggle_reaction(op);
+        let Ok(Command::React { event, key, .. }) = rx.try_recv() else {
+            panic!("expected a reaction")
+        };
+        assert_eq!((event.as_str(), key.as_str()), ("$1", "👍"));
+        assert!(app.begin_report(&room, "$1"));
+        let _ = app.update(Msg::ReportReason("spam".into()));
+        app.submit_report();
+        let Ok(Command::Report { event, reason, .. }) = rx.try_recv() else {
+            panic!("expected a report")
+        };
+        assert_eq!((event.as_str(), reason.as_str()), ("$1", "spam"));
+        app.engine_event(Event::Context {
+            room: room.clone(),
+            event: "$0".into(),
+            messages: vec![Message {
+                row: 1,
+                event_id: Some("$0".into()),
+                sender: "@you:example".into(),
+                sender_name: None,
+                time: 0,
+                body: "original".into(),
+                kind: crate::engine::Kind::Text,
+                encrypted: true,
+                delivery: crate::engine::Delivery::Sent,
+                edited: false,
+                reply_to: None,
+                reactions: vec![],
+                text: true,
+                editable: false,
+                mentions: None,
+                edit_id: None,
+                receipts: vec![],
+            }],
+        });
+        let original = app.original.as_ref().expect("the original opens");
+        assert_eq!(
+            original.slice.as_ref().unwrap().by_id("$0").unwrap().body,
+            "original"
+        );
 
         // Unsupported gomuks RPCs never reach a backend.
         let _ = app.update(Msg::CheckCalls);
