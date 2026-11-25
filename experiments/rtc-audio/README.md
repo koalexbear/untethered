@@ -248,8 +248,37 @@ a private X display. The virtual compositor, PipeWire server and session bus
 are local to the fixture.
 
 The test cancels a real KDE picker, then selects **Prism** from a fresh picker
-with both Prism and a decoy window visible. Both receiver screenshots must
-contain the selected window's adjacent pink/teal fields at video-tile scale.
+that lists the virtual screen and every window, with both Prism and a decoy
+window visible. Prism is 1600×900 with a bar sweeping its bottom band at 60 Hz,
+because KWin only sends frames when the window changes. The receivers open
+**Open call view**; both screenshots must contain the selected window's adjacent
+pink/teal fields at video-tile scale.
+
+Debug builds started with `UNTETHERED_QA_VIDEO_STATS=1` print one line per video
+track on every 4 s heartbeat, from `Room::get_stats()`: direction, source,
+frame size, frame rate and bytes. They contain no addresses, keys or SDP. The test requires
+the sender's outbound screen share to be at least 1280 px wide at 24 fps or more,
+and both receivers' inbound tracks to reach 24 fps. Each client gets its own four cores, as if
+on separate machines. Measured on 2026-11-25 (KWin 6.8.3, libvpx VP8,
+software GL on the receivers' Xvfb displays):
+
+| Measurement | Result |
+|---|---|
+| Portal window size | Not reported by KDE; probed from PipeWire caps: 1600×928 (with title bar) |
+| Sender capture / encode | 30.0 fps / 1600×928 at 29.0–30.0 fps, no quality limitation |
+| Receivers decode | 1600×928 at 30.0 fps on both |
+| Receive conversion (I420 → RGBA + `image::Handle`) | 30.0 fps at 0.5–1.2 ms per frame |
+| Sender CPU (100% = one core) | Client 18–22% (encoder 9–12%), GStreamer 7–8%, KWin 14–15% |
+| Receiver CPU, idle stage → 30 fps share | 2–5% → 102–117%, of which the UI thread is 93–103% |
+
+Two runs, both passing. Before this change the same path captured 960×540 at
+up to 12 fps and LiveKit encoded it at 5 fps. A 60 Hz source now reaches
+GStreamer at 60 fps and is cut to 30 there.
+
+The per-frame `image::Handle` itself is cheap. The receiving UI thread is the
+bottleneck: each new frame is a new image to upload and redraw, and it
+saturates one core under software GL. Persistent YUV textures converted on
+the GPU (plan step V1b) are the next step for the receive side.
 After the sharer navigates to a text channel, the test changes the source
 to blue/orange and injects new mic tones. It checks the new pixels at both
 receivers, all six decoded audio paths, the original microphone IDs and a GCM
@@ -268,7 +297,9 @@ reach the camera only through the real Camera portal's file descriptor.
 The test starts with no camera, then cancels a pending permission request and
 checks that no capture process, PipeWire link or SFU video track exists. On a
 fresh grant it verifies an active link to the virtual camera and a GCM
-`CAMERA` publication. Screenshots of both peers must show the green/magenta
+`CAMERA` publication. The sender's video stats must show the camera sent at
+1280×720; on 2026-11-25 it was sent at 1280×720 and 12.0 fps, the virtual
+camera's own rate. Screenshots of both peers must show the green/magenta
 test fields, then fresh orange/blue fields on the same video track. **Stop
 camera** must remove the capture process, camera links, SFU video track and
 both remote tiles while leaving the virtual camera available. Changing mic

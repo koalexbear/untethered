@@ -4,6 +4,7 @@ import json
 import os
 import re
 import subprocess as sp
+import time
 from pathlib import Path
 
 from PIL import Image
@@ -25,14 +26,107 @@ def area(peer,palette):
     return 0<b[0]-a[1]<16 and abs(a[2]-b[2])<10 and abs(a[3]-b[3])<10
 
 
+STAT=re.compile(r"^RTC video (inbound|outbound|render) sid=(\S+) (?:source=(\w+) )?(?:rid=\S+ )?"
+                r"width=(\d+) height=(\d+) fps=([\d.]+)(.*)$",re.M)
+def video_stats(desk,direction,source=None):
+    """Latest UNTETHERED_QA_VIDEO_STATS sample per track SID in a client's log."""
+    latest={}
+    for m in STAT.finditer(desk.stats.read_text(errors="replace")):
+        if m[1]==direction and (source is None or m[3]==source):
+            extra=dict(kv.split("=",1) for kv in m[7].split() if "=" in kv)
+            latest[m[2]]={"width":int(m[4]),"height":int(m[5]),"fps":float(m[6]),**extra}
+    return latest
+
+def process_cpu(pids,seconds=8):
+    """CPU % (100 = one core) per process and per thread name over one window."""
+    tick=os.sysconf("SC_CLK_TCK")
+    def threads(pid):
+        out={}
+        for task in Path(f"/proc/{pid}/task").glob("*"):
+            try:raw=(task/"stat").read_text()
+            except OSError:continue
+            f=raw[raw.rindex(")")+2:].split()
+            out[task.name]=(raw[raw.index("(")+1:raw.rindex(")")],int(f[11])+int(f[12]))
+        return out
+    before={p:threads(p) for p in pids};start=time.monotonic()
+    time.sleep(seconds)
+    after={p:threads(p) for p in pids};span=time.monotonic()-start
+    result={}
+    for p in pids:
+        names={}
+        for tid,(name,used) in after[p].items():
+            name=re.sub(r"[-_ ]?\d+$","",name)
+            names[name]=names.get(name,0)+(used-before[p].get(tid,(name,0))[1])/tick/span*100
+        result[p]=(sum(names.values()),sorted(names.items(),key=lambda kv:-kv[1]))
+    return result
+
+def children(pid):
+    found=[]
+    for stat in Path("/proc").glob("[0-9]*/stat"):
+        try:raw=stat.read_text()
+        except OSError:continue
+        if raw[raw.rindex(")")+2:].split()[1]==str(pid):found.append(int(stat.parent.name))
+    return found
+
+def comm(pid):
+    try:return Path(f"/proc/{pid}/comm").read_text().strip()
+    except OSError:return str(pid)
+
+def cpu_line(label,usage):
+    total,names=usage
+    top=", ".join(f"{n} {v:.0f}%" for n,v in names[:4] if v>=1)
+    return f"{label} {total:.0f}% ({top})"
+
+def check_video_rate(sender,peers,others=()):
+    """Sender encodes the share at >=1280 px and >=24 fps; each receiver decodes >=24 fps.
+
+    CPU is sampled first so a slow run still reports where the time went.
+    `others` adds (label, pid) pairs such as the compositor and source window."""
+    def sample():
+        out=list(video_stats(sender,"outbound","screenshare").values())
+        got=[list(video_stats(p,"inbound","screenshare").values()) for p in peers]
+        return (out[0],[g[0] for g in got]) if len(out)==1 and all(len(g)==1 for g in got) else None
+    wait_for("video stats from the sender and both receivers",sample,30)
+    pids=[sender.client.pid,*children(sender.client.pid),*(p.client.pid for p in peers),*(pid for _,pid in others)]
+    usage=process_cpu(pids)
+    out,inbound=sample()
+    capture=re.findall(r"^RTC video capture .* fps=([\d.]+)$",sender.stats.read_text(errors="replace"),re.M)
+    rendered=[list(video_stats(p,"render").values()) for p in peers]
+    print(f"Video: sender captures {capture[-1] if capture else '?'} fps and encodes {out['width']}x{out['height']} "
+          f"at {out['fps']:.1f} fps ({out.get('encoder','?')}, limit={out.get('limit','?')}); receivers decode "
+          +" / ".join(f"{i['width']}x{i['height']} at {i['fps']:.1f} fps" for i in inbound)
+          +"; converted for display at "
+          +" / ".join(f"{r[0]['fps']:.1f} fps, {r[0]['convert_ms']} ms per frame" if r else "n/a" for r in rendered),flush=True)
+    n=len(peers)
+    children_of=pids[1:len(pids)-n-len(others)]
+    print("CPU over 8 s (100% = one core): "+"; ".join([cpu_line("sender client",usage[pids[0]]),
+          *(cpu_line("sender child "+comm(c),usage[c]) for c in children_of if usage[c][0]>=1),
+          *(cpu_line(f"receiver {i+1}",usage[p.client.pid]) for i,p in enumerate(peers)),
+          *(cpu_line(label,usage[pid]) for label,pid in others)]),flush=True)
+    def sent():
+        out=list(video_stats(sender,"outbound","screenshare").values())
+        return out[0] if len(out)==1 and out[0]["width"]>=1280 and out[0]["fps"]>=24 else None
+    def received():
+        got=[list(video_stats(p,"inbound","screenshare").values()) for p in peers]
+        return [g[0] for g in got] if all(len(g)==1 and g[0]["fps"]>=24 for g in got) else None
+    try:
+        out=wait_for("sender outbound screen share >=1280 px wide at >=24 fps",sent,30)
+        inbound=wait_for("both receivers decode the share at >=24 fps",received,30)
+    except RuntimeError:
+        print("Sender outbound:",video_stats(sender,"outbound"),
+              "Receivers inbound:",[video_stats(p,"inbound") for p in peers],flush=True)
+        raise
+    print(f"Video rate: sender outbound {out['width']}x{out['height']} at {out['fps']:.1f} fps; receivers inbound "
+          +" / ".join(f"{i['fps']:.1f} fps" for i in inbound)+".",flush=True)
+
 def pattern_window(stack,sender):
     kde=sender.kde
     source=sp.Popen(["/usr/bin/python",str(Path(__file__).with_name("qa_window_pattern.py"))],env=kde.env,stdin=sp.PIPE,stdout=sp.DEVNULL)
     def stop():source.terminate();source.wait(timeout=5)
     stack.callback(stop)
-    for title,y in [("Prism",0),("Decoy",340)]:
+    for title,x in [("Prism",1190),("Decoy",2800)]:
         wid=wait_for(title,lambda:kde.window("^"+title+"$"))
-        kde.command("kdotool","windowmove",wid,"1300",str(y))
+        kde.command("kdotool","windowmove",wid,str(x),"0")
     kde.command("kdotool","windowactivate",sender.win)
     return source
 
@@ -44,14 +138,6 @@ def sessions(kde):
     tree=kde.command("busctl","--address="+kde.env["DBUS_SESSION_BUS_ADDRESS"],"--list",
                      "tree","org.freedesktop.portal.Desktop").stdout
     return {p.strip() for p in tree.splitlines() if re.fullmatch(r"/org/freedesktop/portal/desktop/session/[^/]+/[^/]+",p.strip())}
-def dialog_click(kde,wid,label):
-    geom=kde.command("kdotool","getwindowgeometry",wid).stdout
-    x,y=map(int,re.search(r"Position: (-?\d+),(-?\d+)",geom).groups())
-    w,h=map(int,re.search(r"Geometry: (\d+)x(\d+)",geom).groups())
-    words=kde.words((x,y+24,x+w,y+h))
-    found=next(((x,y) for t,x,y in words if t.strip("|:").lower()==label),None)
-    if not found:raise AssertionError(f"Picker label {label!r} not in {words}")
-    kde.click(*found)
 FIRST=[(235,36,119),(14,204,153)]
 SECOND=[(24,79,234),(245,132,33)]
 
@@ -66,8 +152,25 @@ def choose_window(sender,*,cancel=False):
     wid=wait_for("KDE window picker",request,18)
     kde.command("kdotool","windowactivate",wid)
     if not cancel:
-        dialog_click(kde,wid,"prism")
-        if picker()==wid:dialog_click(kde,wid,"share")
+        # The picker lists screens ("Share “Virtual-0”") above the windows, and
+        # thumbnails load after it opens. Click the Prism card until the dialog
+        # closes. Older pickers select first and need the bottom Share button;
+        # never click a screen card's "Share" title.
+        def chosen():
+            if picker()!=wid:return True
+            geom=kde.command("kdotool","getwindowgeometry",wid).stdout
+            x,y=map(int,re.search(r"Position: (-?\d+),(-?\d+)",geom).groups())
+            w,h=map(int,re.search(r"Geometry: (\d+)x(\d+)",geom).groups())
+            words=kde.words((x,y+24,x+w,y+h))
+            if hit:=next(((a,b) for t,a,b in words if t.strip("|:").lower()=="prism"),None):
+                kde.actions("pointer",[{"type":"pointerMove","x":hit[0],"y":hit[1]},{"type":"pause","duration":300},
+                    {"type":"pointerDown","button":0},{"type":"pause","duration":120},{"type":"pointerUp","button":0}])
+                time.sleep(1.5)
+            if picker()==wid and (button:=next(((a,b) for t,a,b in kde.words((x,y+h-70,x+w,y+h))
+                                                if t.strip("|:").lower()=="share"),None)):
+                kde.click(*button);time.sleep(1)
+            return picker()!=wid
+        wait_for("Prism chosen in the KDE picker",chosen,30)
         return
     kde.keys(("Down","\ue00c"),("Up","\ue00c"))  # Escape in the private chooser.
     wait_for("cancelled picker closed",lambda:not picker())
@@ -79,6 +182,11 @@ def window_share(stack,desks,secret,original,publications):
     source=pattern_window(stack,sender)
     def video():
         return [(p["identity"],t) for p in sfu_participants(secret) for t in p.get("tracks",[]) if t.get("type")=="VIDEO"]
+    for p in peers:p.open_stage()
+    if sender.stats:
+        idle=process_cpu([p.client.pid for p in peers],4)
+        print("Receiver CPU on the stage before any video (100% = one core): "
+              +"; ".join(cpu_line(f"receiver {i+1}",idle[p.client.pid]) for i,p in enumerate(peers)),flush=True)
     before=pw_nodes(kde);before_sessions=sessions(kde)
     choose_window(sender,cancel=True)
     assert not video()
@@ -91,8 +199,12 @@ def window_share(stack,desks,secret,original,publications):
     assert capture_nodes, "expected a new capture source or PipeWire reader"
     active=sessions(kde)-before_sessions
     assert len(active)==1,active
-    wait_for("both receivers render Prism",lambda:all(area(p,FIRST) for p in peers),20)
+    try:wait_for("both receivers render Prism",lambda:all(area(p,FIRST) for p in peers),20)
+    except RuntimeError:
+        if sender.stats:print("Video stats:",[(video_stats(d,"outbound"),video_stats(d,"inbound"),video_stats(d,"render")) for d in desks],flush=True)
+        raise
     print("Both peers rendered the selected pink/teal Prism window on one GCM screen track.",flush=True)
+    if sender.stats:check_video_rate(sender,peers,[("KWin",kde.kw.pid),("pattern window",source.pid)])
     sender.click("media-proof")
     wait_for("sharer is browsing another room",lambda:kde.window("Untethered.*media-proof"))
     desks[0].tone=3;desks[1].tone=4
@@ -138,17 +250,18 @@ def dm_share(stack,sender,user,tracks,readers,picture,audio,share_sound=None):
             # Filmstrip labels are separate from the stage's title/caption.
             if label=="remote" and share_sound:
                 from qa_element_video import BROWSER
-                im=kde.capture().crop((282,640,1180,750))
+                # The filmstrip sits under the stage, down to the window's foot.
+                im=kde.capture().crop((282,640,1180,848))
                 for pair in BROWSER:
                     if hit:=pattern_box(im,pair):return 282+(hit[0]+hit[2])//2,640+hit[1]+42
             if label=="your":
                 im=kde.capture()
-                for y in range(570,775,8):
+                for y in range(570,840,8):
                     for x in range(320,1140,4):
                         if all(max(abs(v-w) for v,w in zip(im.getpixel((x+offset,y)),color))<25
                                for offset,color in [(-24,SECOND[0]),(24,SECOND[1])]):
                             return x,y+20
-            return next(((x,y) for w,x,y in kde.words((282,540,1180,796))
+            return next(((x,y) for w,x,y in kde.words((282,540,1180,848))
                          if w.lower().strip("|:.,")==label or label=="remote" and w.lower().startswith("media")),None)
         x,y=wait_for("filmstrip "+label,target,12)
         kde.actions("pointer",[{"type":"pointerMove","x":x,"y":y-20},{"type":"pause","duration":380},

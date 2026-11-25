@@ -298,6 +298,8 @@ pub(super) async fn joined(
     let mut heartbeat = time::interval(SECOND * 4);
     heartbeat.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
     let mut renew = Instant::now();
+    #[cfg(debug_assertions)]
+    let trace_video = room_video::trace_video_enabled();
     let mut label = String::new();
     w.roster_dirty = true;
     loop {
@@ -363,6 +365,8 @@ pub(super) async fn joined(
             },
             frame=w.frame()=>{frame?;}
             _=heartbeat.tick()=>{
+                #[cfg(debug_assertions)]
+                if trace_video {room_video::trace_video_stats(lk).await;}
                 if renew.elapsed()>SECOND*36{m.renew(&mut *w).await.map_err(|_|"Could not renew voice room membership.")?;renew=Instant::now();}
                 else{m.heartbeat(&mut *w).await.map_err(|_|"Lost voice room membership.")?;}
                 w.roster_dirty=true;
