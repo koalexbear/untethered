@@ -17,7 +17,7 @@ from urllib.parse import quote
 from PIL import Image
 from qa_desktop_dm import sfu_participants
 from qa_native_paste import child, isolated_env, start_display, wait_for
-from qa_ui import CHAT_X, Ui, clean, read
+from qa_ui import CHAT_X, USER_PANEL, Ui, clean, read
 
 MEMBER = "org.matrix.msc3401.call.member"
 TONES = (410, 670, 1030, 530, 830)
@@ -94,7 +94,8 @@ class Desktop:
     def words(self):
         if self.kde:
             return [(clean(w),x,y) for w,x,y in self.kde.words((0,28,1180,850))]
-        return [(clean(w),x,y) for w,x,y in read(self.image())]
+        # The voice roster's grey names need the sidebar pass.
+        return [(clean(w),x,y) for w,x,y in read(self.image(),sidebar=True)]
 
     @property
     def ui(self):
@@ -193,9 +194,14 @@ class Desktop:
 def check_speaking(desks,names):
     def highlights(peer):
         # A speaking participant's avatar gets a green ring in the voice roster.
+        # Skip your own name in the user panel: its Online dot is green too.
+        # Above that, take each name's topmost row.
         im=peer.image()
-        words=[(word,x,y) for word,x,y in peer.words() if 70<x<CHAT_X]
-        rows={i:y for i,name in enumerate(names) for word,_,y in words if word==name.lower()}
+        panel=peer.ui.oy+peer.ui.height-USER_PANEL
+        rows={}
+        for word,x,y in peer.words():
+            for i,name in enumerate(names):
+                if word==name.lower() and 70<x<CHAT_X and y<min(panel,rows.get(i,panel)):rows[i]=y
         active={i for i,y in rows.items() if peer.ui.speaking(im,y)}
         return active if len(rows)==len(names) else None
     def verify(active):
