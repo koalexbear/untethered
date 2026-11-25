@@ -11,17 +11,11 @@ use matrix_sdk::{
     room::edit::EditedContent,
     ruma::{
         EventId, OwnedEventId, OwnedRoomId, RoomId,
-        events::{
-            AnyMessageLikeEventContent,
-            room::{
-                MediaSource,
-                message::{
-                    MessageType, RoomMessageEventContent, RoomMessageEventContentWithoutRelation,
-                },
-            },
+        events::room::message::{
+            MessageType, RoomMessageEventContent, RoomMessageEventContentWithoutRelation,
         },
     },
-    send_queue::{LocalEcho, LocalEchoContent, RoomSendQueueUpdate},
+    send_queue::RoomSendQueueUpdate,
 };
 use matrix_sdk_ui::{
     Timeline,
@@ -139,7 +133,10 @@ impl Timelines {
         else {
             return;
         };
-        let Ok((cache, _handles)) = joined.event_cache().await else {
+        let Some(Ok((cache, _handles))) = (match self.client.event_cache() {
+            Some(caches) => Some(caches.room(joined.room_id()).await),
+            None => None,
+        }) else {
             return;
         };
         // Some of the oldest events may have no item of their own (an edit,
@@ -207,7 +204,9 @@ impl Timelines {
         let open = self.get(room).await?;
         let content: RoomMessageEventContent =
             serde_json::from_value(content).map_err(|_| Failure::Failed)?;
-        let url = media_uri(&content.msgtype).ok_or(Failure::Failed)?;
+        if !is_attachment(&content.msgtype) {
+            return Err(Failure::Failed);
+        }
         let joined = RoomId::parse(room)
             .ok()
             .and_then(|id| self.client.get_room(&id))
@@ -224,9 +223,7 @@ impl Timelines {
             None => open.timeline.send(content.into()).await,
         }
         .map_err(|_| Failure::Failed)?;
-        // SendHandle doesn't expose its transaction ID; the local echo with
-        // our upload's URI is ours.
-        let mut ours = None;
+        let ours = handle.transaction_id().to_owned();
         loop {
             let update = match updates.recv().await {
                 Ok(update) => update,
@@ -234,19 +231,10 @@ impl Timelines {
                 Err(broadcast::error::RecvError::Closed) => return Err(Failure::Failed),
             };
             match update {
-                RoomSendQueueUpdate::NewLocalEvent(echo) if ours.is_none() => {
-                    if echo_uri(&echo).as_deref() == Some(url.as_str()) {
-                        ours = Some(echo.transaction_id);
-                    }
-                }
-                RoomSendQueueUpdate::SentEvent { transaction_id, .. }
-                    if ours.as_ref() == Some(&transaction_id) =>
-                {
+                RoomSendQueueUpdate::SentEvent { transaction_id, .. } if transaction_id == ours => {
                     return Ok(());
                 }
-                RoomSendQueueUpdate::SendError { transaction_id, .. }
-                    if ours.as_ref() == Some(&transaction_id) =>
-                {
+                RoomSendQueueUpdate::SendError { transaction_id, .. } if transaction_id == ours => {
                     let _ = handle.abort().await;
                     // Any error disables the room's queue; nothing of ours
                     // is left in it now.
@@ -254,7 +242,7 @@ impl Timelines {
                     return Err(Failure::Unreachable);
                 }
                 RoomSendQueueUpdate::CancelledLocalEvent { transaction_id }
-                    if ours.as_ref() == Some(&transaction_id) =>
+                    if transaction_id == ours =>
                 {
                     return Err(Failure::Cancelled);
                 }
@@ -292,31 +280,14 @@ impl Timelines {
     }
 }
 
-fn media_uri(msgtype: &MessageType) -> Option<String> {
-    let source = match msgtype {
-        MessageType::Image(c) => &c.source,
-        MessageType::File(c) => &c.source,
-        MessageType::Audio(c) => &c.source,
-        MessageType::Video(c) => &c.source,
-        _ => return None,
-    };
-    Some(match source {
-        MediaSource::Plain(uri) => uri.to_string(),
-        MediaSource::Encrypted(file) => file.url.to_string(),
-    })
-}
-
-fn echo_uri(echo: &LocalEcho) -> Option<String> {
-    let LocalEchoContent::Event {
-        serialized_event, ..
-    } = &echo.content
-    else {
-        return None;
-    };
-    match serialized_event.deserialize().ok()? {
-        AnyMessageLikeEventContent::RoomMessage(c) => media_uri(&c.msgtype),
-        _ => None,
-    }
+fn is_attachment(msgtype: &MessageType) -> bool {
+    matches!(
+        msgtype,
+        MessageType::Image(_)
+            | MessageType::File(_)
+            | MessageType::Audio(_)
+            | MessageType::Video(_)
+    )
 }
 
 /// Any send error disables the room's send queue until someone re-enables
@@ -457,8 +428,8 @@ fn message(item: &EventTimelineItem, row: i64, me: &str, sources: &Sources) -> O
         // Polls, live locations and custom events have no Post form yet.
         _ => return None,
     };
-    let reactions = content
-        .reactions
+    let reactions = item
+        .reactions()
         .iter()
         .map(|(key, senders)| {
             (

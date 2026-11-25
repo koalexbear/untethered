@@ -13,21 +13,18 @@ notifications, moderation, permissions and spaces → call signaling → web
 build → remove gomuks. Throughout, the UI keeps reading
 `rooms::{Rooms, Room, Post}`; that model is the seam.
 
-## Status: steps 1 to 3 are in
+## Status: steps 1 to 4 are in
 
 The native client has a second engine built on `matrix-sdk` and
-`matrix-sdk-ui` **0.19.1**. gomuks stays the default. The wasm32 build doesn't
+`matrix-sdk-ui` **0.20.0**. gomuks stays the default. The wasm32 build doesn't
 compile the SDK.
 
-**Why not 0.20.0:** it was published during this work and builds without code
-changes. But it failed the acceptance test's restart check in all three runs:
-history that was back-paginated before the restart is gone afterwards. Only
-the newest 20 events return, and pagination reports the start of the room.
-0.19.1 failed the same check in two of eight runs, so it is probably one
-event-cache bug that 0.20.0 hits far more often (see
-[restart history](#restart-history-check-corrects-step-1)). Move to 0.20.x once
-the check passes reliably; the call port (below) needs APIs that only 0.20
-has.
+**0.20.0 since step 4.** Steps 1 to 3 stayed on 0.19.1 because 0.20.0 failed
+the restart check every time. That failure was the engine's own pagination
+race (see [restart history](#restart-history-check-corrects-steps-1-and-2)),
+which 0.20.0's timing hit more often. With the race fixed, 0.20.0 passed the
+round trip 10 times in a row, then the full acceptance script. The upgrade
+needed four small API changes. The call port needs APIs that only 0.20 has.
 
 ```sh
 UNTETHERED_ENGINE=matrix-sdk bash scripts/rust-client.sh
@@ -310,16 +307,14 @@ get the same file card, inline preview and Save button as on gomuks.
   refuses the event) leaves a text message in the queue as "Failed to send",
   and it holds back later messages in that room until a restart. Failed
   messages need Retry and Remove controls.
-- **Matching sends:** `SendHandle` doesn't expose its transaction ID in
-  0.19.1, so an attachment send finds its local echo by the upload's mxc URI.
 - **Not sent:** a blurhash, and durations or sizes for audio and video.
 
 ## (a) gomuks calls and their matrix-sdk equivalents
 
 Status: **Done** = implemented on the new engine; **Available**
 = the SDK has it, not wired yet; **Partial**/**Gap** as noted. API names are
-from matrix-sdk/matrix-sdk-ui 0.19.1. Those marked *(0.20)* exist only in
-0.20.0 or later; in 0.19.1 they need raw ruma requests or event handlers.
+from matrix-sdk/matrix-sdk-ui 0.20.0, which the engine uses since step 4.
+Those marked *(0.20)* are new in 0.20.
 
 ### RPCs
 
@@ -510,8 +505,7 @@ the main thread, and talk across a serde-derived version of the same
 the Matrix signaling, behind the existing `rtc_membership::Signal` seam,
 whose callers already pass in a request closure.**
 
-Most of these need 0.20.0 or later, which is one more reason to fix the
-0.20.0 restore regression first.
+Most of these need 0.20.0 or later, which the engine uses since step 4.
 
 | Signaling need | Today (gomuks) | matrix-sdk 0.20 |
 | --- | --- | --- |

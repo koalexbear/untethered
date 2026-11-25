@@ -101,11 +101,8 @@ pub async fn reset_encryption(client: &Client, secret: &str) -> Result<String, F
     {
         match handle.auth_type() {
             CrossSigningResetAuthType::Uiaa(info) => {
-                let auth = password(client, secret, info)?;
-                handle
-                    .reset(Some(auth))
-                    .await
-                    .map_err(|e| self::recovery(&e))?;
+                let auth = password(client, secret, info.auth_info())?;
+                handle.reset(auth).await.map_err(|e| self::recovery(&e))?;
             }
             // OAuth 2.0 accounts approve the reset in the browser. Not wired yet.
             CrossSigningResetAuthType::OAuth(_) => {
