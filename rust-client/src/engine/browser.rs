@@ -237,3 +237,47 @@ async fn redirected(listener: TcpListener, base: &Url) -> Result<Url, Failure> {
         return base.join(&target).map_err(|_| Failure::Failed);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[tokio::test]
+    async fn loopback_listener_returns_the_redirect_and_ignores_other_paths() {
+        let (listener, base) = listen().await.unwrap();
+        let waiting = base.clone();
+        let back = tokio::spawn(async move { redirected(listener, &waiting).await });
+        let http = reqwest::Client::new();
+        let icon = http.get(format!("{base}favicon.ico")).send().await.unwrap();
+        assert_eq!(icon.status(), 404);
+        let page = http
+            .get(format!("{base}?code=abc&state=xyz"))
+            .send()
+            .await
+            .unwrap();
+        assert!(page.text().await.unwrap().contains("return to Untethered"));
+        let url = back.await.unwrap().unwrap();
+        assert_eq!(url.host_str(), Some("127.0.0.1"));
+        assert_eq!(url.query(), Some("code=abc&state=xyz"));
+    }
+
+    #[test]
+    fn only_web_pages_reach_the_browser() {
+        let opened = Arc::new(AtomicUsize::new(0));
+        let count = opened.clone();
+        let opener: Opener = Arc::new(move |_| {
+            count.fetch_add(1, Ordering::SeqCst);
+        });
+        for bad in [
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+            "x-scheme-handler:open",
+        ] {
+            assert!(open(&opener, Url::parse(bad).unwrap()).is_err(), "{bad}");
+        }
+        assert_eq!(opened.load(Ordering::SeqCst), 0);
+        open(&opener, Url::parse("https://example.org/login").unwrap()).unwrap();
+        assert_eq!(opened.load(Ordering::SeqCst), 1);
+    }
+}

@@ -1,7 +1,9 @@
 //! Opt-in acceptance tests for the matrix-sdk engine. `scripts/qa_matrix_sdk.py`
 //! starts a disposable Synapse, seeds the account and recovery key through
 //! gomuks, and runs a second account in gomuks as the peer.
-use super::{Command, Event, Stage, account_ui::Action, run_in, session::profile_root};
+use super::{
+    BrowserMethod, Command, Event, Stage, account_ui::Action, run_in, session::profile_root,
+};
 use crate::{App, Msg, Request, rooms};
 use async_channel::{Receiver, Sender};
 use iced::widget::text_editor;
@@ -552,4 +554,40 @@ async fn matrix_sdk_account_flows() {
     println!("matrix-sdk: the earlier device reports itself unverified after the reset");
     stop(e, ee).await;
     stop(c, ec).await;
+
+    // Single sign-on: Synapse's CAS login against the script's mock CAS
+    // server, followed to the loopback listener like a browser would.
+    let (mut f, rf, ef) = session_at(&base.join("f"));
+    wait(&mut f, &rf, "startup", |f| f.connected).await;
+    f.server = server.into();
+    let _ = f.update(Msg::Sdk(Action::LoginOptions));
+    wait(&mut f, &rf, "sign-in options", |f| {
+        f.sdk_current_options().is_some()
+    })
+    .await;
+    let options = f.sdk_current_options().unwrap().clone();
+    assert!(
+        options.password && options.sso && !options.oauth,
+        "{options:?}"
+    );
+    let provider = options.providers.first().map(|(id, _)| id.clone());
+    let _ = f.update(Msg::Sdk(Action::BrowserLogin(BrowserMethod::Sso {
+        provider,
+    })));
+    assert!(f.sdk_ui.browser);
+    wait(&mut f, &rf, "single sign-on", |f| {
+        f.logged_in && !f.sdk_ui.browser
+    })
+    .await;
+    assert_eq!(f.matrix_id, fixture["sso_user"].as_str().unwrap());
+    assert!(!f.sdk_ui.browser && f.status.is_empty(), "{}", f.status);
+    stop(f, ef).await;
+    let (mut f, rf, ef) = session_at(&base.join("f"));
+    wait(&mut f, &rf, "restore the SSO session", |f| f.connected).await;
+    assert!(f.logged_in, "the SSO session restores");
+    stop(f, ef).await;
+    println!(
+        "matrix-sdk: single sign-on ({:?}) signed in through the loopback redirect and restored",
+        options.providers
+    );
 }

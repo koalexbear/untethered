@@ -95,9 +95,10 @@ impl Verifier {
     }
 
     async fn adopt(self: &Arc<Self>, request: VerificationRequest, incoming: bool) {
-        // Only this account's devices: verifying other people is a later step.
+        // Only this account's devices: verifying other people is a later
+        // step. Ignore the rest rather than cancel them: a cancel from this
+        // device would also end the request for the user's other clients.
         if !request.is_self_verification() {
-            let _ = request.cancel().await;
             return;
         }
         let mut current = self.current.lock().await;
@@ -107,8 +108,6 @@ impl Verifier {
             .is_some_and(|r| r.flow_id() != request.flow_id())
             && !current.finished;
         if busy {
-            drop(current);
-            let _ = request.cancel().await;
             return;
         }
         if let Some(task) = current.watcher.take() {

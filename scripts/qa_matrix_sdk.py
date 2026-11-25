@@ -21,6 +21,7 @@ Pass --keep to leave the profile and homeserver directory for inspection.
 from contextlib import contextmanager
 import argparse
 import contextlib
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
@@ -32,7 +33,7 @@ import sys
 import tempfile
 import threading
 import time
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote, urlsplit
 
 import requests
 import websocket
@@ -133,6 +134,37 @@ class Gomuks:
             self.p.kill()
 
 
+SSO_USER = "ssouser"
+
+
+class MockCas(BaseHTTPRequestHandler):
+    """Just enough CAS for Synapse's SSO: every login succeeds as SSO_USER."""
+
+    def do_GET(self):
+        url = urlsplit(self.path)
+        query = parse_qs(url.query)
+        if url.path == "/cas/login" and "service" in query:
+            service = query["service"][0]
+            self.send_response(302)
+            self.send_header("Location", service + ("&" if "?" in service else "?") + "ticket=ST-untethered")
+            self.end_headers()
+        elif url.path == "/cas/proxyValidate" and query.get("ticket") == ["ST-untethered"]:
+            body = (f'<cas:serviceResponse xmlns:cas="http://www.yale.edu/tp/cas"><cas:authenticationSuccess>'
+                    f'<cas:user>{SSO_USER}</cas:user><cas:attributes><cas:displayName>Single Sign-on</cas:displayName>'
+                    f'</cas:attributes></cas:authenticationSuccess></cas:serviceResponse>').encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/xml")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, *args):
+        pass
+
+
 @contextmanager
 def private_keyring(tmp):
     """A private session bus with an unlocked GNOME Keyring, or None."""
@@ -201,6 +233,9 @@ def main():
                         "-H", SERVER_NAME, "--report-stats", "no"], cwd=tmp, stdout=subprocess.DEVNULL, check=True)
         port = free_port()
         hs = f"http://127.0.0.1:{port}"
+        cas = ThreadingHTTPServer(("127.0.0.1", free_port()), MockCas)
+        threading.Thread(target=cas.serve_forever, daemon=True).start()
+        stack.callback(cas.shutdown)
         (tmp / "local.yaml").write_text(f"""listeners:
   - port: {port}
     type: http
@@ -214,6 +249,13 @@ trusted_key_servers: []
 federation_domain_whitelist: []
 rc_message: {{per_second: 1000, burst_count: 1000}}
 rc_login: {{address: {{per_second: 1000, burst_count: 1000}}, account: {{per_second: 1000, burst_count: 1000}}, failed_attempts: {{per_second: 1000, burst_count: 1000}}}}
+cas_config:
+  enabled: true
+  server_url: "http://127.0.0.1:{cas.server_address[1]}/cas"
+  displayname_attribute: displayName
+sso:
+  # Redirect straight back to the client's loopback listener.
+  client_whitelist: ["http://127.0.0.1:"]
 """)
         synapse = subprocess.Popen([sys.executable, "-m", "synapse.app.homeserver", "-c", "hs.yaml", "-c", "local.yaml"],
                                    cwd=tmp, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -285,7 +327,7 @@ rc_login: {{address: {{per_second: 1000, burst_count: 1000}}, account: {{per_sec
         fixture.write_text(json.dumps(dict(server=hs, username=alice.split(":")[0][1:], password=alice_pwd, key=key,
                                            room=room, space=space, dm=dm, unread_room=unread, peer=bob,
                                            history=history, fresh_username=fresh.split(":")[0][1:],
-                                           fresh_password=fresh_pwd)))
+                                           fresh_password=fresh_pwd, sso_user=f"@{SSO_USER}:{SERVER_NAME}")))
         bus = stack.enter_context(private_keyring(tmp))
         isolated = {**os.environ, "UNTETHERED_QA_FIXTURE": str(fixture)}
         if bus:
