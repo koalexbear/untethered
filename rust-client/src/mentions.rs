@@ -36,7 +36,6 @@ pub struct Inbox {
     scan: Option<Scan>,
 }
 /// The same excerpt as `Post::quote`.
-#[cfg(not(target_arch = "wasm32"))]
 fn preview(text: &str) -> String {
     let mut chars = text.trim().chars();
     let mut excerpt: String = chars
@@ -234,7 +233,6 @@ impl App {
     }
     fn request_mentions(&mut self, page: Page, next: Option<&str>) {
         // The matrix-sdk engine answers with every hit at once.
-        #[cfg(not(target_arch = "wasm32"))]
         if self.sdk.is_some() {
             let Some(rooms) = self
                 .mentions
@@ -271,7 +269,6 @@ impl App {
         }
     }
     /// Messages mentioning us, from the matrix-sdk engine.
-    #[cfg(not(target_arch = "wasm32"))]
     pub fn mentions_found(&mut self, found: Vec<crate::engine::Found>) {
         let Some(i) = &mut self.mentions else { return };
         let Some(scan) = i.scan.take() else { return };

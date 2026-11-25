@@ -22,7 +22,9 @@ export function install(submit) {
         submit(input.value);
     });
 }
-export function render(show, user, enabled, busy, status) {
+export function render(show, user, enabled, busy, status, gomuks) {
+    // The note is about gomuks's verification; the matrix-sdk engine has none.
+    document.getElementById("verify-gomuks-note").hidden = !gomuks;
     if (!show) {
         if (dialog.open) dialog.close();
         input.value = "";

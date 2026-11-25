@@ -36,6 +36,13 @@ impl App {
         ]);
         #[cfg(target_os = "linux")]
         let task = Task::batch([task, crate::wayland_drop::listen()]);
+        #[cfg(target_arch = "wasm32")]
+        let task = Task::batch([
+            task,
+            crate::browser_verification::listen(),
+            crate::web_files::listen(),
+            crate::notifications::browser::listen(),
+        ]);
         (app, task)
     }
 
@@ -259,6 +266,7 @@ impl App {
             return;
         }
         // Do not send just the caption if Enter races PNG encoding.
+        #[cfg(not(target_arch = "wasm32"))]
         if self.pasting {
             return;
         }
@@ -308,7 +316,7 @@ impl App {
                 if self.logged_in {
                     self.reconcile();
                 }
-                #[cfg(target_os = "linux")]
+                #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
                 self.sync_space_rules();
             }
             Event::Timeline(t) => {
@@ -410,11 +418,11 @@ impl App {
                 (Some(Request::Mentions(_)), Err(_)) => self.mentions_failed(),
                 _ => {}
             },
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
             Event::PushRules(content) => self.engine_push_rules(&content),
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
             Event::Notification(notice) => self.engine_notice(notice),
-            #[cfg(not(target_os = "linux"))]
+            #[cfg(not(any(target_os = "linux", target_arch = "wasm32")))]
             Event::PushRules(_) | Event::Notification(_) => {}
             Event::Created { id, result } => self.engine_created(id, result),
             Event::UploadLimit { id, result } => {
@@ -558,27 +566,27 @@ impl App {
             (Request::Membership(Flight::Write(c)), Ok(())) => self.membership_written(c),
             (Request::Membership(f), Err(_)) => self.membership_error(f),
             (Request::Setup(Step::Invite), Ok(())) => self.setup_invited(),
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
             (Request::Dnd(on, revision), Ok(())) => self.saved_dnd(on, revision),
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
             (Request::Dnd(..), Err(_)) => {
                 self.status =
                     "Could not change Do Not Disturb. Check the connection and try again.".into()
             }
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
             (Request::NotifyRule(change), Ok(())) => self.saved_notifications(change),
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
             (Request::NotifyRule(_), Err(_)) => {
                 self.status = "Could not save the room notification setting. Try again.".into()
             }
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
             (Request::SpaceRule(write), result) => {
                 self.finish_space_rule(write, result.is_ok());
                 self.sync_space_rules();
             }
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
             (Request::SpacePref(_), Ok(())) => {}
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
             (Request::SpacePref(_), Err(_)) => {
                 self.status = "Could not save space alerts. Try again.".into()
             }

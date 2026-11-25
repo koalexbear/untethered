@@ -86,7 +86,7 @@ fn notice(notification: &Notification, room: &Room, me: &UserId, since: u64) -> 
 }
 
 /// Make one push rule change through the Matrix push rules API.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_arch = "wasm32"))]
 pub async fn push_rule(
     client: &Client,
     kind: crate::notifications::RuleKind,

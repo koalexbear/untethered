@@ -75,7 +75,9 @@ export async function inline_blob(worker,path,encrypted,limit) {
     return new Blob([await mediaBytes(worker,path,encrypted,limit)]);
 }
 export async function save_media(worker, path, encrypted, name) {
-    const bytes=await mediaBytes(worker,path,encrypted,0);
+    save_bytes(await mediaBytes(worker,path,encrypted,0), name);
+}
+export function save_bytes(bytes, name) {
     const url = URL.createObjectURL(new Blob([bytes],{type:"application/octet-stream"}));
     const link=document.createElement("a");link.href=url;link.download=name || "attachment";
     document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);

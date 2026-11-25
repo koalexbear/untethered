@@ -2,17 +2,23 @@
 //! (`m.login.sso`) and OAuth 2.0 with the homeserver's authentication service
 //! (MAS, MSC3861). The browser comes back to a one-shot listener on
 //! 127.0.0.1 (RFC 8252 loopback redirect), so no URL scheme is registered.
+//! A web page can't listen, so the web client signs in with a password until
+//! these flows get a redirect back to the page.
 use super::{BrowserMethod, Failure, LoginOptions, session};
+use matrix_sdk::{Client, ruma::api::client::session::get_login_types::v3::LoginType};
+#[cfg(not(target_arch = "wasm32"))]
 use matrix_sdk::{
-    Client,
     authentication::oauth::{
         ClientRegistrationData,
         registration::{ApplicationType, ClientMetadata, Localized, OAuthGrantType},
     },
-    ruma::{api::client::session::get_login_types::v3::LoginType, serde::Raw},
+    ruma::serde::Raw,
     utils::UrlOrQuery,
 };
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Duration;
+#[cfg(not(target_arch = "wasm32"))]
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
@@ -23,11 +29,19 @@ use url::Url;
 pub type Opener = Arc<dyn Fn(Url) + Send + Sync>;
 
 /// The project page shown by OAuth 2.0 consent screens.
+#[cfg(not(target_arch = "wasm32"))]
 const CLIENT_URI: &str = "https://github.com/koalexbear/untethered";
 /// How long a browser sign-in may take before it is abandoned.
+#[cfg(not(target_arch = "wasm32"))]
 const PATIENCE: Duration = Duration::from_secs(15 * 60);
 
 /// The user's browser, started without a shell.
+#[cfg(target_arch = "wasm32")]
+pub fn system() -> Opener {
+    Arc::new(|_| {})
+}
+/// The user's browser, started without a shell.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn system() -> Opener {
     Arc::new(|url: Url| {
         #[cfg(target_os = "linux")]
@@ -50,6 +64,7 @@ pub fn system() -> Opener {
     })
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn open(opener: &Opener, url: Url) -> Result<(), Failure> {
     // Only web pages: never hand a server-chosen file: or app: URL to the OS.
     if !matches!(url.scheme(), "https" | "http") {
@@ -87,9 +102,26 @@ pub async fn options(homeserver: &str) -> Result<LoginOptions, Failure> {
             _ => {}
         }
     }
+    #[cfg(target_arch = "wasm32")]
+    {
+        options.sso = false;
+        options.oauth = false;
+        options.providers.clear();
+    }
     Ok(options)
 }
 
+#[cfg(target_arch = "wasm32")]
+pub async fn login(
+    _profile: &session::Profile,
+    _homeserver: &str,
+    _method: BrowserMethod,
+    _opener: Opener,
+) -> Result<Client, Failure> {
+    Err(Failure::Unavailable)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub async fn login(
     profile: &session::Profile,
     homeserver: &str,
@@ -125,6 +157,7 @@ pub async fn login(
     result
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 async fn sso(client: &Client, provider: Option<String>, opener: &Opener) -> Result<(), Failure> {
     let (listener, redirect) = listen().await?;
     let url = client
@@ -154,6 +187,7 @@ async fn sso(client: &Client, provider: Option<String>, opener: &Opener) -> Resu
     Ok(())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 async fn oauth(client: &Client, opener: &Opener) -> Result<(), Failure> {
     let (listener, redirect) = listen().await?;
     let mut metadata = ClientMetadata::new(
@@ -182,6 +216,7 @@ async fn oauth(client: &Client, opener: &Opener) -> Result<(), Failure> {
     Ok(())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 async fn listen() -> Result<(TcpListener, Url), Failure> {
     let listener = TcpListener::bind(("127.0.0.1", 0))
         .await
@@ -192,6 +227,7 @@ async fn listen() -> Result<(TcpListener, Url), Failure> {
 }
 
 /// Wait for the browser to come back to `base` and answer it.
+#[cfg(not(target_arch = "wasm32"))]
 async fn redirected(listener: TcpListener, base: &Url) -> Result<Url, Failure> {
     loop {
         let (mut stream, _) = listener.accept().await.map_err(|_| Failure::Failed)?;

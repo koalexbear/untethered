@@ -27,7 +27,7 @@ struct Current {
     incoming: bool,
     device: Option<String>,
     finished: bool,
-    watcher: Option<tokio::task::JoinHandle<()>>,
+    watcher: Option<super::rt::JoinHandle<()>>,
 }
 
 pub struct Verifier {
@@ -118,7 +118,7 @@ impl Verifier {
             incoming,
             ..Current::default()
         };
-        current.watcher = Some(tokio::spawn(watch(Arc::downgrade(self), request)));
+        current.watcher = Some(super::rt::spawn(watch(Arc::downgrade(self), request)));
     }
 
     pub async fn accept(&self) {

@@ -20,7 +20,6 @@ impl Revision {
     /// A replacement the engine has already applied: matrix-sdk-ui's timeline
     /// aggregates edits and reports the latest text.
     /// `event_id` is the newest edit, which reports refer to.
-    #[cfg(not(target_arch = "wasm32"))]
     pub fn applied(body: String, event_id: String) -> Self {
         Self {
             event_id,

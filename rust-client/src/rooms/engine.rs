@@ -49,7 +49,7 @@ impl Rooms {
                 room.replace_voice_members(&s.call_members);
             }
             room.posting.store_snapshot(s.create, s.power);
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
             {
                 let alerts = s
                     .space_alerts

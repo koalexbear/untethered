@@ -12,7 +12,6 @@ mod community;
 #[cfg(target_os = "linux")]
 mod desktop_call;
 mod edits;
-#[cfg(not(target_arch = "wasm32"))]
 mod engine;
 #[cfg(not(target_arch = "wasm32"))]
 mod fonts;
@@ -170,9 +169,7 @@ enum Msg {
     #[cfg(target_os = "linux")]
     RingExpired(String),
     Frame(Value),
-    #[cfg(not(target_arch = "wasm32"))]
     Engine(engine::Event),
-    #[cfg(not(target_arch = "wasm32"))]
     Sdk(engine::account_ui::Action),
     Stopped(String),
     Section(Section),
@@ -321,9 +318,7 @@ struct App {
     pasting: bool,
     commands: Sender<backend::Command>,
     /// Set when UNTETHERED_ENGINE=matrix-sdk replaces gomuks.
-    #[cfg(not(target_arch = "wasm32"))]
     sdk: Option<Sender<engine::Command>>,
-    #[cfg(not(target_arch = "wasm32"))]
     sdk_ui: engine::account_ui::AccountUi,
     outbox: media::Outbox,
     inline: inline::InlineImages,
@@ -373,7 +368,6 @@ struct App {
 }
 impl App {
     fn boot() -> (Self, Task<Msg>) {
-        #[cfg(not(target_arch = "wasm32"))]
         if engine::selected() {
             return Self::boot_engine();
         }
@@ -418,9 +412,7 @@ impl App {
             #[cfg(not(target_arch = "wasm32"))]
             pasting: false,
             commands,
-            #[cfg(not(target_arch = "wasm32"))]
             sdk: None,
-            #[cfg(not(target_arch = "wasm32"))]
             sdk_ui: Default::default(),
             outbox: Default::default(),
             inline: Default::default(),
@@ -494,7 +486,6 @@ impl App {
             .filter_map(|id| rooms.list.get(id).map(|room| (id, room)))
     }
     fn rpc(&mut self, cmd: &str, data: Value, req: Request) {
-        #[cfg(not(target_arch = "wasm32"))]
         if self.sdk.is_some() {
             return self.engine_rpc(cmd, data, req);
         }
@@ -513,7 +504,6 @@ impl App {
         }
     }
     fn page(&mut self) {
-        #[cfg(not(target_arch = "wasm32"))]
         if self.sdk.is_some() {
             return self.engine_page();
         }
@@ -1123,7 +1113,6 @@ impl App {
             }
             Msg::InlineReady(epoch, key, img) => self.inline.complete(epoch, key, img),
             Msg::ShowInline(key) => self.inline.request(key),
-            #[cfg(not(target_arch = "wasm32"))]
             Msg::Engine(event) => {
                 let jumped = matches!(event, engine::Event::Context { .. });
                 self.engine_event(event);
@@ -1131,7 +1120,6 @@ impl App {
                     return self.anchor_history();
                 }
             }
-            #[cfg(not(target_arch = "wasm32"))]
             Msg::Sdk(action) => return self.sdk_action(action),
             Msg::Frame(f) => {
                 let jumped = f["command"] == "response"
@@ -1178,7 +1166,6 @@ impl App {
                     return Task::none();
                 }
                 self.commands.close();
-                #[cfg(not(target_arch = "wasm32"))]
                 if let Some(sdk) = &self.sdk {
                     sdk.close();
                 }
@@ -1538,7 +1525,6 @@ impl App {
                         .any(|p| matches!(p, Request::RtcDiscovery)) =>
             {
                 self.rtc_status = "Checking MatrixRTC transports…".into();
-                #[cfg(not(target_arch = "wasm32"))]
                 if self.sdk.is_some() {
                     self.command(
                         |id| engine::Command::RtcTransports { id },
@@ -1781,7 +1767,6 @@ impl App {
             Msg::Password(s) => self.password = s,
             #[cfg(not(target_arch = "wasm32"))]
             Msg::Recovery(s) => self.recovery = s,
-            #[cfg(not(target_arch = "wasm32"))]
             Msg::Login if self.sdk.is_some() => self.engine_login(),
             Msg::Login
                 if !self.logged_in
@@ -1805,6 +1790,12 @@ impl App {
             Msg::Verify if self.sdk.is_some() => self.engine_verify(),
             #[cfg(not(target_arch = "wasm32"))]
             Msg::Verify => self.submit_verification(),
+            #[cfg(target_arch = "wasm32")]
+            Msg::SubmitWebRecovery(s) if self.sdk.is_some() => {
+                self.recovery = s;
+                self.engine_verify();
+                self.recovery.clear();
+            }
             #[cfg(target_arch = "wasm32")]
             Msg::SubmitWebRecovery(s) => {
                 if self.logged_in && !self.verified {
@@ -1932,7 +1923,6 @@ impl App {
                     return operation::focus("composer");
                 }
             }
-            #[cfg(not(target_arch = "wasm32"))]
             Msg::Send if self.sdk.is_some() && self.logged_in => self.engine_compose(),
             Msg::Send => {
                 if self.logged_in

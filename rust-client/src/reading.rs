@@ -24,7 +24,6 @@ impl State {
     /// Timeline order and receipts from the matrix-sdk engine's snapshot:
     /// `events` are sent events in timeline order, `receipts` are
     /// (event, reader, timestamp).
-    #[cfg(not(target_arch = "wasm32"))]
     pub fn apply_engine<'a>(
         &mut self,
         events: impl Iterator<Item = &'a str>,
@@ -149,7 +148,6 @@ pub struct Sharing {
 }
 impl Sharing {
     /// The preference as synced by the matrix-sdk engine.
-    #[cfg(not(target_arch = "wasm32"))]
     pub fn set_from_engine(&mut self, public: bool) {
         self.update(public)
     }

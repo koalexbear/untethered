@@ -4,6 +4,9 @@
 //! [`Command`]s and emits typed [`Event`]s, mirroring the channel shape of
 //! `crate::backend` without a JSON boundary. gomuks stays the default engine.
 //! `docs/matrix-sdk-migration.md` tracks what moves over next.
+// In the browser the SDK's types are neither Send nor Sync, and the engine's
+// shared state (Arc) is only shared between tasks on one thread.
+#![cfg_attr(target_arch = "wasm32", allow(clippy::arc_with_non_send_sync))]
 
 mod account;
 pub mod account_ui;
@@ -12,35 +15,49 @@ pub mod app;
 mod browser;
 #[cfg(target_os = "linux")]
 mod calls;
+#[cfg(not(target_arch = "wasm32"))]
 mod keyring;
 #[cfg(test)]
 mod live_test;
 mod media;
 mod messaging;
 mod rooms;
+mod rt;
 mod search;
 mod session;
 mod state;
 mod timeline;
 mod verify;
+#[cfg(target_arch = "wasm32")]
+mod web;
 
 use async_channel::{Receiver, Sender};
 use matrix_sdk::Client;
 use matrix_sdk_ui::sync_service::{State as SyncState, SyncService};
+#[cfg(not(target_arch = "wasm32"))]
+use std::path::PathBuf;
 use std::{
     collections::{BTreeMap, BTreeSet},
-    path::PathBuf,
     sync::Arc,
     time::Duration,
 };
 
 pub use browser::Opener;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub const ENV: &str = "UNTETHERED_ENGINE";
 /// Events per room in the sliding sync room list.
 const ROOM_LIST_TIMELINE: u32 = 20;
 
+/// Whether this page uses matrix-sdk instead of gomuks: `?engine=matrix-sdk`
+/// picks it and the page remembers that; `?engine=gomuks` goes back.
+#[cfg(target_arch = "wasm32")]
+pub fn selected() -> bool {
+    web::selected()
+}
+
 /// Whether this launch uses matrix-sdk instead of gomuks.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn selected() -> bool {
     match std::env::var(ENV).as_deref() {
         Ok("matrix-sdk") => true,
@@ -217,7 +234,7 @@ pub enum Command {
         via: Vec<String>,
     },
     /// Change one of the account's push rules.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
     PushRule {
         id: i64,
         kind: crate::notifications::RuleKind,
@@ -225,8 +242,11 @@ pub enum Command {
         change: crate::notifications::RuleChange,
     },
     /// Replace a room's account data of `kind` (Matrix event type).
-    /// Only the Linux alert settings send it today.
-    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    /// Only the alert settings send it today.
+    #[cfg_attr(
+        not(any(target_os = "linux", target_arch = "wasm32")),
+        allow(dead_code)
+    )]
     RoomAccountData {
         id: i64,
         room: String,
@@ -334,11 +354,17 @@ pub enum Event {
         member: crate::moderation::Member,
     },
     /// The account's push rules (`m.push_rules` content), at startup and
-    /// whenever they change. Alerts are Linux-only in the App today.
-    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    /// whenever they change. The App's alerts run on Linux and the web.
+    #[cfg_attr(
+        not(any(target_os = "linux", target_arch = "wasm32")),
+        allow(dead_code)
+    )]
     PushRules(serde_json::Value),
     /// A message the push rules say to notify about.
-    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    #[cfg_attr(
+        not(any(target_os = "linux", target_arch = "wasm32")),
+        allow(dead_code)
+    )]
     Notification(Alert),
     SearchResults {
         id: i64,
@@ -515,7 +541,10 @@ pub struct RoomSummary {
     pub create: Option<crate::permissions::StateDoc>,
     pub power: Option<crate::permissions::StateDoc>,
     /// The space's alert preference (room account data content).
-    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    #[cfg_attr(
+        not(any(target_os = "linux", target_arch = "wasm32")),
+        allow(dead_code)
+    )]
     pub space_alerts: Option<serde_json::Value>,
 }
 
@@ -609,6 +638,7 @@ pub enum Failure {
 
 /// `backend` carries the App's gomuks-shaped transfer commands (uploads,
 /// inline previews, downloads), which this engine answers too.
+#[cfg(not(target_arch = "wasm32"))]
 pub async fn run(
     commands: Receiver<Command>,
     backend: Receiver<crate::backend::Command>,
@@ -624,8 +654,27 @@ pub async fn run(
     .await
 }
 
+/// In the browser: the session the page kept, one tab at a time.
+#[cfg(target_arch = "wasm32")]
+pub async fn run(
+    commands: Receiver<Command>,
+    backend: Receiver<crate::backend::Command>,
+    events: Sender<Event>,
+) -> Result<(), String> {
+    let waiting = events.clone();
+    web::hold_profile(move || {
+        let _ = waiting.try_send(Event::Status(
+            "Another Untethered tab is using this Matrix device. Use that tab, or close it and this one will connect automatically.",
+        ));
+    })
+    .await?;
+    let profile = session::Profile::web(web::saved_session(), web::persist_session);
+    run_with(profile, browser::system(), commands, backend, events).await
+}
+
 /// Run on an explicit profile directory; tests run several engines at once
 /// and replace the system browser.
+#[cfg(not(target_arch = "wasm32"))]
 pub async fn run_in(
     root: PathBuf,
     opener: Opener,
@@ -635,7 +684,18 @@ pub async fn run_in(
 ) -> Result<(), String> {
     // reqwest 0.13 is built without a crypto provider (see Cargo.toml).
     let _ = rustls::crypto::ring::default_provider().install_default();
-    let profile = Arc::new(session::Profile::open(root)?);
+    let profile = session::Profile::open(root)?;
+    run_with(profile, opener, commands, backend, events).await
+}
+
+async fn run_with(
+    profile: session::Profile,
+    opener: Opener,
+    commands: Receiver<Command>,
+    backend: Receiver<crate::backend::Command>,
+    events: Sender<Event>,
+) -> Result<(), String> {
+    let profile = Arc::new(profile);
     let (notices, internal) = async_channel::unbounded();
     let mut engine = Engine {
         profile,
@@ -692,7 +752,7 @@ struct Engine {
     events: Sender<Event>,
     notices: Sender<Notice>,
     opener: Opener,
-    browser: Option<tokio::task::JoinHandle<()>>,
+    browser: Option<rt::JoinHandle<()>>,
     browser_id: Option<i64>,
     live: Option<Live>,
     /// Attachments seen in timelines, for previews and downloads.
@@ -796,7 +856,7 @@ impl Engine {
                     return self.done(id, Err(Failure::Unavailable)).await;
                 };
                 let (client, events) = (live.client.clone(), self.events.clone());
-                tokio::spawn(async move {
+                rt::spawn(async move {
                     let result = session::recover(&client, &secret).await;
                     drop(secret);
                     if result.is_ok() {
@@ -813,7 +873,7 @@ impl Engine {
                     return self.done(id, Err(Failure::Unavailable)).await;
                 };
                 let (timelines, events) = (live.timelines.clone(), self.events.clone());
-                tokio::spawn(async move {
+                rt::spawn(async move {
                     let result = timelines.paginate(&room).await;
                     let _ = events.send(Event::Done { id, result }).await;
                 });
@@ -828,7 +888,7 @@ impl Engine {
                     return self.done(id, Err(Failure::Unavailable)).await;
                 };
                 let (timelines, events) = (live.timelines.clone(), self.events.clone());
-                tokio::spawn(async move {
+                rt::spawn(async move {
                     let result = timelines.send(&room, body, reply_to).await;
                     let _ = events.send(Event::Done { id, result }).await;
                 });
@@ -838,7 +898,7 @@ impl Engine {
                     return self.done(id, Err(Failure::Unavailable)).await;
                 };
                 let (verifier, events) = (live.verifier.clone(), self.events.clone());
-                tokio::spawn(async move {
+                rt::spawn(async move {
                     let result = verifier.request().await;
                     let _ = events.send(Event::Done { id, result }).await;
                 });
@@ -846,19 +906,19 @@ impl Engine {
             Command::AcceptVerification => {
                 if let Some(live) = &self.live {
                     let verifier = live.verifier.clone();
-                    tokio::spawn(async move { verifier.accept().await });
+                    rt::spawn(async move { verifier.accept().await });
                 }
             }
             Command::ConfirmEmoji { matches } => {
                 if let Some(live) = &self.live {
                     let verifier = live.verifier.clone();
-                    tokio::spawn(async move { verifier.confirm(matches).await });
+                    rt::spawn(async move { verifier.confirm(matches).await });
                 }
             }
             Command::CancelVerification => {
                 if let Some(live) = &self.live {
                     let verifier = live.verifier.clone();
-                    tokio::spawn(async move { verifier.cancel().await });
+                    rt::spawn(async move { verifier.cancel().await });
                 }
             }
             Command::SetUpRecovery { id, password } => self.new_key(id, Key::SetUp(password)).await,
@@ -871,7 +931,7 @@ impl Engine {
                     return self.done(id, Err(Failure::Unavailable)).await;
                 };
                 let (client, events) = (live.client.clone(), self.events.clone());
-                tokio::spawn(async move {
+                rt::spawn(async move {
                     let result = match account::devices(&client).await {
                         Ok(list) => {
                             let _ = events.send(Event::Devices(list)).await;
@@ -891,7 +951,7 @@ impl Engine {
                     return self.done(id, Err(Failure::Unavailable)).await;
                 };
                 let (client, events) = (live.client.clone(), self.events.clone());
-                tokio::spawn(async move {
+                rt::spawn(async move {
                     let result = account::delete_device(&client, &device, &password).await;
                     drop(password);
                     if let Ok(list) = account::devices(&client).await {
@@ -903,7 +963,7 @@ impl Engine {
             Command::Logout { id } => self.logout(id).await,
             Command::LoginOptions { id, homeserver } => {
                 let events = self.events.clone();
-                tokio::spawn(async move {
+                rt::spawn(async move {
                     let result = match browser::options(&homeserver).await {
                         Ok(options) => {
                             let _ = events.send(Event::LoginOptions(options)).await;
@@ -928,7 +988,7 @@ impl Engine {
                     self.notices.clone(),
                 );
                 self.browser_id = Some(id);
-                self.browser = Some(tokio::spawn(async move {
+                self.browser = Some(rt::spawn(async move {
                     let result = browser::login(&profile, &homeserver, method, opener).await;
                     let _ = notices.send(Notice::SignedIn { id, result }).await;
                 }));
@@ -1069,7 +1129,7 @@ impl Engine {
                 })
                 .await
             }
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
             Command::PushRule {
                 id,
                 kind,
@@ -1189,7 +1249,7 @@ impl Engine {
         let (sources, events) = (self.sources.clone(), self.events.clone());
         match command {
             Transfer::Inline { source, result } => {
-                tokio::spawn(async move {
+                rt::spawn(async move {
                     let image = match live {
                         Some(client) => media::inline(client, sources, source).await,
                         None => None,
@@ -1204,7 +1264,7 @@ impl Engine {
                 encrypt,
                 limit,
             } => {
-                tokio::spawn(async move {
+                rt::spawn(async move {
                     let result = match live {
                         Some(client) => {
                             media::upload(client, id, file, encrypt, limit, cancel, events.clone())
@@ -1215,14 +1275,25 @@ impl Engine {
                     let _ = events.send(Event::Uploaded { id, result }).await;
                 });
             }
+            #[cfg(not(target_arch = "wasm32"))]
             Transfer::Download {
                 id,
                 media,
                 destination,
             } => {
-                tokio::spawn(async move {
+                rt::spawn(async move {
                     let result = match live {
                         Some(client) => media::download(client, sources, media, destination).await,
+                        None => Err(Failure::Unavailable),
+                    };
+                    let _ = events.send(Event::Done { id, result }).await;
+                });
+            }
+            #[cfg(target_arch = "wasm32")]
+            Transfer::Download { id, media } => {
+                rt::spawn(async move {
+                    let result = match live {
+                        Some(client) => media::download(client, sources, media).await,
                         None => Err(Failure::Unavailable),
                     };
                     let _ = events.send(Event::Done { id, result }).await;
@@ -1238,14 +1309,14 @@ impl Engine {
                 // The call reports in desktop_call's frames; pass them on.
                 let (frames, from_call) = async_channel::unbounded::<serde_json::Value>();
                 let forward = events.clone();
-                tokio::spawn(async move {
+                rt::spawn(async move {
                     while let Ok(frame) = from_call.recv().await {
                         if forward.send(Event::CallFrame(frame)).await.is_err() {
                             return;
                         }
                     }
                 });
-                tokio::spawn(async move {
+                rt::spawn(async move {
                     let result = match live {
                         Some(client) => match calls::SdkSignal::new(client, &room) {
                             Ok(signal) => {
@@ -1272,8 +1343,10 @@ impl Engine {
     /// answer it with `Event::Done`.
     async fn job<F, Fut>(&self, id: i64, work: F)
     where
-        F: FnOnce(Client, Arc<timeline::Timelines>, Sender<Event>) -> Fut + Send + 'static,
-        Fut: Future<Output = Result<(), Failure>> + Send + 'static,
+        F: FnOnce(Client, Arc<timeline::Timelines>, Sender<Event>) -> Fut
+            + matrix_sdk::SendOutsideWasm
+            + 'static,
+        Fut: Future<Output = Result<(), Failure>> + matrix_sdk::SendOutsideWasm + 'static,
     {
         let Some(live) = &self.live else {
             return self.done(id, Err(Failure::Unavailable)).await;
@@ -1283,7 +1356,7 @@ impl Engine {
             live.timelines.clone(),
             self.events.clone(),
         );
-        tokio::spawn(async move {
+        rt::spawn(async move {
             let result = work(client, timelines, events.clone()).await;
             let _ = events.send(Event::Done { id, result }).await;
         });
@@ -1293,14 +1366,14 @@ impl Engine {
     /// answers with its own event. Without a session, `unavailable` does.
     async fn answer<F, Fut>(&self, unavailable: Event, work: F)
     where
-        F: FnOnce(Client) -> Fut + Send + 'static,
-        Fut: Future<Output = Event> + Send + 'static,
+        F: FnOnce(Client) -> Fut + matrix_sdk::SendOutsideWasm + 'static,
+        Fut: Future<Output = Event> + matrix_sdk::SendOutsideWasm + 'static,
     {
         let Some(live) = &self.live else {
             return self.emit(unavailable).await;
         };
         let (client, events) = (live.client.clone(), self.events.clone());
-        tokio::spawn(async move {
+        rt::spawn(async move {
             let _ = events.send(work(client).await).await;
         });
     }
@@ -1308,8 +1381,8 @@ impl Engine {
     /// Requests that make a room or an event, answered with its ID.
     async fn created<F, Fut>(&self, id: i64, work: F)
     where
-        F: FnOnce(Client) -> Fut + Send + 'static,
-        Fut: Future<Output = Result<String, Failure>> + Send + 'static,
+        F: FnOnce(Client) -> Fut + matrix_sdk::SendOutsideWasm + 'static,
+        Fut: Future<Output = Result<String, Failure>> + matrix_sdk::SendOutsideWasm + 'static,
     {
         let unavailable = Event::Created {
             id,
@@ -1330,7 +1403,7 @@ impl Engine {
             return self.done(id, Err(Failure::Unavailable)).await;
         };
         let (client, events) = (live.client.clone(), self.events.clone());
-        tokio::spawn(async move {
+        rt::spawn(async move {
             let result = match kind {
                 Key::SetUp(password) => account::set_up_recovery(&client, &password).await,
                 Key::Change => account::change_recovery_key(&client).await,
@@ -1362,8 +1435,8 @@ impl Engine {
         } = live;
         // Our own sign-out must not also report a rejected token.
         tasks.stop().await;
-        let _ = tokio::time::timeout(Duration::from_secs(5), sync.stop()).await;
-        let server = tokio::time::timeout(Duration::from_secs(15), client.logout()).await;
+        let _ = rt::timeout(Duration::from_secs(5), sync.stop()).await;
+        let server = rt::timeout(Duration::from_secs(15), client.logout()).await;
         drop((sync, client));
         session::forget(&self.profile).await;
         self.emit(Event::Account(Account::default())).await;
@@ -1419,7 +1492,7 @@ impl Engine {
         }
         if let Some(live) = self.live.take() {
             live.tasks.stop().await;
-            let _ = tokio::time::timeout(Duration::from_secs(5), live.sync.stop()).await;
+            let _ = rt::timeout(Duration::from_secs(5), live.sync.stop()).await;
         }
     }
 }
@@ -1470,7 +1543,7 @@ async fn account_updates(client: Client, events: Sender<Event>) {
     // Ask the homeserver once, so a fresh device knows whether the account
     // already has cross-signing keys before offering to create them.
     if let Some(user) = client.user_id() {
-        let _ = tokio::time::timeout(
+        let _ = rt::timeout(
             Duration::from_secs(10),
             client.encryption().request_user_identity(user),
         )
@@ -1478,12 +1551,11 @@ async fn account_updates(client: Client, events: Sender<Event>) {
     }
     loop {
         if name.is_none() {
-            name =
-                tokio::time::timeout(Duration::from_secs(10), client.account().get_display_name())
-                    .await
-                    .ok()
-                    .and_then(Result::ok)
-                    .flatten();
+            name = rt::timeout(Duration::from_secs(10), client.account().get_display_name())
+                .await
+                .ok()
+                .and_then(Result::ok)
+                .flatten();
         }
         let now = account(&client, name.clone()).await;
         if last.as_ref() != Some(&now) {
@@ -1496,7 +1568,7 @@ async fn account_updates(client: Client, events: Sender<Event>) {
             v = verification.next() => if v.is_none() { return },
             r = recovery.next() => if r.is_none() { return },
             // Own-device signatures can land without a state transition.
-            _ = tokio::time::sleep(Duration::from_secs(30)) => {}
+            _ = rt::sleep(Duration::from_secs(30)) => {}
         }
     }
 }
@@ -1514,7 +1586,7 @@ async fn sync_status(sync: Arc<SyncService>, events: Sender<Event>) {
             return;
         }
         if matches!(now, SyncState::Error(_)) {
-            tokio::time::sleep(Duration::from_secs(3)).await;
+            rt::sleep(Duration::from_secs(3)).await;
             sync.start().await;
         }
     }
@@ -1535,10 +1607,10 @@ async fn session_changes(client: Client, profile: Arc<session::Profile>, notices
 
 /// Aborts its tasks when the session ends.
 #[derive(Default)]
-struct Tasks(Vec<tokio::task::JoinHandle<()>>);
+struct Tasks(Vec<rt::JoinHandle<()>>);
 impl Tasks {
-    fn spawn(&mut self, task: impl Future<Output = ()> + Send + 'static) {
-        self.0.push(tokio::spawn(task));
+    fn spawn(&mut self, task: impl Future<Output = ()> + matrix_sdk::SendOutsideWasm + 'static) {
+        self.0.push(rt::spawn(task));
     }
 
     /// Abort and wait. Aborting alone lets a running task finish its poll

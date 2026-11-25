@@ -37,6 +37,8 @@ extern "C" {
         encrypted: bool,
         name: &str,
     ) -> Result<(), JsValue>;
+    /// Offer bytes the matrix-sdk engine fetched as a download.
+    pub fn save_bytes(bytes: &[u8], name: &str);
 }
 pub fn listen() -> iced::Task<Msg> {
     let (tx, rx) = async_channel::unbounded();

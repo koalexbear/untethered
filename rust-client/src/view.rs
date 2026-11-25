@@ -10,7 +10,6 @@ mod mentions;
 mod reaction_bar;
 mod room_people;
 mod room_search;
-#[cfg(not(target_arch = "wasm32"))]
 mod sdk_account;
 use iced::{
     Alignment::Center,
@@ -1074,7 +1073,6 @@ impl App {
         )
     }
     pub(super) fn view(&self) -> El<'_> {
-        #[cfg(not(target_arch = "wasm32"))]
         if let Some(screen) = self.sdk_screen() {
             return screen;
         }
@@ -3249,7 +3247,6 @@ impl App {
                 }
             }
         }
-        #[cfg(not(target_arch = "wasm32"))]
         if self.sdk.is_some() {
             form = form.push(if self.logged_in {
                 self.sdk_verify_choices()
@@ -3475,7 +3472,6 @@ impl App {
                 )],
             ));
         }
-        #[cfg(not(target_arch = "wasm32"))]
         if self.sdk.is_some() {
             page = page.push(self.sdk_account_settings());
         }

@@ -292,7 +292,6 @@ impl App {
                 s.failed = false;
             }
             // The matrix-sdk engine resolves edits itself: no base pages.
-            #[cfg(not(target_arch = "wasm32"))]
             if self.sdk.is_some() {
                 use crate::engine::Command;
                 let (room, term) = (s.room.clone(), s.term.clone());
@@ -347,7 +346,6 @@ impl App {
         self.search_page(Page::Matches, next);
     }
     /// A page of matches from the matrix-sdk engine, with current text.
-    #[cfg(not(target_arch = "wasm32"))]
     pub fn search_found(
         &mut self,
         room: String,
@@ -382,7 +380,6 @@ impl App {
         s.busy = false;
     }
     /// How much of the room's history the matrix-sdk engine has stored.
-    #[cfg(not(target_arch = "wasm32"))]
     pub fn search_counted(&mut self, room: String, messages: usize, oldest: Option<i64>) {
         if let Some(c) = self
             .search

@@ -92,7 +92,6 @@ impl Posting {
     }
     /// The documents from a store snapshot, unless they are older than what
     /// is already known. Only the matrix-sdk engine has a store to read.
-    #[cfg(not(target_arch = "wasm32"))]
     pub fn store_snapshot(&mut self, create: Option<StateDoc>, power: Option<StateDoc>) {
         if create.is_some() {
             self.create = create;

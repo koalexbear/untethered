@@ -67,7 +67,6 @@ fn valid_key(key: &str) -> bool {
 
 /// A chip from an engine that aggregates reactions itself (matrix-sdk-ui).
 /// It toggles by key, so our own reaction needs no event ID.
-#[cfg(not(target_arch = "wasm32"))]
 pub fn engine_chip(count: u64, mine: bool) -> Chip {
     Chip {
         count,
@@ -88,7 +87,6 @@ pub struct Toggle {
 }
 impl Toggle {
     /// Room, reacted-to event and key.
-    #[cfg(not(target_arch = "wasm32"))]
     pub fn parts(&self) -> (&str, &str, &str) {
         (&self.room, &self.target, &self.key)
     }

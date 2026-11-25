@@ -5,7 +5,7 @@ use wasm_bindgen::{closure::Closure, prelude::*};
 #[wasm_bindgen(module = "/web/verification.js")]
 extern "C" {
     fn install(submit: JsValue);
-    fn render(show: bool, user: &str, enabled: bool, busy: bool, status: &str);
+    fn render(show: bool, user: &str, enabled: bool, busy: bool, status: &str, gomuks: bool);
 }
 
 pub fn listen() -> Task<Msg> {
@@ -23,5 +23,6 @@ pub fn sync(app: &App) {
         app.connected && !app.recovery_unavailable,
         app.verifying(),
         app.verification_feedback(),
+        app.sdk.is_none(),
     );
 }

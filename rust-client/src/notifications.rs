@@ -429,7 +429,7 @@ impl App {
     }
     /// A message the matrix-sdk engine's push rule evaluation says to
     /// notify about.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
     pub fn engine_notice(&mut self, notice: crate::engine::Alert) {
         if !self.logged_in
             || !self.verified
@@ -458,6 +458,10 @@ impl App {
             title,
             body: single_line(&notice.body, 240),
             sound: notice.sound,
+            #[cfg(target_arch = "wasm32")]
+            room: notice.room,
+            #[cfg(target_arch = "wasm32")]
+            event: notice.event_id,
         });
     }
     /// Alerts waiting to be shown, as (title, body).
@@ -470,7 +474,7 @@ impl App {
             .collect()
     }
     /// The account's push rules arrived or changed (matrix-sdk engine).
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
     pub fn engine_push_rules(&mut self, content: &Value) {
         self.alerts.ruleset(content);
         // The engine reports the rules after its first sync, with the room
@@ -488,7 +492,6 @@ impl App {
         change: RuleChange,
         request: Request,
     ) {
-        #[cfg(target_os = "linux")]
         if self.sdk.is_some() {
             let rule_id = rule_id.to_owned();
             return self.command(
@@ -527,7 +530,6 @@ impl App {
         content: Value,
         request: Request,
     ) {
-        #[cfg(target_os = "linux")]
         if self.sdk.is_some() {
             let (room, kind) = (room.to_owned(), kind.to_owned());
             return self.command(

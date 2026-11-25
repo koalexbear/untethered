@@ -2121,9 +2121,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd"
 dependencies = [
  "cfg-if",
+ "js-sys",
  "libc",
  "r-efi 5.3.0",
  "wasip2",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -3033,10 +3035,12 @@ checksum = "107f2e89536b6818514025f6787b0d94d819e54fe3b40365275fc753de485b3f"
 dependencies = [
  "jiff-core",
  "jiff-static",
+ "js-sys",
  "log",
  "portable-atomic",
  "portable-atomic-util",
  "serde_core",
+ "wasm-bindgen",
  "windows-link 0.2.1",
 ]
 
@@ -3952,6 +3956,7 @@ dependencies = [
  "futures-util",
  "getrandom 0.4.3",
  "gloo-utils",
+ "growable-bloom-filter",
  "hkdf",
  "js-sys",
  "matrix-sdk-base",
@@ -7440,6 +7445,7 @@ dependencies = [
  "reqwest 0.13.5",
  "rfd",
  "rustls",
+ "serde",
  "serde_json",
  "smithay-clipboard",
  "tempfile",
@@ -7451,6 +7457,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+ "web-time",
  "windows-native-keyring-store",
  "zbus-secret-service-keyring-store",
 ]

@@ -43,7 +43,7 @@ struct Open {
     timeline: Arc<Timeline>,
     start: Start,
     refresh: Arc<Notify>,
-    forwarder: tokio::task::JoinHandle<()>,
+    forwarder: super::rt::JoinHandle<()>,
 }
 impl Drop for Open {
     fn drop(&mut self) {
@@ -78,7 +78,7 @@ impl Timelines {
         let timeline = Arc::new(joined.timeline().await.map_err(|_| Failure::Failed)?);
         let start = Start::default();
         let refresh = Arc::new(Notify::new());
-        let forwarder = tokio::spawn(forward(
+        let forwarder = super::rt::spawn(forward(
             room.to_owned(),
             self.client
                 .user_id()
@@ -156,7 +156,7 @@ impl Timelines {
                     return;
                 }
             }
-            tokio::time::sleep(Duration::from_millis(10)).await;
+            super::rt::sleep(Duration::from_millis(10)).await;
         }
     }
 
@@ -299,8 +299,8 @@ pub async fn resume_after_errors(client: Client) {
         match errors.recv().await {
             Ok(error) if error.is_recoverable => {
                 let client = client.clone();
-                tokio::spawn(async move {
-                    tokio::time::sleep(Duration::from_secs(5)).await;
+                super::rt::spawn(async move {
+                    super::rt::sleep(Duration::from_secs(5)).await;
                     if let Some(room) = client.get_room(&error.room_id) {
                         room.send_queue().set_enabled(true);
                     }

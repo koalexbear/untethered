@@ -38,7 +38,7 @@ pub async fn updates(client: Client, events: Sender<Event>) {
             return;
         }
         // Coalesce a burst (initial sync, many rooms) into one snapshot.
-        tokio::time::sleep(Duration::from_millis(80)).await;
+        super::rt::sleep(Duration::from_millis(80)).await;
         while rooms.try_recv().is_ok() {}
         while info.try_recv().is_ok() {}
     }

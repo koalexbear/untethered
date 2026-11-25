@@ -390,6 +390,13 @@ sso:
                 raise SystemExit("FAILED: matrix_sdk_call_signaling")
             print("PASS call signaling only", flush=True)
             return
+        if os.environ.get("UNTETHERED_QA_ONLY") == "web":
+            # A Trunk build of rust-client/web; see qa_matrix_sdk_web.py.
+            from qa_matrix_sdk_web import check_web
+            dist = Path(os.environ.get("UNTETHERED_QA_WEB_DIST", ROOT / "rust-client/web/dist"))
+            check_web(dist, json.loads(fixture.read_text()), peer, png)
+            print("PASS matrix-sdk engine in Chromium", flush=True)
+            return
         test = subprocess.Popen(["cargo", "test", "--locked", "--manifest-path", "rust-client/Cargo.toml",
                                  "matrix_sdk_login_restore_and_encrypted_round_trip", "--", "--ignored", "--nocapture"],
                                 cwd=ROOT, env={**isolated, "UNTETHERED_QA_SIGNALS": str(signals),

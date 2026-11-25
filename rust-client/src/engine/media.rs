@@ -7,8 +7,10 @@
 //! `media::Media` carries only an mxc URI, and encrypted media also needs the
 //! keys from its event, so timeline items register each attachment's
 //! `MediaSource` here, keyed by URI.
-use super::{Event, Failure};
-use crate::media::{INLINE_BYTES, LocalFile, Media, NativeSource, PreviewRef};
+use super::{Event, Failure, rt};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::media::NativeSource;
+use crate::media::{INLINE_BYTES, LocalFile, Media, PreviewRef};
 use async_channel::{Receiver, Sender};
 use matrix_sdk::{
     Client, TransmissionProgress,
@@ -22,7 +24,6 @@ use serde_json::{Value, json};
 use std::{
     collections::HashMap,
     io::Cursor,
-    path::PathBuf,
     sync::{Arc, Mutex},
 };
 
@@ -115,26 +116,15 @@ async fn whole(media: &matrix_sdk::Media, source: MediaSource) -> Option<Vec<u8>
 }
 
 /// Save an attachment (decrypted) to a file the user picked.
+#[cfg(not(target_arch = "wasm32"))]
 pub async fn download(
     client: Client,
     sources: Arc<Sources>,
     media: Media,
-    destination: PathBuf,
+    destination: std::path::PathBuf,
 ) -> Result<(), Failure> {
-    let source = sources
-        .get(&media.mxc, media.encrypted)
-        .ok_or(Failure::Unavailable)?;
-    let request = MediaRequestParameters {
-        source,
-        format: MediaFormat::File,
-    };
-    // Downloads skip the media cache, which is for previews.
-    let bytes = client
-        .media()
-        .get_media_content(&request, false)
-        .await
-        .map_err(|_| Failure::Unreachable)?;
-    tokio::task::spawn_blocking(move || {
+    let bytes = whole_file(client, sources, &media).await?;
+    rt::blocking(move || {
         use std::io::Write;
         let dir = destination.parent().ok_or(Failure::Failed)?;
         let mut file = tempfile::NamedTempFile::new_in(dir).map_err(|_| Failure::Failed)?;
@@ -143,7 +133,35 @@ pub async fn download(
         Ok(())
     })
     .await
-    .map_err(|_| Failure::Failed)?
+    .ok_or(Failure::Failed)?
+}
+
+/// Offer an attachment (decrypted) as a browser download.
+#[cfg(target_arch = "wasm32")]
+pub async fn download(client: Client, sources: Arc<Sources>, media: Media) -> Result<(), Failure> {
+    let bytes = whole_file(client, sources, &media).await?;
+    crate::web_files::save_bytes(&bytes, &media.name);
+    Ok(())
+}
+
+async fn whole_file(
+    client: Client,
+    sources: Arc<Sources>,
+    media: &Media,
+) -> Result<Vec<u8>, Failure> {
+    let source = sources
+        .get(&media.mxc, media.encrypted)
+        .ok_or(Failure::Unavailable)?;
+    let request = MediaRequestParameters {
+        source,
+        format: MediaFormat::File,
+    };
+    // Downloads skip the media cache, which is for previews.
+    client
+        .media()
+        .get_media_content(&request, false)
+        .await
+        .map_err(|_| Failure::Unreachable)
 }
 
 pub async fn upload_limit(client: &Client) -> Result<u64, Failure> {
@@ -187,10 +205,7 @@ pub async fn upload(
                     && mime != mime::IMAGE_GIF =>
             {
                 let source = bytes.clone();
-                tokio::task::spawn_blocking(move || thumbnail(&source))
-                    .await
-                    .ok()
-                    .flatten()
+                rt::blocking(move || thumbnail(&source)).await.flatten()
             }
             _ => None,
         };
@@ -239,6 +254,20 @@ pub async fn upload(
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+async fn read(file: &LocalFile) -> Result<Vec<u8>, Failure> {
+    let buffer = wasm_bindgen_futures::JsFuture::from(file.file.array_buffer())
+        .await
+        .map_err(|_| Failure::Failed)?;
+    let bytes = js_sys::Uint8Array::new(&buffer).to_vec();
+    // The file changed since it was attached.
+    if bytes.len() as u64 != file.size {
+        return Err(Failure::Failed);
+    }
+    Ok(bytes)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 async fn read(file: &LocalFile) -> Result<Vec<u8>, Failure> {
     match &file.origin {
         NativeSource::Clipboard(bytes) if bytes.len() as u64 == file.size => Ok(bytes.to_vec()),
@@ -263,48 +292,51 @@ async fn send(
     encrypt: bool,
     progress: Option<(i64, &Sender<Event>)>,
 ) -> Result<MediaSource, Failure> {
-    let report = |mut watch: Box<
-        dyn futures_util::Stream<Item = TransmissionProgress> + Send + Unpin,
-    >| async move {
-        use futures_util::StreamExt;
-        let Some((id, events)) = progress else {
-            return std::future::pending().await;
-        };
-        let mut last = None;
-        while let Some(p) = watch.next().await {
-            if p.total == 0 {
-                continue;
-            }
-            let percent = (p.current * 100 / p.total).min(100);
-            if last != Some(percent) {
-                last = Some(percent);
-                let fraction = p.current as f64 / p.total as f64;
-                let _ = events
-                    .send(Event::UploadProgress {
-                        id,
-                        fraction: fraction.min(1.0),
-                    })
-                    .await;
-            }
-        }
-        std::future::pending().await
-    };
     if encrypt {
         let mut reader = Cursor::new(data);
         let upload = client.upload_encrypted_file(&mut reader);
-        let watch = Box::new(upload.subscribe_to_send_progress());
+        let watch = upload.subscribe_to_send_progress();
         tokio::select! {
             file = upload => file.map(|f| MediaSource::Encrypted(Box::new(f))).map_err(|_| Failure::Unreachable),
-            () = report(watch) => unreachable!(),
+            () = report(watch, progress) => unreachable!(),
         }
     } else {
         let upload = client.media().upload(mime, data, None);
-        let watch = Box::new(upload.subscribe_to_send_progress());
+        let watch = upload.subscribe_to_send_progress();
         tokio::select! {
             response = upload => response.map(|r| MediaSource::Plain(r.content_uri)).map_err(|_| Failure::Unreachable),
-            () = report(watch) => unreachable!(),
+            () = report(watch, progress) => unreachable!(),
         }
     }
+}
+
+/// Whole percents of an upload as [`Event::UploadProgress`]; never returns.
+async fn report(
+    mut watch: impl futures_util::Stream<Item = TransmissionProgress> + Unpin,
+    progress: Option<(i64, &Sender<Event>)>,
+) {
+    use futures_util::StreamExt;
+    let Some((id, events)) = progress else {
+        return std::future::pending().await;
+    };
+    let mut last = None;
+    while let Some(p) = watch.next().await {
+        if p.total == 0 {
+            continue;
+        }
+        let percent = (p.current * 100 / p.total).min(100);
+        if last != Some(percent) {
+            last = Some(percent);
+            let fraction = p.current as f64 / p.total as f64;
+            let _ = events
+                .send(Event::UploadProgress {
+                    id,
+                    fraction: fraction.min(1.0),
+                })
+                .await;
+        }
+    }
+    std::future::pending().await
 }
 
 /// The MIME type from the content for images, otherwise from the name.

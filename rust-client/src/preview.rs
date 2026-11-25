@@ -97,6 +97,15 @@ pub async fn inline(bytes: Vec<u8>) -> Option<Handle> {
     .flatten()
 }
 
+/// An inline timeline image from fetched bytes, decoded by the browser.
+#[cfg(target_arch = "wasm32")]
+pub async fn inline(bytes: Vec<u8>) -> Option<Handle> {
+    let _permit = DECODERS.acquire().await;
+    let parts = js_sys::Array::of1(&js_sys::Uint8Array::from(bytes.as_slice()));
+    let blob = web_sys::Blob::new_with_u8_array_sequence(&parts).ok()?;
+    blob_thumbnail(&blob, INLINE_WIDTH, INLINE_HEIGHT).await
+}
+
 #[cfg(target_arch = "wasm32")]
 async fn browser_thumbnail(source: &LocalFile) -> Option<Handle> {
     blob_thumbnail(&source.file, WIDTH, HEIGHT).await
