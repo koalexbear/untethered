@@ -142,6 +142,8 @@ pub struct ActiveCall {
     pub video_status: [room_video::Status; 2],
     pub previews: Previews,
     pub preview_hidden: bool,
+    pub chat_open: bool,
+    pub theater: bool,
     pub speaking: watch::Receiver<std::collections::BTreeSet<String>>,
 }
 struct GroupViews {
@@ -228,6 +230,8 @@ impl crate::App {
                 video_status: Default::default(),
                 previews,
                 preview_hidden: false,
+                chat_open: false,
+                theater: false,
                 speaking,
             });
         } else {
@@ -775,6 +779,8 @@ async fn call(
     };
     let playback = |track| play(track, None, devices.clone(), notices.clone());
     let mut camera = room_video::Publisher::new(VideoInput::Camera);
+    let mut share = room_video::Publisher::new(VideoInput::Window);
+    share.local_preview = Some(previews.clone());
     camera.local_preview = Some(previews.clone());
     let mut tiles = JoinSet::new();
     let mut displays = std::collections::BTreeMap::<String, tokio::task::AbortHandle>::new();
@@ -794,19 +800,22 @@ async fn call(
         let (requested, route) = {
             let state = mode.borrow_and_update();
             (
-                state.video[VideoInput::Camera as usize],
+                if recovering.is_some() {
+                    [None; 2]
+                } else {
+                    state.video
+                },
                 state.camera.clone(),
             )
         };
         camera
+            .select(requested[VideoInput::Camera as usize], lk, route)
+            .await?;
+        share
             .select(
-                if recovering.is_none() {
-                    requested
-                } else {
-                    None
-                },
+                requested[VideoInput::Window as usize],
                 lk,
-                route,
+                CameraChoice::default(),
             )
             .await?;
         let mut live = std::collections::BTreeSet::new();
@@ -814,10 +823,12 @@ async fn call(
             && let Some(p) = lk.remote_participants().get(&peer_id.to_owned().into())
         {
             for pubn in p.track_publications().into_values() {
-                if pubn.source() != TrackSource::Camera
-                    || pubn.encryption_type() != EncryptionType::Gcm
-                    || pubn.is_muted()
-                {
+                let source = match pubn.source() {
+                    TrackSource::Camera => VideoInput::Camera,
+                    TrackSource::Screenshare => VideoInput::Window,
+                    _ => continue,
+                };
+                if pubn.encryption_type() != EncryptionType::Gcm || pubn.is_muted() {
                     continue;
                 }
                 if let Some(RemoteTrack::Video(track)) = pubn.track() {
@@ -827,7 +838,7 @@ async fn call(
                         tiles.spawn(room_video::display(
                             track,
                             dm_peer.into(),
-                            VideoInput::Camera,
+                            source,
                             previews.clone(),
                             events.clone(),
                         ))
@@ -846,6 +857,7 @@ async fn call(
         let interrupted = tokio::select! {
             changed=mode.changed()=>{changed.map_err(|_|ENDED)?;false}
             update=camera.next()=>{camera.update(update,lk,key.index,events,w.room,&mode).await?;false}
+            update=share.next()=>{share.update(update,lk,key.index,events,w.room,&mode).await?;false}
             _=tiles.join_next(),if !tiles.is_empty()=>false,
             e=w.frame()=>{e?;false}
             _=heartbeat.tick()=>{
@@ -877,11 +889,11 @@ async fn call(
             event=rtc.recv()=>match event {
                 Some(RoomEvent::Reconnecting)=>{rtc_up=false;true}
                 Some(RoomEvent::Reconnected)=>{rtc_up=true;heartbeat.reset_immediately();false}
-                Some(RoomEvent::TrackSubscribed{track:RemoteTrack::Audio(track),participant,publication,..}) if participant.identity().0==peer_id && !playing && recovering.is_none()=>{
+                Some(RoomEvent::TrackSubscribed{track:RemoteTrack::Audio(track),participant,publication,..}) if participant.identity().0==peer_id && publication.source()==TrackSource::Microphone && !playing && recovering.is_none()=>{
                     if publication.encryption_type()!=EncryptionType::Gcm{return Err("Peer did not encrypt audio.")}
                     audio.spawn(playback(track));playing=true;status(events,w.room,"Connected").await;false
                 }
-                Some(RoomEvent::TrackUnsubscribed{track:RemoteTrack::Audio(_),participant,..}) if participant.identity().0==peer_id=>true,
+                Some(RoomEvent::TrackUnsubscribed{track:RemoteTrack::Audio(_),participant,publication,..}) if participant.identity().0==peer_id && publication.source()==TrackSource::Microphone=>true,
                 Some(RoomEvent::ParticipantDisconnected(p)) if p.identity().0==peer_id=>true,
                 None|Some(RoomEvent::Disconnected{..})=>return Err("Call connection lost."),
                 _=>false
@@ -1101,7 +1113,7 @@ fn encrypted_tracks(
         .and_then(|p| {
             p.track_publications()
                 .into_values()
-                .find(|p| p.kind() == TrackKind::Audio && p.is_subscribed())
+                .find(|p| p.source() == TrackSource::Microphone && p.is_subscribed())
         });
     let (Some(mic), Some(pubn)) = (ours, theirs) else {
         return Ok(None);

@@ -82,6 +82,9 @@ Element video interoperability.
 
 ### Verify video with Element
 
+See also [the call-stage test](#verify-the-call-stage) for screen sharing
+in both directions during a video call.
+
 Use the Linux DM video test environment plus the extracted Element Web
 distribution (`ELEMENT_WEB_DIR`). Run each direction with fresh devices:
 
@@ -105,7 +108,33 @@ back on must deliver fresh video with the original microphones. Stopping the
 native camera must release its capture process, and hangup must empty the
 MatrixRTC roster and release the media tracks.
 
+### Verify the call stage
+
+```sh
+sh experiments/rtc-audio/run_element.sh --dm-window
+sh experiments/rtc-audio/run_element.sh --element-video --dm-window
+```
+
+Use the DM video environment above. For Element, put `Xvfb` on `PATH`:
+Chromium runs on its own private display and captures a fixture tab through
+Element's **Share screen** button. Neither client captures the host desktop.
+
+Both cameras and both microphones start first. Cancelling the KDE chooser
+must leave them alone; selecting **Prism** adds a fifth GCM track. Both the
+sharer and the recipient must render the selected content. The sharer clicks
+a different participant, changes Prism, reselects **Your screen** and enters
+**Theater**. The recipient continues to see Prism, and fresh audio travels in
+both directions. Stopping the share closes its portal grant and reader,
+while the call keeps its original four camera and microphone publications.
+Element also shares a changing browser tab back to Untethered, then stops it;
+the native stage must return to the peer's camera.
+
+The [normal stage](evidence/own-share-stage.png) and [theater view](evidence/own-share-theater.png)
+are screenshots of the running client. Set `RTC_QA_SCREENSHOTS` to an output
+directory to save new screenshots of the shared test board.
+
 ### Verify live camera switching
+
 
 Build both Linux binaries (`cargo build --locked --manifest-path rust-client/Cargo.toml`)
 and run the following in the Element video test environment:

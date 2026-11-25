@@ -60,7 +60,8 @@ class KWin:
         # Only KWin and the portal can reach their ordinary PipeWire socket
         # by name. The tested native client must use OpenPipeWireRemote's FD.
         native_env={**env,"PIPEWIRE_REMOTE":"no-ambient-qa-remote"} if screencast else env
-        self.native=stack.enter_context(child([*limit,root/"rust-client/target/debug/untethered-iced"],native_env,stderr=log("native")))
+        binary=os.getenv("UNTETHERED_QA_CLIENT") or root/"rust-client/target/debug/untethered-iced"
+        self.native=stack.enter_context(child([*limit,binary],native_env,stderr=log("native")))
         print(re.search(r"^KWin version: .+$",info,re.M)[0]+" · active virtual Wayland compositor · private D-Bus",flush=True)
 
     def command(self,*args,check=True):

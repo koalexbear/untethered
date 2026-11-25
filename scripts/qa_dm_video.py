@@ -12,7 +12,7 @@ from qa_room_layout import pattern_box
 from qa_voice_room import Desktop
 
 
-def check_video(stack,tmp,root,backend,room,users,secret,sidechat):
+def check_video(stack,tmp,root,backend,room,users,secret,sidechat,share=False):
     sock=tmp/"pulse"
     desks=[];show=[]
     palettes=[[((31,215,123),(220,40,178)),((244,117,24),(40,83,242))],
@@ -60,17 +60,32 @@ def check_video(stack,tmp,root,backend,room,users,secret,sidechat):
         show[1-i](1)
         bounds=wait_for("changing decoded video on "+users[i],lambda:box(i,1),18)
         print(f"{users[i]} rendered its peer's changing camera at {bounds[2]-bounds[0]}×{bounds[3]-bounds[1]}.",flush=True)
+    if share:
+        from qa_window_share import dm_share
+        def screen(pair):
+            return pattern_box(b.kde.capture().crop((283,280,1179,470)),pair)
+        def fresh_voice():
+            for d in desks:d.windows.clear()
+            wait_for("fresh two-way audio with independent DM share",audio)
+        dm_share(stack,a,users[0],tracks,lambda:readers(a),screen,fresh_voice)
+        wait_for("peer camera restored to main stage",lambda:(r:=box(1,1)) and r[2]-r[0]>450)
     small=wait_for("local preview visible beside peer",lambda:box(0,1,True))
     assert small[2]-small[0]<170 and box(0,1)[2]-box(0,1)[0]>450
     def select(rect):
         a.kde.command("kdotool","windowactivate",a.win)
-        x,y=283+(rect[0]+rect[2])//2,82+(rect[1]+rect[3])//2
+        x,y=283+rect[0]+20,82+rect[1]+25
         a.kde.actions("pointer",[{"type":"pointerMove","x":x,"y":y},{"type":"pause","duration":250},
                                  {"type":"pointerDown","button":0},{"type":"pause","duration":120},{"type":"pointerUp","button":0}])
-    select(small)
-    wait_for("local preview focused",lambda:(r:=box(0,1,True)) and r[2]-r[0]>450)
-    select(box(0,1))
-    wait_for("peer restored to stage",lambda:(r:=box(0,1)) and r[2]-r[0]>450)
+    def focus(local):
+        def target():
+            r=box(0,1,local)
+            if not r:return False
+            if r[2]-r[0]>450:return True
+            select(r)
+            try:return wait_for("stage updated",lambda:(big:=box(0,1,local)) and big[2]-big[0]>450,3)
+            except RuntimeError:return False
+        wait_for("selected camera focused",target)
+    focus(True);focus(False)
     print("Live self-preview and remote tile swapped focus and back without replacing any publication.",flush=True)
     assert tracks()==before and audio()
     other=sidechat()
@@ -82,6 +97,15 @@ def check_video(stack,tmp,root,backend,room,users,secret,sidechat):
         for d in desks:d.windows.clear()
         wait_for("fresh 410/670 Hz audio after navigation",audio,12)
         assert tracks()==before and [readers(d) for d in desks]==jobs
+    def navigate(label,done):
+        def visit():
+            if done():return True
+            a.click(label)
+            try:return wait_for(label+" applied",done,2)
+            except RuntimeError:return False
+        wait_for(label+" navigation",visit)
+    navigate("chat",lambda:compact(1))
+    navigate("return",lambda:(r:=box(0,1)) and r[2]-r[0]>450)
     def title(name):
         return name in a.kde.command("kdotool","getwindowname",a.win).stdout
     def go_side():

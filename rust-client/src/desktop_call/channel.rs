@@ -289,6 +289,8 @@ pub(super) async fn joined(
     let mut subscriptions = Subscriptions::default();
     let mut share = room_video::Publisher::new(VideoInput::Window);
     let mut camera = room_video::Publisher::new(VideoInput::Camera);
+    share.local_preview = Some(views.previews.clone());
+    camera.local_preview = Some(views.previews.clone());
     let mut heartbeat = time::interval(SECOND * 4);
     heartbeat.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
     let mut renew = Instant::now();

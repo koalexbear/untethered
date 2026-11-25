@@ -28,7 +28,7 @@ def y4m(path):
             for _ in range(20):f.write(b"FRAME\n"+planes)
 
 
-def verify(stack,tmp,root,backend,page,room,alice,bob,secret,incoming,switch_camera=False):
+def verify(stack,tmp,root,backend,page,room,alice,bob,secret,incoming,switch_camera=False,share=False):
     env=isolated_env(tmp,backend,"wayland")
     sock=tmp/"video-pulse"
     env.update(PULSE_SERVER="unix:"+str(sock),PULSE_SOURCE="Mic0.monitor",PULSE_SINK="Out0")
@@ -47,8 +47,8 @@ def verify(stack,tmp,root,backend,page,room,alice,bob,secret,incoming,switch_cam
     def widget():return next((f for f in page.frames if urlsplit(f.url).path.startswith("/widgets/element-call/")),None)
     def roster():return page.evaluate("""r=>{const c=window.mxMatrixClientPeg.get();return c.matrixRTC
         .getRoomSession(c.getRoom(r)).memberships.map(m=>m.userId)}""",room)
-    def native_box(pair):return pattern_box(kde.capture().crop((283,82,1179,761)),pair)
-    def self_box(pair):return pattern_box(kde.capture().crop((995,280,1179,680)),pair)
+    def native_box(pair):return pattern_box(kde.capture().crop((283,275,1179,435)),pair)
+    def self_box(pair):return pattern_box(kde.capture().crop((283,440,1179,752)),pair)
     def browser_box(pair):
         # Small overlaid labels/controls can occlude the edges of a tile.
         for v in widget().locator("video").all():
@@ -114,12 +114,46 @@ def verify(stack,tmp,root,backend,page,room,alice,bob,secret,incoming,switch_cam
             if switch_camera:
                 from qa_switch_camera import verify_switch
                 verify_switch(stack,desk,browser_box,self_box,fresh_audio,tracks,before,show,NATIVE,alice)
+            if share:
+                from qa_window_share import dm_share
+                share_base=tracks() # A camera restarted after unplug has a new SID.
+                dm_share(stack,desk,alice,tracks,lambda:readers().splitlines(),browser_box,fresh_audio)
+                # Use Element's real share button and Chromium's tab capture.
+                # Only the test source is scripted, not the widget or RTC track.
+                tab=page.context.new_page()
+                tab.set_content("<title>Untethered Prism QA</title><body style='margin:0;height:100vh;display:flex'>"
+                    "<div style='width:50%'></div><div style='width:50%'></div></body>")
+                colors=[((53,214,83),(189,34,95)),((113,61,202),(249,166,65))]
+                def paint(i):tab.evaluate("cs=>[...document.querySelectorAll('div')].forEach((d,i)=>d.style.background=cs[i])",
+                                          ["rgb(%d,%d,%d)"%c for c in colors[i]])
+                paint(0);page.bring_to_front()
+                share_button=w.get_by_test_id("incall_screenshare")
+                share_button.click(timeout=10000)
+                screen=(bob,"SCREEN_SHARE")
+                wait_for("Element published tab capture",lambda:screen in tracks(),18)
+                shared=tracks()
+                assert shared[screen][1:]==("GCM",False) and all(shared[k]==v for k,v in share_base.items())
+                def stage(i):
+                    hit=pattern_box(kde.capture().crop((290,280,1179,470)),colors[i])
+                    return hit and hit[2]-hit[0]>350
+                wait_for("native stage rendered Element's tab",lambda:stage(0),18)
+                paint(1)
+                wait_for("native stage rendered changed Element tab",lambda:stage(1),18)
+                fresh_audio()
+                assert tracks()==shared
+                share_button.click()
+                wait_for("Element tab unpublished",lambda:tracks()==share_base)
+                wait_for("native stage returned to camera",lambda:not stage(1) and any(
+                    (r:=native_box(p)) and r[2]-r[0]>400 for p in BROWSER))
+                tab.close()
+                print("Element shared a changing Chromium tab back to Untethered; it occupied the main stage. "
+                      "Stop restored its camera on the original GCM publications.",flush=True)
             camera_button(w).click(timeout=7000)
             wait_for("Element camera off",lambda:not cam(bob),10)
             wait_for("Element's old video cleared in Iced",lambda:all(not native_box(p) for p in BROWSER),12)
             assert readers() and cam(alice)
             def camera_off_ui():
-                labels=[word.lower() for word,_,_ in kde.words((283,110,1178,610))]
+                labels=[word.lower() for word,_,_ in kde.words((283,70,1178,610))]
                 return all(word in labels for word in ("no","incoming","video"))
             wait_for("native remote camera-off stage",camera_off_ui,12)
             camera_button(w).click()

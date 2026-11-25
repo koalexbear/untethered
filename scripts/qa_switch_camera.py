@@ -16,7 +16,7 @@ def verify_switch(stack,desk,remote_box,local_box,fresh_audio,tracks,baseline,am
         return [names.get(o["info"]["output-node-id"]) for o in data if o.get("type")=="PipeWire:Interface:Link"
                 and o["info"]["state"]=="active" and names.get(o["info"]["output-node-id"]) in ("qa-room-camera","qa-second-camera")]
     def words():
-        return [(w.strip("|:.,").lower(),x,y) for w,x,y in kde.words((281,70,1179,730))]
+        return [(w.strip("|:.,").lower(),x,y) for w,x,y in kde.words((281,380,1179,850))]
     def pos(name):
         return next(((x,y) for w,x,y in words() if w==name),None)
     def click(x,y):
@@ -31,14 +31,14 @@ def verify_switch(stack,desk,remote_box,local_box,fresh_audio,tracks,baseline,am
                 w2=="cameras" and x<x2<x+125 and abs(y2-y)<6 for w2,x2,y2 in ws)),None)
         x,y=wait_for("camera picker",picker,12)
         def entry():
-            ws=kde.words((388,y+12,680,y+124))
+            ws=kde.words((388,max(360,y-110),680,y-12)) + (kde.words((388,y+12,680,min(y+124,850))) if y+12<850 else [])
             target=next(((xx,yy) for w,xx,yy in ws if w.strip("|:.,").lower()==label),None)
-            if not target and not any(w.lower() in ("amber","cobalt","default") for w,_,_ in ws):
+            if not target and not any(w.lower() in ("amber","cobalt") for w,_,_ in ws):
                 click(x,y)
             return target
         try:click(*wait_for(label+" in camera list",entry,10))
         except RuntimeError:print("Picker:",words(),flush=True);raise
-    click(*wait_for("devices",lambda:pos("devices")))
+    desk.click("devices")
     def listed():
         if dialog(kde):return False
         ws=words()
@@ -63,7 +63,7 @@ def verify_switch(stack,desk,remote_box,local_box,fresh_audio,tracks,baseline,am
     choose("cobalt")
     grant_camera(kde,lambda:graph()==["qa-second-camera"] and remote_box(second[1]))
     removable.close()
-    wait_for("missing-camera feedback",lambda:pos("stopped") and pos("start"),22)
+    wait_for("missing-camera feedback",lambda:pos("stopped") and (local_user,"CAMERA") not in tracks(),22)
     remaining=tracks()
     missing=set(baseline)-set(remaining)
     assert missing=={(local_user,"CAMERA")} and all(remaining[k]==baseline[k] for k in remaining)
@@ -71,11 +71,11 @@ def verify_switch(stack,desk,remote_box,local_box,fresh_audio,tracks,baseline,am
     fresh_audio()
     choose("amber")
     assert not graph()
-    click(*pos("start"));grant_camera(kde,lambda:graph()==["qa-room-camera"] and remote_box(first[1]))
+    desk.click("start");grant_camera(kde,lambda:graph()==["qa-room-camera"] and remote_box(first[1]))
     restored=tracks()
     assert set(restored)==set(baseline) and all(restored[k]==v for k,v in remaining.items())
     assert all(enc=="GCM" for _,enc,_ in restored.values())
     fresh_audio()
     print("Withdrew Cobalt: no fallback capture, its video unpublished, both microphones and peer video stayed live. "
           "Selected Amber with camera off, then restarted it on the same call.",flush=True)
-    click(*wait_for("close devices",lambda:pos("devices")))
+    desk.click("devices")

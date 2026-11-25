@@ -1,6 +1,7 @@
 """Drive Alice's rendered grid/focus controls with two independent portal publishers."""
 import io
 import json
+import re
 import subprocess as sp
 
 from PIL import Image, ImageChops
@@ -17,14 +18,25 @@ def pattern_box(im,pair):
         channels=[c.point([255 if abs(v-target)<29 else 0 for v in range(256)])
                   for c,target in zip(im.split(),color)]
         mask=ImageChops.darker(ImageChops.darker(*channels[:2]),channels[2])
-        box=mask.getbbox()
-        if not box:return None
-        l,t,r,b=box
-        if r-l<32 or b-t<45 or mask.histogram()[255] < .92*(r-l)*(b-t):return None
-        fields.append(box)
-    a,b=fields
-    if abs(a[2]-b[0])>6 or abs(a[1]-b[1])>4 or abs(a[3]-b[3])>4:return None
-    return (a[0],a[1],b[2],a[3])
+        fields.append(mask.tobytes())
+    # Name badges sit over the bottom edge, and controls may share a
+    # palette color. Require two solid, adjacent fields across >=45 rows
+    # at the same coordinates rather than bounding every matching pixel.
+    w=im.width;run=re.compile(b"\xff{32,}");bands={}
+    for y in range(0,im.height,3):
+        rows=[[m.span() for m in run.finditer(data[y*w:(y+1)*w])] for data in fields]
+        for l,m in rows[0]:
+            for n,r in rows[1]:
+                if abs(n-m)>max(6,(r-l)//55) or abs((r-n)-(m-l))>8:continue
+                key=l,r
+                if key not in bands or bands[key][1]<y-3:bands[key]=[y,y]
+                else:bands[key][1]=y
+                if y-bands[key][0]>=45:
+                    # Complete this uninterrupted band for accurate height.
+                    x1=(l+m)//2;x2=(n+r)//2;end=y+1
+                    while end<im.height and fields[0][end*w+x1] and fields[1][end*w+x2]:end+=1
+                    return l,bands[key][0],r,end
+    return None
 
 
 def check_layout(stack,desks,users,secret,original_mics,publications):
@@ -70,7 +82,7 @@ def check_layout(stack,desks,users,secret,original_mics,publications):
                 if not (a[2]<b[0] or b[2]<a[0]):return None
             else:
                 big,small=(a,b) if form=="Bruno" else (b,a)
-                if big[2]-big[0]<440 or small[2]-small[0]>160 or big[2]>=small[0]:return None
+                if big[2]-big[0]<440 or small[2]-small[0]>162 or big[3]>=small[1]:return None
             return boxes
         boxes=wait_for(f"Alice renders {form}, source patterns {phase}",matches,20)
         assert videos()==original and publications(3)==original_mics
@@ -84,10 +96,16 @@ def check_layout(stack,desks,users,secret,original_mics,publications):
         alice.cmd("xdotool","mousemove","--window",alice.win,str((l+r)//2),str((t+b)//2),"click","1")
 
     grid=state("grid",0)
-    words=alice.words()
+    im=screen()
     for name,(l,t,r,b) in zip(("bruno","clara"),grid):
-        # Captions are above each centered image, left-aligned in its cell.
-        assert any(w==name and x>280 and abs(x-l)<130 and t-45<y<t for w,x,y in words),(name,words)
+        # Read the name chip itself; full-screen OCR skips chips over video.
+        chip=im.crop((l-2,b-58,l+140,b+85))
+        ch=[c.point([255 if abs(v-target)<=1 else 0 for v in range(256)]) for c,target in zip(chip.split(),(32,33,37))]
+        bounds=ImageChops.darker(ImageChops.darker(*ch[:2]),ch[2]).getbbox()
+        assert bounds,"missing participant badge"
+        buf=io.BytesIO();chip.crop(bounds).resize(((bounds[2]-bounds[0])*4,(bounds[3]-bounds[1])*4)).save(buf,"PNG")
+        got=sp.run(["tesseract","stdin","stdout","--psm","7"],input=buf.getvalue(),capture_output=True).stdout.decode()
+        assert name in got.lower(),(name,got)
     for d in desks:d.audit=[]
     show(1)
     grid=state("grid",1)
@@ -128,8 +146,8 @@ def check_layout(stack,desks,users,secret,original_mics,publications):
     updates[0](0)
     def fallback():
         im=screen()
-        return (pattern_box(im,palettes[0][0]) and not pattern_box(im,palettes[1][3]) and
-                {"video","grid"}.issubset({w for w,x,_ in alice.words() if x>280}) and
+        return ((r:=pattern_box(im,palettes[0][0])) and 200<r[2]-r[0]<500 and not pattern_box(im,palettes[1][3]) and
+                "focus" not in {w for w,x,_ in alice.words() if x>280} and
                 videos()=={users[1]:original[users[1]]})
     wait_for("focused departure restores live grid",fallback,15)
     publishers[0].click("stop")

@@ -150,6 +150,7 @@ def main():
     args.add_argument("--desktop-dm",action="store_true",help="Drive the Iced DM call controls and Element's incoming call prompt with isolated audio")
     args.add_argument("--native-dm",action="store_true",help="Call in both directions between two Linux desktops behind separate TURN-only networks")
     args.add_argument("--dm-video",action="store_true",help="Verify encrypted two-way DM video, camera consent and call controls on two isolated Linux desktops")
+    args.add_argument("--dm-window",action="store_true",help="Verify a portal-selected window with two cameras and two microphones in a DM; add --element-video for an Element receiver")
     args.add_argument("--element-video",action="store_true",help="Exchange changing encrypted camera frames with Element Call in both caller directions")
     args.add_argument("--switch-camera",action="store_true",help="Switch two portal-authorized cameras in a live encrypted video call with Element")
     args.add_argument("--unsupported-dm",action="store_true",help="Check the Linux call controls when Synapse advertises no MatrixRTC service")
@@ -173,6 +174,10 @@ def main():
     if args.room_ptt and (args.window_share or args.room_camera):
         raise SystemExit("--room-ptt uses private X displays; run the KWin video fixtures separately")
     if args.window_share or args.room_camera or args.room_ptt or args.room_layout: args.voice_room=True
+    if args.dm_window:
+        if args.voice_room:args.error("Run the DM and group window fixtures separately")
+        if not args.element_video:args.dm_video=True
+        args.window_share=True
     if args.call_controls or args.call_devices or args.call_reconnect or args.call_turn: args.desktop_dm=True
     if args.switch_camera:args.element_video=True
     if args.native_dm or args.unsupported_dm or args.dm_video or args.element_video:args.desktop_dm=True

@@ -64,7 +64,7 @@ class Desktop:
             return
         # Limit per-client rendering/codec parallelism in this three-GUI fixture.
         cores=sorted(os.sched_getaffinity(0))[:4]
-        binary=root/"rust-client/target/debug/untethered-iced"
+        binary=os.getenv("UNTETHERED_QA_CLIENT") or root/"rust-client/target/debug/untethered-iced"
         self.client=stack.enter_context(child([*prefix,"taskset","-c",",".join(map(str,cores)),binary],env,stderr=log))
         def ready():
             assert self.client.poll() is None,f"client {i+1} exited"
@@ -78,9 +78,9 @@ class Desktop:
 
     def words(self):
         if self.kde:
-            return [(re.sub(r"^\W+|\W+$","",w).lower(),x,y) for w,x,y in self.kde.words((0,28,1180,330))]
+            return [(re.sub(r"^\W+|\W+$","",w).lower(),x,y) for w,x,y in self.kde.words((0,28,1180,850))]
         shot=sp.check_output(["import","-window",self.win,"png:-"],env=self.env,timeout=8)
-        im=Image.open(io.BytesIO(shot)).crop((0,0,1180,240)).resize((2360,480))
+        im=Image.open(io.BytesIO(shot)).convert("RGB");im=im.resize((im.width*2,im.height*2))
         buf=io.BytesIO();im.save(buf,"PNG")
         t=sp.run(["tesseract","stdin","stdout","--psm","11","tsv"],input=buf.getvalue(),capture_output=True,check=True)
         return [(re.sub(r"^\W+|\W+$","",s[11]).lower(),(int(s[6])+int(s[8])//2)//2,(int(s[7])+int(s[9])//2)//2)
@@ -88,11 +88,35 @@ class Desktop:
 
     def click(self,label):
         if self.kde:self.kde.command("kdotool","windowactivate",self.win)
-        def locate():return next(((x,y) for word,x,y in self.words() if word==label),None)
+        def locate():
+            if label in {"start","stop","share","sharing","hang","devices","mute","deafen","leave","cancel","unmute","undeafen"}:
+                # OCR individual pills; page-wide OCR sometimes joins the icon
+                # to the label or mistakes a participant's caption for a button.
+                import itertools
+                im=self.kde.capture().crop((0,0,1180,850)) if self.kde else Image.open(io.BytesIO(
+                    sp.check_output(["import","-window",self.win,"png:-"],env=self.env,timeout=6))).convert("RGB")
+                fills={(56,58,64),(35,118,78),(181,51,69),(81,84,104)}
+                fills|={(min(255,r+26),min(255,g+26),min(255,b+26)) for r,g,b in list(fills)}
+                for py in range(72,im.height-4,8):
+                    for ok,group in itertools.groupby(range(288,1174),lambda xx:im.getpixel((xx,py)) in fills):
+                        xs=list(group)
+                        if not ok or len(xs)<55:continue
+                        x=sum((xs[0],xs[-1]))//2;y=py
+                        # Find top/bottom via the left rounding-free interior,
+                        # ignoring the label in the middle of the pill.
+                        color=im.getpixel((x,y));edge=xs[0]+7
+                        top=y
+                        while top>42 and im.getpixel((edge,top-1))==color:top-=1
+                        if y-top>7:continue
+                        check=im.crop((xs[0]+23,top+6,xs[-1]+3,top+31)).resize(((len(xs)-20)*3,75))
+                        buf=io.BytesIO();check.save(buf,"PNG")
+                        txt=sp.run(["tesseract","stdin","stdout","--psm","7"],input=buf.getvalue(),capture_output=True).stdout.decode().lower()
+                        if re.search(r"\b"+label+r"\b",txt):return x,top+18
+            return next(((x,y) for word,x,y in self.words() if word==label),None)
         x,y=wait_for(label,locate,12)
         if self.kde:
-            self.kde.actions("pointer",[{"type":"pointerMove","x":x,"y":y},{"type":"pause","duration":120},
-                {"type":"pointerDown","button":0},{"type":"pause","duration":80},{"type":"pointerUp","button":0}])
+            self.kde.actions("pointer",[{"type":"pointerMove","x":x,"y":y},{"type":"pause","duration":380},
+                {"type":"pointerDown","button":0},{"type":"pause","duration":170},{"type":"pointerUp","button":0}])
         else:self.cmd("xdotool","mousemove","--window",self.win,str(x),str(y),"click","1")
 
     def hears(self,expected):
@@ -207,7 +231,7 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
                 inputs,outputs=streams("source-outputs","source"),streams("sink-inputs","sink")
                 return [(inputs.count(sources[f"Mic{i}.monitor"]),outputs.count(sinks[f"Out{i}"])) for i in range(3)]
             def sidebar(peer,n):
-                words={w for w,x,_ in peer.words() if x<280}
+                words={w for w,x,y in peer.words() if x<280 and y<500}
                 return all((name.lower() in words)==(i<n) for i,name in enumerate(names))
             original={}
             if ptt:

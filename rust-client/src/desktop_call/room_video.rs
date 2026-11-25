@@ -100,6 +100,25 @@ impl Previews {
             wall.focus = sid;
         }
     }
+    fn frame(&self, sid: &str, user: &str, source: VideoInput, frame: Handle) {
+        let mut wall = self.0.lock().unwrap();
+        if let Some(feed) = wall.feeds.get_mut(sid) {
+            feed.frame = frame;
+        } else {
+            if source == VideoInput::Window {
+                wall.focus = Some(sid.into());
+            }
+            wall.feeds.insert(
+                sid.into(),
+                Feed {
+                    sid: sid.into(),
+                    user: user.into(),
+                    source,
+                    frame,
+                },
+            );
+        }
+    }
 }
 struct Tile {
     sid: String,
@@ -160,21 +179,7 @@ pub(super) async fn display(
             oh as i32,
         );
         let frame = Handle::from_rgba(ow, oh, rgba);
-        let mut wall = tile.views.0.lock().unwrap();
-        if let Some(feed) = wall.feeds.get_mut(&tile.sid) {
-            feed.frame = frame;
-        } else {
-            wall.feeds.insert(
-                tile.sid.clone(),
-                Feed {
-                    sid: tile.sid.clone(),
-                    user: user.clone(),
-                    source,
-                    frame,
-                },
-            );
-        }
-        drop(wall);
+        tile.views.frame(&tile.sid, &user, source, frame);
         let _ = tile.events.try_send(json!({"command":"video_redraw"}));
     }
 }
@@ -396,7 +401,7 @@ impl Capture {
             let result = tokio::select! {
                 biased;
                 _=mode.wait_for(|m|input.request(m)!=Some(id) || input==VideoInput::Camera && m.camera!=route)=>None,
-                f=self.pump(src.clone(),preview.as_ref())=>Some(f),
+                f=self.pump(src.clone(),input,preview.as_ref())=>Some(f),
             };
             let _ = self.child.kill().await;
             if let Some(lease) = &mut self.lease {
@@ -426,7 +431,12 @@ impl Capture {
             }
         }
     }
-    async fn pump(&mut self, src: NativeVideoSource, preview: Option<&Tile>) -> Result<()> {
+    async fn pump(
+        &mut self,
+        src: NativeVideoSource,
+        input: VideoInput,
+        preview: Option<&Tile>,
+    ) -> Result<()> {
         let lease = &self.lease;
         let closed = async {
             if let Some(lease) = lease
@@ -452,18 +462,25 @@ impl Capture {
                 && last.is_none_or(|at: Instant| at.elapsed() >= Duration::from_millis(100))
             {
                 use livekit::webrtc::video_frame::native::VideoFrameBufferExt;
-                let small = buf.scale(320, 180);
-                let mut rgba = vec![0; 320 * 180 * 4];
-                small.to_argb(VideoFormatType::ABGR, &mut rgba, 320 * 4, 320, 180);
-                tile.views.0.lock().unwrap().feeds.insert(
-                    tile.sid.clone(),
-                    Feed {
-                        sid: tile.sid.clone(),
-                        user: String::new(),
-                        source: VideoInput::Camera,
-                        frame: Handle::from_rgba(320, 180, rgba),
-                    },
-                );
+                let (w, h) = if input == VideoInput::Window {
+                    (W, H)
+                } else {
+                    (320, 180)
+                };
+                let mut rgba = vec![0; (w * h * 4) as usize];
+                if input == VideoInput::Window {
+                    buf.to_argb(VideoFormatType::ABGR, &mut rgba, w * 4, w as i32, h as i32);
+                } else {
+                    buf.scale(w as i32, h as i32).to_argb(
+                        VideoFormatType::ABGR,
+                        &mut rgba,
+                        w * 4,
+                        w as i32,
+                        h as i32,
+                    );
+                }
+                tile.views
+                    .frame(&tile.sid, "", input, Handle::from_rgba(w, h, rgba));
                 let _ = tile.events.try_send(json!({"command":"video_redraw"}));
                 last = Some(Instant::now());
             }
@@ -611,7 +628,7 @@ impl Publisher {
                                 return Err("Could not encrypt video.");
                             }
                             let preview = self.local_preview.clone().map(|views| Tile {
-                                sid: "local-camera".into(),
+                                sid: format!("local-{}", self.input.name()),
                                 views,
                                 events: events.clone(),
                             });

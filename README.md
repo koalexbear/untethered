@@ -192,10 +192,20 @@ Either participant can hang up.
 The other person sees an incoming video invitation. Your camera is requested
 through the Camera portal after they accept; accepting leaves **their**
 camera off until they choose **Start camera**. The same camera control is
-available during a voice call. The call view shows the peer at large and
-your own live preview beside them. Click the small tile to swap views.
+available during a voice call. The call opens on a dedicated stage with
+participant tiles underneath and microphone, camera, sharing, device and
+hangup controls along the bottom. Click a tile to bring it onto the stage.
 **Stop camera** keeps the conversation going; **Hang up** releases capture.
 [Two-way Linux video test](experiments/rtc-audio/README.md#verify-dm-video).
+
+**To watch your own share:** click **Share window**, choose a window in the
+desktop picker, then look for **Your screen · LIVE**. It opens on the stage.
+If you switch to someone’s camera, click **Your screen** in the strip to watch
+it again. Your choice of view doesn’t change what anyone else receives.
+**Theater** hides the sidebars; **Open chat** keeps a compact preview above
+the conversation. [Live screen-share test and screenshots](experiments/rtc-audio/README.md#verify-the-call-stage).
+
+![Untethered showing the user's own shared playtest board during a call](experiments/rtc-audio/evidence/own-share-stage.png)
 
 Video calls also work with **Element Web** in either caller direction.
 When the other person turns off their camera, Untethered clears their last

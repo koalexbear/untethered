@@ -129,6 +129,8 @@ enum Msg {
     #[cfg(target_os = "linux")]
     ReturnToCall(uuid::Uuid),
     #[cfg(target_os = "linux")]
+    CallLayout(uuid::Uuid, bool),
+    #[cfg(target_os = "linux")]
     HideCallPreview(uuid::Uuid, bool),
     #[cfg(target_os = "linux")]
     AudioDevices,
@@ -1252,6 +1254,7 @@ impl App {
                     && self.live.list.contains_key(&c.room)
                 {
                     let room = c.room.clone();
+                    self.call.as_mut().unwrap().chat_open = false;
                     self.cancel_setup_if_idle();
                     self.close_mentions();
                     self.account = false;
@@ -1259,6 +1262,19 @@ impl App {
                         self.section = Section::All;
                     }
                     self.open(room);
+                }
+            }
+            #[cfg(target_os = "linux")]
+            Msg::CallLayout(id, chat) => {
+                if let Some(c) = &mut self.call
+                    && c.id == id
+                {
+                    if chat {
+                        c.chat_open = true;
+                        c.theater = false;
+                    } else {
+                        c.theater = !c.theater;
+                    }
                 }
             }
             #[cfg(target_os = "linux")]
@@ -1280,7 +1296,6 @@ impl App {
             #[cfg(target_os = "linux")]
             Msg::ToggleVideo(input) => {
                 if let Some(call) = &mut self.call
-                    && (call.group || input == desktop_call::VideoInput::Camera)
                     && !call.cancel.is_closed()
                 {
                     let slot = input as usize;

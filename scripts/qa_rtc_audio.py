@@ -120,7 +120,7 @@ def test(tmp, hs, name, jwt, root, backend, seed, http, service, *, desktop=Fals
                     "state_key":"","content":{"algorithm":"m.megolm.v1.aes-sha2"}}]}).json()["room_id"]
                 http("POST",hs+"/_matrix/client/v3/rooms/"+quote(other,safe="")+"/join",headers=ph,json={})
                 return other
-            check_video(stack,tmp,root,backend,room,(alice,bob),secret,sidechat)
+            check_video(stack,tmp,root,backend,room,(alice,bob),secret,sidechat,share)
         return
     if native_dm or unsupported_dm:
         from qa_native_dm import check_native_dm
@@ -153,8 +153,17 @@ def test(tmp, hs, name, jwt, root, backend, seed, http, service, *, desktop=Fals
             from qa_element_video import y4m
             camera_file=tmp/"element-camera.y4m";y4m(camera_file)
             video_flags=["--use-file-for-fake-video-capture="+str(camera_file)]
-        browser=pw.chromium.launch(executable_path=chrome,args=[*video_flags,"--use-fake-device-for-media-stream",
-            "--ignore-certificate-errors-spki-list="+pin,"--use-fake-ui-for-media-stream","--mute-audio",
+        launch={}
+        capture_flags=["--use-fake-ui-for-media-stream"]
+        if share and element_video:
+            from qa_native_paste import isolated_env,start_display
+            chromium_dir=tmp/"browser-display";chromium_dir.mkdir()
+            env=isolated_env(chromium_dir,backend,"x11")
+            start_display(stack,chromium_dir,env,"x11",1280,900)
+            launch=dict(env=env,headless=False)
+            capture_flags=["--auto-select-tab-capture-source-by-title=Untethered Prism QA","--ozone-platform=x11"]
+        browser=pw.chromium.launch(executable_path=chrome,**launch,args=[*video_flags,"--use-fake-device-for-media-stream",
+            "--ignore-certificate-errors-spki-list="+pin,*capture_flags,"--mute-audio",
             "--use-file-for-fake-audio-capture="+str(wav),"--autoplay-policy=no-user-gesture-required"])
         stack.callback(browser.close)
         ctx=browser.new_context(permissions=["microphone","camera"])
@@ -162,7 +171,7 @@ def test(tmp, hs, name, jwt, root, backend, seed, http, service, *, desktop=Fals
         page=login_element(ctx,web,peer,room)
         if element_video:
             from qa_element_video import verify
-            verify(stack,tmp,root,backend,page,room,alice,bob,secret,incoming,switch_camera)
+            verify(stack,tmp,root,backend,page,room,alice,bob,secret,incoming,switch_camera,share)
             return
         if desktop:
             from qa_desktop_dm import desktop_call

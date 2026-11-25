@@ -139,6 +139,11 @@
   microphone publication IDs stayed unchanged. Removing the selected virtual
   source stopped only its video. No fallback camera opened, and selecting and
   starting the remaining source restored video without a redial.
+- **Linux call stage and selectable self-share:** [Screen-share acceptance](experiments/rtc-audio/README.md#verify-the-call-stage)
+  rendered the sender’s own selected window at 871 px wide, switched to the
+  peer and back, and enlarged the share in theater. Element rendered both
+  patterns at 924 px wide and shared its own changing tab back. Both cameras
+  and both microphones kept their encrypted track IDs throughout.
 - **Three-person Linux voice rooms:** **Join voice** and **Leave voice** use
   the encrypted room's MatrixRTC slot without DM notifications. In the
   [three-account desktop test](experiments/rtc-audio/README.md#verify-three-person-voice-rooms)

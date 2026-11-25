@@ -1,11 +1,13 @@
 use super::{App, Msg, Request, Section, rooms::Room};
+#[cfg(target_os = "linux")]
+mod call_controls;
+#[cfg(target_os = "linux")]
+mod call_stage;
 mod community;
 mod mentions;
 mod reaction_bar;
 mod room_people;
 mod room_search;
-#[cfg(target_os = "linux")]
-mod video_wall;
 use chrono::{DateTime, Local};
 use iced::{
     Alignment::Center,
@@ -244,6 +246,7 @@ impl App {
     #[cfg(target_os = "linux")]
     fn call_bar(&self) -> Option<El<'_>> {
         use crate::call_devices::Port;
+        use call_controls::{Icon, control};
         use iced::widget::pick_list;
         let call = self.call.as_ref()?;
         let mode = call.audio.borrow();
@@ -261,79 +264,78 @@ impl App {
             "Mute"
         };
         let controls = row![
-            button(text(mic).size(15).font(BOLD))
-                .style(nav(mode.muted || mode.deafened))
-                .on_press_maybe((active && !mode.deafened).then_some(Msg::ToggleMic)),
-            button(
-                text(if mode.deafened { "Undeafen" } else { "Deafen" })
-                    .size(15)
-                    .font(BOLD)
-            )
-            .style(nav(mode.deafened))
-            .on_press_maybe(active.then_some(Msg::ToggleDeafen)),
-            button(text("Devices").size(15).font(BOLD))
-                .style(nav(call.picker))
-                .on_press_maybe(active.then_some(Msg::AudioDevices)),
-            button(
-                text(if call.group { "Leave voice" } else { "Hang up" })
-                    .size(15)
-                    .font(BOLD)
-            )
-            .style(|_, s| button::Style {
-                background: Some(
-                    (if s == button::Status::Hovered {
-                        color!(0x993447)
-                    } else {
-                        color!(0x732939)
-                    })
-                    .into()
-                ),
-                text_color: TEXT,
-                border: Border::default().rounded(5),
-                ..Default::default()
-            })
-            .on_press_maybe(active.then_some(Msg::EndCall))
+            control(
+                Icon::Mic,
+                mic,
+                mode.muted || mode.deafened,
+                mode.muted || mode.deafened,
+                (active && !mode.deafened).then_some(Msg::ToggleMic)
+            ),
+            control(
+                Icon::Headphones,
+                if mode.deafened { "Undeafen" } else { "Deafen" },
+                mode.deafened,
+                mode.deafened,
+                active.then_some(Msg::ToggleDeafen)
+            ),
         ]
         .spacing(8)
         .align_y(Center);
         let mut controls = controls;
+        for input in crate::desktop_call::VideoInput::ALL.into_iter().rev() {
+            let slot = input as usize;
+            let requested = mode.video[slot].is_some();
+            let label = input.control(requested, call.video_status[slot].live);
+            let cam = input == crate::desktop_call::VideoInput::Camera;
+            controls = controls.push(control(
+                if cam { Icon::Camera } else { Icon::Screen },
+                label,
+                requested,
+                cam && !requested,
+                active.then_some(Msg::ToggleVideo(input)),
+            ));
+        }
+        controls = controls.push(control(
+            Icon::Devices,
+            "Devices",
+            call.picker,
+            false,
+            active.then_some(Msg::AudioDevices),
+        ));
         if call.group {
-            controls = controls.push(self.ptt_control(active));
-            controls = controls.push(
-                button(text("Mixer").size(15).font(BOLD))
+            controls = controls.push(self.ptt_control(active)).push(
+                button(text("Mixer").size(14))
                     .style(nav(call.mixer))
                     .on_press_maybe(active.then_some(Msg::ToggleMixer)),
             );
         }
-        for input in crate::desktop_call::VideoInput::ALL {
-            if !call.group && input != crate::desktop_call::VideoInput::Camera {
-                continue;
-            }
-            let slot = input as usize;
-            let requested = mode.video[slot].is_some();
-            let label = input.control(requested, call.video_status[slot].live);
-            controls = controls.push(
-                button(text(label).size(15).font(BOLD))
-                    .style(nav(requested))
-                    .on_press_maybe(active.then_some(Msg::ToggleVideo(input))),
+        controls = controls.push(control(
+            Icon::Hangup,
+            if call.group { "Leave voice" } else { "Hang up" },
+            false,
+            false,
+            active.then_some(Msg::EndCall),
+        ));
+        let browsing = call.chat_open
+            || self.selected != call.room
+            || self.mentions.is_some()
+            || self.setup.is_some()
+            || self.account;
+        let mut bar = Column::new().spacing(5);
+        if browsing {
+            bar = bar.push(
+                text(format!("{} · {name}", call.label))
+                    .size(13)
+                    .color(TEXT),
             );
         }
-        let mut bar = column![
-            text(format!("{} · {name}", call.label))
-                .size(13)
-                .color(TEXT),
-            controls.wrap()
-        ]
-        .spacing(3);
+        bar = bar.push(container(controls.wrap()).center_x(Fill));
         if self.verified
             && active
-            && (self.selected != call.room
-                || self.mentions.is_some()
-                || self.setup.is_some()
-                || self.account)
+            && browsing
             && let Some(room) = self.live.list.get(&call.room)
         {
-            bar = bar.push(video_wall::compact(call, room, !self.setup_busy()));
+            bar = bar.push(call_stage::compact(call, room, !self.setup_busy()));
         }
         if mode.talk != crate::desktop_call::TalkGate::Open {
             let hint = if mode.deafened {
@@ -348,7 +350,7 @@ impl App {
             bar = bar.push(text(hint).size(13));
         }
         for status in &call.video_status {
-            if !status.label.is_empty() {
+            if !status.label.is_empty() && (browsing || !status.live) {
                 bar = bar.push(text(&status.label).size(13));
             }
         }
@@ -477,7 +479,7 @@ impl App {
         Some(
             container(bar)
                 .width(Fill)
-                .padding([6, 12])
+                .padding([10, 12])
                 .style(|_| surface(TRAY, 4.))
                 .into(),
         )
@@ -844,6 +846,60 @@ impl App {
             .into();
         }
         let room = store.list.get(&self.selected);
+        #[cfg(target_os = "linux")]
+        if let Some(c) = &self.call
+            && !c.chat_open
+            && c.room == self.selected
+            && let Some(r) = room
+        {
+            let header = row![
+                column![
+                    text(if c.group {
+                        "VOICE CHANNEL"
+                    } else {
+                        "DIRECT CALL"
+                    })
+                    .size(11)
+                    .color(MUTED)
+                    .font(BOLD),
+                    text(r.name.as_str()).size(20).font(BOLD).color(TEXT)
+                ]
+                .spacing(2),
+                container(text(c.label.as_str()).size(12).font(BOLD).color(
+                    if c.label == "Connected" || c.label.starts_with("In voice") {
+                        color!(0x9be8b6)
+                    } else {
+                        MUTED
+                    }
+                ))
+                .padding([4, 8])
+                .style(|_| surface(TRAY, 9.)),
+                Space::new().width(Fill),
+                button(text("Open chat").size(14))
+                    .style(nav(false))
+                    .on_press(Msg::CallLayout(c.id, true)),
+                button(text(if c.theater { "Exit theater" } else { "Theater" }).size(14))
+                    .style(nav(c.theater))
+                    .on_press(Msg::CallLayout(c.id, false))
+            ]
+            .align_y(Center)
+            .spacing(10);
+            let mut panel = column![container(header).padding([10, 16]).width(Fill)]
+                .extend(self.incoming_banner())
+                .push(call_stage::view(c, r, &self.matrix_id));
+            if let Some(bar) = self.call_bar() {
+                panel = panel.push(bar);
+            }
+            let panel = container(panel)
+                .style(|_| surface(color!(0x111214), 0.))
+                .width(Fill)
+                .height(Fill);
+            return if c.theater {
+                panel.into()
+            } else {
+                row![rail, side, panel].height(Fill).into()
+            };
+        }
         let channel = room.map(|r| r.name.as_str()).unwrap_or("Rooms");
         let header = row![
             text(if room.is_some_and(|r| r.voice) {
@@ -1089,13 +1145,6 @@ impl App {
         #[cfg(target_os = "linux")]
         if let Some(bar) = self.call_bar() {
             chat = chat.push(bar);
-        }
-        #[cfg(target_os = "linux")]
-        if let Some(call) = &self.call
-            && call.room == self.selected
-            && let Some(wall) = room.and_then(|r| video_wall::view(call, r))
-        {
-            chat = chat.push(wall);
         }
         if !self.status.is_empty() && !self.status.starts_with("Starting") {
             chat = chat.push(
