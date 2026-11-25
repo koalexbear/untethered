@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from PIL import Image
+from qa_ui import CHAT_X
 from qa_native_paste import child,wait_for
 
 
@@ -72,7 +73,7 @@ class NotificationDesktop:
         print(f'Dunst displayed and archived "{text}".',flush=True)
 
 
-def check_room_alerts(tmp,hs,page,room,native,hdr,http,desk,locate,click,restart,window):
+def check_room_alerts(tmp,hs,page,room,native,hdr,http,desk,locate,click,restart,window,ui):
     me="@"+native["username"]+":test.invalid"
     foreign=page.evaluate("()=>window.mxMatrixClientPeg.get().getSafeUserId()")
     assert me!=foreign
@@ -93,8 +94,10 @@ def check_room_alerts(tmp,hs,page,room,native,hdr,http,desk,locate,click,restart
             decoded,unread=wait_for("native decoded "+body,read,15)
             assert json.loads(decoded)["m.mentions"].get("user_ids",[])==([mention] if mention else [])
             return unread
-    def words(ws,w):return [(x,y) for v,x,y in ws if x>280 and v==w]
-    def panel():click(locate("Alerts button",lambda ws:next(iter(words(ws,"alerts")),None)))
+    def words(ws,w):return [(x,y) for v,x,y in ws if x>CHAT_X and v==w]
+    def panel():
+        # The bell icon in the channel header.
+        click(wait_for("Notification Settings header control",lambda:ui.header("notification settings"),20))
     def option(w):
         def find(ws):
             # The row of mode buttons contains Account, All and Mute.

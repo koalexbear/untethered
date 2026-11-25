@@ -3,9 +3,10 @@ import re
 from urllib.parse import quote
 
 from qa_native_paste import wait_for
+from qa_ui import CHAT_X
 
 
-def check_reactions(page,room,element_user,get,locate,click,hover,restart):
+def check_reactions(page,room,element_user,get,locate,click,hover,restart,ui):
     parent,reply,edit,decoy=page.evaluate("""async room=>{
         const c=window.mxMatrixClientPeg.get();
         const send=async content=>(await c.sendEvent(room,'m.room.message',content)).event_id;
@@ -31,26 +32,23 @@ def check_reactions(page,room,element_user,get,locate,click,hover,restart):
                 "reactionsRowButtonSelected" in badge.get_attribute("class"))==mine
         wait_for(f"Element count {n} and own={mine} on base reply",displayed)
         assert not any(pill(e).count() for e in (parent,edit,decoy))
-    def native_control(ws,word,count=None):
-        # Match the rendered controls to the *edited* reply's body row, not
-        # another React button or another message's reaction total.
-        ys=[y for w,x,y in ws if w=="juniper" and x>280]
-        if len(ys)!=1:return None
-        ref=ys[0]
-        for w,x,y in ws:
-            if w!=word or x<=280:continue
-            if word=="react" and abs(y-ref)<6:return x,y
-            if word=="like" and 5<y-ref<38 and (
-                count is None or any(v.strip("()")==str(count) and x<xx<x+66 and abs(yy-y)<5 for v,xx,yy in ws)):
-                return x,y
-        return None
-    def native(n):return locate(f"Untethered Like {n} under Juniper update",lambda ws:native_control(ws,"like",n))
+    def juniper(ws):
+        # The *edited* reply's body row, not another message.
+        rows=[(x,y) for w,x,y in ws if w=="juniper" and x>CHAT_X]
+        return rows[0] if len(rows)==1 else None
+    def chip(ws,count):
+        # A reaction pill shows the emoji and its count beneath the message.
+        ref=juniper(ws)
+        if not ref:return None
+        return next(((x,y) for w,x,y in ws if w.strip("()")==str(count) and CHAT_X<x<CHAT_X+300
+                     and 5<y-ref[1]<45),None)
+    def native(n):return locate(f"Untethered 👍 {n} under Juniper update",lambda ws:chip(ws,n))
     def native_owner(n,mine):
         hover(native(n))
         try:
             verb="remove" if mine else "add"
             def hint(ws):
-                return any(w==verb and x>280 and {"your","reaction"}.issubset(
+                return any(w==verb and x>CHAT_X and {"your","reaction"}.issubset(
                     {v for v,xx,yy in ws if xx>x and abs(yy-y)<5}) for w,x,y in ws)
             locate("Untethered tooltip: "+verb+" your reaction",hint)
         finally:hover((65,60))
@@ -64,8 +62,12 @@ def check_reactions(page,room,element_user,get,locate,click,hover,restart):
         return {e["sender"]:e["event_id"] for e in events}
     tile(decoy).get_by_text("Indigo decoy",exact=True).wait_for()
     locate("native edit and decoy laid out",lambda ws:any(w=="indigo" for w,_,_ in ws) and any(w=="edited" for w,_,_ in ws))
-    click(locate("React next to Juniper update",lambda ws:native_control(ws,"react")))
-    click(locate("Like in reply's reaction picker",lambda ws:native_control(ws,"like")))
+    row=locate("Juniper update row",juniper)
+    click(wait_for("Add Reaction on Juniper update",lambda:ui.message(row,"add reaction"),15))
+    # The picker lists quick reactions under "QUICK REACTIONS"; 👍 Like is first.
+    label=locate("quick reaction picker",lambda ws:next(((x,y) for w,x,y in ws if w=="quick" and x>CHAT_X),None))
+    like=wait_for("Like in reply's reaction picker",lambda:ui.pick([(label[0]-2,label[1]+34)],"like","above"),10)
+    click(like)
     native(1);element(1,False)
     single=active(1)
     assert element_user not in single

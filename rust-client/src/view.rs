@@ -4,6 +4,8 @@ mod call_controls;
 #[cfg(target_os = "linux")]
 mod call_stage;
 mod community;
+mod hover;
+mod icons;
 mod mentions;
 mod reaction_bar;
 mod room_people;
@@ -12,12 +14,13 @@ mod room_search;
 mod sdk_account;
 use iced::{
     Alignment::Center,
-    Border, Color, Element, Fill, Font, Length, Theme, color, font, keyboard,
+    Border, Color, Element, Fill, Font, Length, Padding, Theme, border, color, font, keyboard,
     widget::{
-        Column, Row, Space, button, column, container, image, row, rule, scrollable, stack, text,
-        text_editor, text_input, tooltip,
+        Column, Row, Space, button, column, container, image, mouse_area, opaque, rich_text, row,
+        rule, scrollable, span, stack, text, text_editor, text_input, tooltip,
     },
 };
+use icons::{ICON, Icon, icon, icon_button, with_tip};
 
 const RAIL: Color = color!(0x1e1f22);
 const SIDE: Color = color!(0x2b2d31);
@@ -28,7 +31,20 @@ const ACTIVE: Color = color!(0x404249);
 const BLURPLE: Color = color!(0x5865f2);
 const TEXT: Color = color!(0xf2f3f5);
 const MUTED: Color = color!(0xb5bac1);
+#[cfg(target_os = "linux")]
 const DIM: Color = color!(0x969ba4);
+/// Message body text.
+const BODY: Color = color!(0xdbdee1);
+/// Read channel names, timestamps and secondary labels.
+const CHANNEL: Color = color!(0x949ba4);
+/// Tooltips, menus and other floating surfaces.
+const FLOAT: Color = color!(0x111214);
+const FIELD: Color = color!(0x383a40);
+const LINE: Color = color!(0x3f4147);
+const RED: Color = color!(0xf23f43);
+const GREEN: Color = color!(0x23a55a);
+const LINK: Color = color!(0x00a8fc);
+const ROW_HOVER: Color = color!(0x2e3035);
 const BOLD: Font = Font {
     weight: font::Weight::Bold,
     ..Font::with_name("Liberation Sans")
@@ -42,6 +58,81 @@ fn surface(c: Color, r: f32) -> container::Style {
         ..Default::default()
     }
 }
+fn line_rule<'a>(color: Color) -> El<'a> {
+    rule::horizontal(1)
+        .style(move |_| rule::Style {
+            color,
+            radius: 0.0.into(),
+            fill_mode: rule::FillMode::Full,
+            snap: true,
+        })
+        .into()
+}
+/// A red count badge, as on mentions in the server rail and channel list.
+fn badge(count: u64) -> El<'static> {
+    let label = if count > 99 {
+        "99+".into()
+    } else {
+        count.to_string()
+    };
+    container(text(label).size(12).font(BOLD).color(Color::WHITE))
+        .padding([1, 5])
+        .center_x(Length::Shrink)
+        .style(|_| surface(RED, 8.))
+        .into()
+}
+/// The white unread or selection marker on the far left of a rail or list.
+fn pill(height: f32) -> El<'static> {
+    container(Space::new())
+        .width(4)
+        .height(height)
+        .style(|_| container::Style {
+            background: Some(Color::WHITE.into()),
+            border: Border::default().rounded(border::right(4)),
+            ..Default::default()
+        })
+        .into()
+}
+fn thin_scrollbar() -> scrollable::Direction {
+    scrollable::Direction::Vertical(
+        scrollable::Scrollbar::new()
+            .width(4)
+            .scroller_width(4)
+            .margin(2),
+    )
+}
+fn scroll_style(track: Option<Color>) -> impl Fn(&Theme, scrollable::Status) -> scrollable::Style {
+    move |theme, status| {
+        let mut style = scrollable::default(theme, status);
+        let rail = scrollable::Rail {
+            background: track.map(Into::into),
+            border: Border::default().rounded(4),
+            scroller: scrollable::Scroller {
+                background: RAIL.into(),
+                border: Border::default().rounded(4),
+            },
+        };
+        style.vertical_rail = rail;
+        style.horizontal_rail = rail;
+        style
+    }
+}
+/// Buttons that look like links or plain text until hovered.
+fn plain(color: Color, hover: Color) -> impl Fn(&Theme, button::Status) -> button::Style {
+    move |_, s| button::Style {
+        background: None,
+        text_color: if s == button::Status::Hovered {
+            hover
+        } else {
+            color
+        },
+        ..Default::default()
+    }
+}
+#[cfg_attr(
+    not(any(target_os = "linux", target_arch = "wasm32")),
+    allow(dead_code)
+)]
 fn nav(active: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |_, s| button::Style {
         background: Some(
@@ -85,7 +176,164 @@ fn avatar(name: &str, size: f32) -> El<'static> {
     .into()
 }
 fn label(s: &str) -> El<'_> {
-    text(s).font(BOLD).size(11).color(MUTED).into()
+    text(s).font(BOLD).size(12).color(CHANNEL).into()
+}
+fn label_owned(s: String) -> El<'static> {
+    text(s).font(BOLD).size(12).color(CHANNEL).into()
+}
+/// A member-list row: avatar, name and an optional status line.
+fn member_row<'a>(name: &'a str, status: Option<&'a str>, action: Option<Msg>) -> El<'a> {
+    let mut who = column![text(name).size(15).wrapping(text::Wrapping::None)];
+    if let Some(s) = status {
+        who = who.push(
+            text(s)
+                .size(12)
+                .color(CHANNEL)
+                .wrapping(text::Wrapping::None),
+        );
+    }
+    button(row![avatar(name, 32.), who].spacing(12).align_y(Center))
+        .width(Fill)
+        .padding([5, 8])
+        .on_press_maybe(action)
+        .style(|_, s| button::Style {
+            background: (s == button::Status::Hovered).then(|| HOVER.into()),
+            text_color: if s == button::Status::Hovered {
+                BODY
+            } else {
+                CHANNEL
+            },
+            border: Border::default().rounded(4),
+            ..Default::default()
+        })
+        .into()
+}
+fn field_style(_: &Theme, status: text_editor::Status) -> text_editor::Style {
+    text_editor::Style {
+        background: FIELD.into(),
+        border: Border::default().rounded(8),
+        placeholder: color!(0x6d6f78),
+        value: if matches!(status, text_editor::Status::Disabled) {
+            CHANNEL
+        } else {
+            BODY
+        },
+        selection: color!(0x5865f2, 0.45),
+    }
+}
+fn input_style(_: &Theme, status: text_input::Status) -> text_input::Style {
+    text_input::Style {
+        background: RAIL.into(),
+        border: Border::default().rounded(4),
+        placeholder: color!(0x6d6f78),
+        value: if matches!(status, text_input::Status::Disabled) {
+            CHANNEL
+        } else {
+            BODY
+        },
+        selection: color!(0x5865f2, 0.45),
+        icon: CHANNEL,
+    }
+}
+/// A settings card shown between the channel header and the timeline.
+fn card<'a>(content: impl Into<El<'a>>) -> El<'a> {
+    container(
+        container(content)
+            .padding([12, 16])
+            .width(Fill)
+            .style(|_| container::Style {
+                border: Border {
+                    color: color!(0x26272b),
+                    width: 1.,
+                    radius: 8.0.into(),
+                },
+                ..surface(SIDE, 8.)
+            }),
+    )
+    .padding(Padding {
+        top: 8.,
+        left: 16.,
+        right: 16.,
+        bottom: 0.,
+    })
+    .into()
+}
+fn panel_title<'a>(glyph: Icon, title: String, close: Msg) -> El<'a> {
+    row![
+        icon(glyph, 18., ICON),
+        text(title).size(15).font(BOLD).color(TEXT).width(Fill),
+        icon_button(
+            Icon::Close,
+            "Close",
+            false,
+            Some(close),
+            tooltip::Position::Left
+        )
+    ]
+    .spacing(8)
+    .align_y(Center)
+    .into()
+}
+/// Discord's blurple primary button.
+fn primary(_: &Theme, s: button::Status) -> button::Style {
+    button::Style {
+        background: Some(
+            match s {
+                button::Status::Hovered | button::Status::Pressed => color!(0x4752c4),
+                button::Status::Disabled => color!(0x3c428a),
+                button::Status::Active => BLURPLE,
+            }
+            .into(),
+        ),
+        text_color: if s == button::Status::Disabled {
+            color!(0xa3a6c8)
+        } else {
+            Color::WHITE
+        },
+        border: Border::default().rounded(4),
+        ..Default::default()
+    }
+}
+/// One control in a message's hover toolbar.
+fn tool<'a>(glyph: Icon, hint: &'a str, active: bool, action: Option<Msg>) -> El<'a> {
+    let enabled = action.is_some();
+    let color = if !enabled {
+        icons::ICON_OFF
+    } else if active {
+        TEXT
+    } else {
+        ICON
+    };
+    let control = button(icons::hover_icon(
+        glyph,
+        20.,
+        32.,
+        color,
+        if enabled { TEXT } else { color },
+    ))
+    .padding(0)
+    .on_press_maybe(action)
+    .style(move |_, s| button::Style {
+        background: (active || s == button::Status::Hovered).then(|| color!(0x393c41).into()),
+        border: Border::default().rounded(4),
+        ..Default::default()
+    });
+    with_tip(control, hint, tooltip::Position::Top)
+}
+fn toolbar<'a>(tools: impl Into<El<'a>>) -> El<'a> {
+    container(tools)
+        .padding(2)
+        .style(|_| container::Style {
+            background: Some(CHAT.into()),
+            // No shadow: the overlay's damage region would not cover it.
+            border: Border {
+                color: color!(0x232428),
+                width: 1.,
+                radius: 6.0.into(),
+            },
+            ..Default::default()
+        })
+        .into()
 }
 fn attachment_card<'a>(room: &str, a: &'a crate::media::Attachment) -> El<'a> {
     let name = &a.source.name;
@@ -204,37 +452,230 @@ fn attachment_card<'a>(room: &str, a: &'a crate::media::Attachment) -> El<'a> {
         .style(|_| surface(SIDE, 8.))
         .into()
 }
-fn rail_button<'a>(glyph: String, hint: &'a str, active: bool, msg: Msg) -> El<'a> {
-    let b = button(container(text(glyph).font(BOLD).color(TEXT).size(19)).center(44))
+/// Unread state summarized for a server-rail entry.
+#[derive(Default, Clone, Copy)]
+struct Mark {
+    unread: bool,
+    mentions: u64,
+}
+impl Mark {
+    fn add(&mut self, r: &Room) {
+        self.unread |= r.unread;
+        if r.unread {
+            // Discord counts every unread direct message as a mention.
+            self.mentions += if r.dm {
+                r.read.messages.max(r.read.highlights)
+            } else {
+                r.read.highlights
+            };
+        }
+    }
+}
+fn rail_button<'a>(glyph: String, hint: &'a str, active: bool, msg: Msg, mark: Mark) -> El<'a> {
+    let size = if glyph.chars().count() > 2 { 15 } else { 18 };
+    let b = button(container(text(glyph).font(BOLD).size(size)).center(48))
         .padding(0)
         .on_press(msg)
         .style(move |_, s| {
             let highlighted = active || s == button::Status::Hovered;
             button::Style {
-                background: Some(if highlighted {
-                    BLURPLE.into()
-                } else {
-                    CHAT.into()
-                }),
-                border: Border::default().rounded(if highlighted { 14 } else { 22 }),
+                background: Some(if highlighted { BLURPLE } else { CHAT }.into()),
+                text_color: if highlighted { Color::WHITE } else { BODY },
+                border: Border::default().rounded(if highlighted { 16 } else { 24 }),
                 ..Default::default()
             }
         });
-    let marker = container(Space::new())
-        .width(4)
-        .height(if active { 30 } else { 0 })
-        .style(|_| surface(TEXT, 3.));
-    tooltip(
-        row![marker, b].spacing(7).align_y(Center),
-        container(text(hint).size(14)).padding(6),
+    let icon: El = if mark.mentions > 0 {
+        stack![
+            b,
+            container(
+                container(badge(mark.mentions))
+                    .padding(3)
+                    .style(|_| surface(RAIL, 11.))
+            )
+            .align_right(48)
+            .align_bottom(48)
+            .padding(Padding {
+                right: 0.,
+                bottom: 0.,
+                ..Padding::ZERO
+            })
+        ]
+        .into()
+    } else {
+        b.into()
+    };
+    let marker = container(pill(if active {
+        40.
+    } else if mark.unread {
+        8.
+    } else {
+        0.
+    }))
+    .center_y(48);
+    with_tip(
+        row![marker, icon].spacing(8).align_y(Center),
+        hint,
         tooltip::Position::Right,
     )
-    .style(|_| surface(RAIL, 5.))
-    .gap(8)
-    .into()
 }
 
 impl App {
+    /// Reactions, reply, edit and report, shown while a message is hovered.
+    fn message_tools<'a>(&'a self, r: &'a Room, p: &'a crate::rooms::Post) -> Option<El<'a>> {
+        if !self.logged_in {
+            return None;
+        }
+        let id = p.event_id.as_ref()?;
+        let mut tools = Row::new();
+        if p.reactable {
+            let open = self
+                .reaction_picker
+                .as_ref()
+                .is_some_and(|picker| &picker.target == id);
+            tools = tools.push(tool(
+                Icon::Smile,
+                "Add Reaction",
+                open,
+                (self.verified && self.connected).then(|| Msg::ReactionPicker(id.clone())),
+            ));
+        }
+        tools = tools.push(tool(
+            Icon::Reply,
+            "Reply",
+            false,
+            Some(Msg::Reply(id.clone())),
+        ));
+        if p.may_edit(&self.matrix_id) && r.has_metadata && r.encrypted == p.encrypted {
+            tools = tools.push(tool(
+                Icon::Pencil,
+                "Edit",
+                false,
+                (self.connected && self.editing.is_none()).then(|| Msg::Edit(id.clone())),
+            ));
+        }
+        if self.verified && p.report_id(&self.matrix_id).is_some() {
+            tools = tools.push(tool(
+                Icon::Flag,
+                "Report Message",
+                false,
+                (self.connected && self.reporting.is_none() && !self.report_pending())
+                    .then(|| Msg::Report(self.selected.clone(), id.clone())),
+            ));
+        }
+        Some(toolbar(tools))
+    }
+    /// The quoted line above a reply. Clicking it jumps to the original.
+    fn reply_reference<'a>(&'a self, r: &'a Room, history: &'a Room, target: &'a str) -> El<'a> {
+        let mut line = row![icons::spine()].spacing(4).align_y(Center);
+        line = match r.quote(target).or_else(|| history.quote(target)) {
+            Some(q) => {
+                let who = r.display(&q.sender).to_owned();
+                line.push(avatar(&who, 16.))
+                    .push(
+                        text(format!("@{who}"))
+                            .size(14)
+                            .font(BOLD)
+                            .color(BODY)
+                            .wrapping(text::Wrapping::None),
+                    )
+                    .push(
+                        container(text(q.excerpt).size(14).wrapping(text::Wrapping::None))
+                            .clip(true)
+                            .width(Fill),
+                    )
+            }
+            None => line.push(text("View original · Earlier message").size(14)),
+        };
+        with_tip(
+            button(line)
+                .padding(0)
+                .width(Fill)
+                .on_press(Msg::Jump(target.to_owned()))
+                .style(plain(CHANNEL, BODY)),
+            "View original",
+            tooltip::Position::Top,
+        )
+    }
+    /// An inline image with a hover download control, or a Discord-style file card.
+    fn attachment<'a>(&'a self, file: &'a crate::media::Media) -> El<'a> {
+        let save = Msg::SaveFile(file.clone());
+        if let Some(source) = &file.preview {
+            if let Some(handle) = self.inline.ready(source) {
+                let picture = container(
+                    image(handle)
+                        .content_fit(iced::ContentFit::Contain)
+                        .border_radius(8),
+                )
+                .max_width(400)
+                .max_height(300);
+                let tools = container(toolbar(tool(Icon::Download, "Download", false, Some(save))))
+                    .width(Fill)
+                    .align_right(Fill)
+                    .padding(6);
+                return iced::widget::hover(picture, tools);
+            }
+            let (label, action) = if self.inline.pending(source) {
+                ("Loading image…", None)
+            } else if self.inline.failed(source) {
+                ("Retry image preview", Some(Msg::ShowInline(source.clone())))
+            } else {
+                ("Show image preview", Some(Msg::ShowInline(source.clone())))
+            };
+            return container(
+                column![
+                    button(text(label).size(14))
+                        .padding(0)
+                        .style(plain(LINK, color!(0x5fc5ff)))
+                        .on_press_maybe(action),
+                    button(text(format!("Download {}", file.name)).size(12))
+                        .padding(0)
+                        .style(plain(CHANNEL, BODY))
+                        .on_press(save),
+                ]
+                .spacing(6),
+            )
+            .padding(16)
+            .width(320)
+            .height(180)
+            .center_y(180)
+            .style(|_| surface(SIDE, 8.))
+            .into();
+        }
+        let size = file.size.map(crate::media::size).unwrap_or_default();
+        container(
+            row![
+                icon(Icon::File, 34., color!(0x949cf7)),
+                column![
+                    button(
+                        text(&file.name)
+                            .size(16)
+                            .wrapping(text::Wrapping::WordOrGlyph)
+                    )
+                    .padding(0)
+                    .style(plain(LINK, color!(0x5fc5ff)))
+                    .on_press(save.clone()),
+                    text(size).size(12).color(CHANNEL)
+                ]
+                .spacing(2)
+                .width(Fill),
+                tool(Icon::Download, "Download", false, Some(save))
+            ]
+            .spacing(10)
+            .align_y(Center),
+        )
+        .padding([10, 12])
+        .max_width(432)
+        .style(|_| container::Style {
+            border: Border {
+                color: color!(0x26272b),
+                width: 1.,
+                radius: 8.0.into(),
+            },
+            ..surface(SIDE, 8.)
+        })
+        .into()
+    }
     #[cfg(target_os = "linux")]
     fn ptt_control(&self, active: bool) -> El<'_> {
         iced::widget::checkbox(self.room_ptt)
@@ -637,6 +1078,463 @@ impl App {
         if let Some(screen) = self.sdk_screen() {
             return screen;
         }
+        let mut base = self.screen();
+        if let Some(form) = &self.setup
+            && !self.account
+            && (!self.logged_in || self.verified)
+        {
+            let backdrop =
+                mouse_area(container(Space::new()).width(Fill).height(Fill).style(|_| {
+                    container::Style {
+                        background: Some(Color::from_rgba8(0, 0, 0, 0.7).into()),
+                        ..Default::default()
+                    }
+                }));
+            let backdrop = if self.setup_busy() {
+                backdrop
+            } else {
+                backdrop.on_press(Msg::Setup(crate::community::Input::Close))
+            };
+            base = stack![
+                base,
+                opaque(backdrop),
+                container(community::view(self, form)).center(Fill)
+            ]
+            .into();
+        }
+        if !self.server_menu {
+            return base;
+        }
+        let Some(menu) = self.server_menu_view() else {
+            return base;
+        };
+        // Clicking anywhere outside the menu only closes it, as in Discord.
+        let dismiss = opaque(
+            mouse_area(container(Space::new()).width(Fill).height(Fill))
+                .on_press(Msg::ServerMenu(false)),
+        );
+        stack![
+            base,
+            dismiss,
+            container(menu).padding(Padding {
+                top: 52.,
+                left: 80.,
+                ..Padding::ZERO
+            })
+        ]
+        .into()
+    }
+    /// Discord's server dropdown: invites, channel creation and notification
+    /// defaults for the selected space.
+    fn server_menu_view(&self) -> Option<El<'_>> {
+        let Section::Space(space) = &self.section else {
+            return None;
+        };
+        if !self.logged_in || !self.verified {
+            return None;
+        }
+        let ready = self.connected && self.setup.is_none();
+        let item = |glyph: Icon, label: &'static str, accent: Color, msg: Option<Msg>| {
+            button(
+                row![
+                    text(label).size(14).width(Fill),
+                    icon(
+                        glyph,
+                        18.,
+                        if msg.is_some() {
+                            accent
+                        } else {
+                            icons::ICON_OFF
+                        }
+                    )
+                ]
+                .align_y(Center),
+            )
+            .width(Fill)
+            .padding([7, 8])
+            .on_press_maybe(msg)
+            .style(move |_, s| button::Style {
+                background: (s == button::Status::Hovered).then(|| color!(0x4752c4).into()),
+                text_color: match s {
+                    button::Status::Hovered => Color::WHITE,
+                    button::Status::Disabled => icons::ICON_OFF,
+                    _ => accent,
+                },
+                border: Border::default().rounded(3),
+                ..Default::default()
+            })
+        };
+        #[cfg_attr(
+            not(any(target_os = "linux", target_arch = "wasm32")),
+            allow(unused_mut)
+        )]
+        let mut menu = column![
+            item(
+                Icon::UserPlus,
+                "Invite People",
+                color!(0x949cf7),
+                ready.then(|| Msg::Setup(crate::community::Input::InviteMember(space.clone())))
+            ),
+            item(
+                Icon::Plus,
+                "Create Channel",
+                MUTED,
+                ready.then(|| Msg::Setup(crate::community::Input::Start(Some(space.clone()))))
+            ),
+        ]
+        .spacing(2);
+        #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
+        {
+            menu = menu
+                .push(container(line_rule(color!(0x2e2f34))).padding([4, 8]))
+                .push(item(
+                    Icon::Bell,
+                    "Notification Settings",
+                    MUTED,
+                    Some(Msg::SpaceAlerts),
+                ));
+        }
+        Some(
+            container(menu)
+                .width(220)
+                .padding(6)
+                .style(|_| container::Style {
+                    border: Border {
+                        color: color!(0x2b2d31),
+                        width: 1.,
+                        radius: 6.0.into(),
+                    },
+                    ..surface(FLOAT, 6.)
+                })
+                .into(),
+        )
+    }
+    fn rail_mark(&self, section: &Section) -> Mark {
+        let store = self.rooms();
+        let mut mark = Mark::default();
+        match section {
+            Section::Direct => store
+                .ordered_direct
+                .iter()
+                .filter_map(|id| store.list.get(id))
+                .for_each(|r| mark.add(r)),
+            Section::All => store
+                .list
+                .values()
+                .filter(|r| !r.space && !r.dm)
+                .for_each(|r| mark.add(r)),
+            Section::Space(space) => store
+                .channels(space)
+                .keys()
+                .filter_map(|id| store.list.get(*id))
+                .filter(|r| !r.space)
+                .for_each(|r| mark.add(r)),
+        }
+        mark
+    }
+    fn channel_row<'a>(&'a self, id: &'a String, r: &'a Room) -> El<'a> {
+        let active = self.mentions.is_none() && id == &self.selected;
+        let unread = r.unread && !active;
+        #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
+        let muted = !unread && self.alerts.mode(id) == crate::notifications::Mode::Quiet;
+        #[cfg(not(any(target_os = "linux", target_arch = "wasm32")))]
+        let muted = false;
+        let leading: El = if r.dm {
+            avatar(&r.name, 32.)
+        } else {
+            icon(
+                if r.voice { Icon::Speaker } else { Icon::Hash },
+                20.,
+                if muted {
+                    color!(0x4e5058)
+                } else {
+                    color!(0x80848e)
+                },
+            )
+        };
+        let mut entry = row![
+            leading,
+            text(&r.name)
+                .size(if r.dm { 15 } else { 16 })
+                .font_maybe(unread.then_some(BOLD))
+                .wrapping(text::Wrapping::None)
+                .width(Fill)
+        ]
+        .spacing(if r.dm { 12 } else { 6 })
+        .align_y(Center);
+        let mentions = if !r.unread {
+            0
+        } else if r.dm {
+            r.read.messages.max(r.read.highlights)
+        } else {
+            r.read.highlights
+        };
+        if mentions > 0 {
+            entry = entry.push(badge(mentions));
+        }
+        let link = button(entry)
+            .width(Fill)
+            .padding(if r.dm { [5, 8] } else { [6, 8] })
+            .on_press(Msg::Open(id.clone()))
+            .style(move |_, s| button::Style {
+                background: if active {
+                    Some(ACTIVE.into())
+                } else if s == button::Status::Hovered {
+                    Some(HOVER.into())
+                } else {
+                    None
+                },
+                text_color: if active || unread {
+                    TEXT
+                } else if s == button::Status::Hovered {
+                    BODY
+                } else if muted {
+                    color!(0x5c5e66)
+                } else {
+                    CHANNEL
+                },
+                border: Border::default().rounded(4),
+                ..Default::default()
+            });
+        row![container(pill(if unread { 8. } else { 0. })).width(8), link]
+            .align_y(Center)
+            .into()
+    }
+    #[cfg(target_os = "linux")]
+    fn voice_people<'a>(&'a self, id: &'a String, r: &'a Room) -> Column<'a, Msg> {
+        let speakers = self
+            .call
+            .as_ref()
+            .filter(|c| c.group && c.room == *id)
+            .map(|c| c.speaking.borrow());
+        let mut people = Column::new().spacing(2);
+        for user in r.voice_users() {
+            let speaking = speakers.as_ref().is_some_and(|s| s.contains(user));
+            let name = r.display(user);
+            let face = container(avatar(name, 24.))
+                .padding(2)
+                .style(move |_| container::Style {
+                    border: Border {
+                        color: if speaking { GREEN } else { Color::TRANSPARENT },
+                        width: 2.,
+                        radius: 14.0.into(),
+                    },
+                    ..Default::default()
+                });
+            let label = text(name)
+                .size(14)
+                .wrapping(text::Wrapping::None)
+                .color(if speaking { TEXT } else { CHANNEL });
+            people = people.push(
+                container(
+                    row![face, label]
+                        .spacing(6)
+                        .align_y(Center)
+                        .extend(speaking.then(|| {
+                            with_tip(
+                                icon(Icon::Speaker, 14., GREEN),
+                                "Speaking",
+                                tooltip::Position::Right,
+                            )
+                        })),
+                )
+                .width(Fill)
+                .padding(Padding {
+                    left: 36.,
+                    right: 8.,
+                    top: 1.,
+                    bottom: 1.,
+                }),
+            );
+        }
+        people
+    }
+    fn category<'a>(&self, key: &str, title: &'a str, create: Option<Msg>) -> El<'a> {
+        let open = !self.collapsed.contains(key);
+        let head = button(
+            row![
+                icon(
+                    if open {
+                        Icon::ChevronDown
+                    } else {
+                        Icon::ChevronRight
+                    },
+                    12.,
+                    CHANNEL
+                ),
+                text(title).size(12).font(BOLD)
+            ]
+            .spacing(2)
+            .align_y(Center),
+        )
+        .padding(0)
+        .width(Fill)
+        .on_press(Msg::Collapse(key.into()))
+        .style(plain(CHANNEL, BODY));
+        let mut line = row![head].align_y(Center);
+        if let Some(msg) = create {
+            line = line.push(icon_button(
+                Icon::Plus,
+                "Create Channel",
+                false,
+                Some(msg),
+                tooltip::Position::Top,
+            ));
+        }
+        container(line)
+            .height(40)
+            .align_y(iced::alignment::Vertical::Bottom)
+            .padding(Padding {
+                left: 10.,
+                right: 4.,
+                bottom: 0.,
+                top: 12.,
+            })
+            .into()
+    }
+    fn channel_list(&self) -> Column<'_, Msg> {
+        let mut text_rooms = Vec::new();
+        let mut voice = Vec::new();
+        let mut direct = Vec::new();
+        for (id, r) in self.visible() {
+            if r.dm {
+                direct.push((id, r));
+            } else if r.voice {
+                voice.push((id, r));
+            } else {
+                text_rooms.push((id, r));
+            }
+        }
+        let create = match &self.section {
+            Section::Space(space) if self.logged_in && self.verified => (self.connected
+                && self.setup.is_none())
+            .then(|| Msg::Setup(crate::community::Input::Start(Some(space.clone())))),
+            _ => None,
+        };
+        let section = match &self.section {
+            Section::All => "all".to_owned(),
+            Section::Direct => "direct".to_owned(),
+            Section::Space(id) => id.clone(),
+        };
+        let mut list = Column::new().spacing(2).padding(Padding {
+            right: 8.,
+            bottom: 12.,
+            ..Padding::ZERO
+        });
+        let groups = [
+            (
+                "text",
+                if matches!(self.section, Section::Space(_)) {
+                    "TEXT CHANNELS"
+                } else {
+                    "CHANNELS"
+                },
+                text_rooms,
+            ),
+            ("voice", "VOICE CHANNELS", voice),
+            ("direct", "DIRECT MESSAGES", direct),
+        ];
+        for (kind, title, rooms) in groups {
+            if rooms.is_empty() {
+                continue;
+            }
+            let key = format!("{section}/{kind}");
+            let open = !self.collapsed.contains(&key);
+            list = list.push(self.category(
+                &key,
+                title,
+                (kind != "direct").then(|| create.clone()).flatten(),
+            ));
+            for (id, r) in rooms {
+                // A collapsed category still shows unread and selected channels.
+                if !open && !r.unread && !(self.mentions.is_none() && id == &self.selected) {
+                    continue;
+                }
+                list = list.push(self.channel_row(id, r));
+                #[cfg(target_os = "linux")]
+                if r.voice {
+                    list = list.push(self.voice_people(id, r));
+                }
+            }
+        }
+        list
+    }
+    fn user_panel(&self) -> El<'_> {
+        let name = if self.logged_in {
+            self.profile.as_str()
+        } else {
+            "Preview user"
+        };
+        let (status, dot) = if self.logged_in {
+            ("Online", GREEN)
+        } else {
+            ("Local preview", color!(0x80848e))
+        };
+        #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
+        let (status, dot) = if self.logged_in && self.alerts.dnd == Some(true) {
+            ("Do Not Disturb", RED)
+        } else {
+            (status, dot)
+        };
+        let face = stack![
+            avatar(name, 32.),
+            container(
+                container(
+                    container(Space::new())
+                        .width(10)
+                        .height(10)
+                        .style(move |_| surface(dot, 5.))
+                )
+                .padding(3)
+                .style(|_| surface(TRAY, 8.))
+            )
+            .align_right(36)
+            .align_bottom(36)
+        ];
+        let who = button(
+            row![
+                container(face).width(36).height(36),
+                column![
+                    text(name)
+                        .size(14)
+                        .font(BOLD)
+                        .color(TEXT)
+                        .wrapping(text::Wrapping::None),
+                    text(status).size(12).color(MUTED)
+                ]
+                .spacing(1)
+            ]
+            .spacing(8)
+            .align_y(Center),
+        )
+        .width(Fill)
+        .padding([2, 4])
+        .on_press(Msg::Account)
+        .style(|_, s| button::Style {
+            background: (s == button::Status::Hovered).then(|| ACTIVE.into()),
+            border: Border::default().rounded(4),
+            ..Default::default()
+        });
+        container(
+            row![
+                who,
+                icon_button(
+                    Icon::Gear,
+                    "User Settings",
+                    self.account,
+                    Some(Msg::Account),
+                    tooltip::Position::Top
+                )
+            ]
+            .spacing(4)
+            .align_y(Center),
+        )
+        .width(Fill)
+        .padding([8, 8])
+        .style(|_| surface(TRAY, 0.))
+        .into()
+    }
+    fn screen(&self) -> El<'_> {
         if self.account || self.logged_in && !self.verified {
             return self.account_view();
         }
@@ -644,293 +1542,282 @@ impl App {
         let mut icons = column![
             rail_button(
                 "U".into(),
-                "Home · direct messages",
+                "Direct Messages",
                 self.section == Section::Direct,
-                Msg::Section(Section::Direct)
+                Msg::Section(Section::Direct),
+                self.rail_mark(&Section::Direct),
             ),
             rail_button(
                 "#".into(),
-                "All rooms",
+                "All Rooms",
                 self.section == Section::All,
-                Msg::Section(Section::All)
+                Msg::Section(Section::All),
+                self.rail_mark(&Section::All),
             ),
-            container(rule::horizontal(1)).width(36).padding([4, 0])
+            container(
+                container(Space::new())
+                    .width(32)
+                    .height(2)
+                    .style(|_| surface(color!(0x35363c), 1.))
+            )
+            .padding(Padding {
+                left: 12.,
+                ..Padding::ZERO
+            })
         ]
-        .spacing(8)
-        .align_x(Center);
+        .spacing(8);
         for (id, r) in &store.list {
             if r.space {
                 let s = Section::Space(id.clone());
                 let initials = r
                     .name
                     .split_whitespace()
-                    .take(2)
+                    .take(3)
                     .filter_map(|s| s.chars().next())
                     .collect::<String>()
                     .to_uppercase();
+                let mark = self.rail_mark(&s);
                 icons = icons.push(rail_button(
                     initials,
                     &r.name,
                     self.section == s,
                     Msg::Section(s),
+                    mark,
                 ));
             }
         }
-        let rail = container(scrollable(icons))
-            .padding([14, 0])
-            .width(70)
-            .height(Fill)
-            .style(|_| surface(RAIL, 0.));
+        if self.logged_in && self.verified {
+            let add = button(icons::hover_icon(Icon::Plus, 24., 48., GREEN, Color::WHITE))
+                .padding(0)
+                .on_press_maybe(
+                    (self.connected && self.setup.is_none())
+                        .then_some(Msg::Setup(crate::community::Input::Start(None))),
+                )
+                .style(|_, s| {
+                    let hovered = s == button::Status::Hovered;
+                    button::Style {
+                        background: Some(if hovered { GREEN } else { CHAT }.into()),
+                        border: Border::default().rounded(if hovered { 16 } else { 24 }),
+                        ..Default::default()
+                    }
+                });
+            icons = icons.push(
+                container(with_tip(add, "Add a Space", tooltip::Position::Right)).padding(
+                    Padding {
+                        left: 12.,
+                        ..Padding::ZERO
+                    },
+                ),
+            );
+        }
+        let rail = container(
+            scrollable(icons)
+                .direction(scrollable::Direction::Vertical(
+                    scrollable::Scrollbar::new().width(0).scroller_width(0),
+                ))
+                .height(Fill),
+        )
+        .padding([12, 0])
+        .width(72)
+        .height(Fill)
+        .style(|_| surface(RAIL, 0.));
         let section_name = match &self.section {
-            Section::All => "All rooms",
-            Section::Direct => "Direct messages",
+            Section::All => "All Rooms",
+            Section::Direct => "Direct Messages",
             Section::Space(id) => store
                 .list
                 .get(id)
                 .map(|r| r.name.as_str())
                 .unwrap_or("Space"),
         };
-        let head = container(text(section_name).font(BOLD).size(17).color(TEXT))
-            .padding([0, 16])
-            .center_y(52)
+        let has_menu = matches!(self.section, Section::Space(_)) && self.logged_in && self.verified;
+        let title = text(section_name)
+            .font(BOLD)
+            .size(16)
+            .color(TEXT)
+            .wrapping(text::Wrapping::None)
             .width(Fill);
-        let mut links = Column::new().spacing(2).padding([0, 8]);
-        for (id, r) in self.visible() {
-            let prefix = if r.voice {
-                "♪"
-            } else if r.dm {
-                "@"
-            } else {
-                "#"
-            };
-            let active = self.mentions.is_none() && id == &self.selected;
-            let entry = row![
-                text(prefix).size(22).color(DIM),
-                text(&r.name)
-                    .size(15)
-                    .width(Fill)
-                    .color(if active || r.unread { TEXT } else { MUTED }),
-                text(if !r.unread {
-                    String::new()
-                } else if r.read.highlights > 0 {
-                    format!("@{}", r.read.highlights)
-                } else if r.read.messages > 0 {
-                    format!("{}", r.read.messages)
-                } else {
-                    "•".into()
-                })
-                .font(BOLD)
-                .size(13)
-                .color(if r.read.highlights > 0 {
-                    color!(0xffb6bc)
-                } else {
-                    TEXT
-                })
-            ]
-            .spacing(9)
-            .align_y(Center);
-            links = links.push(
-                button(entry)
-                    .width(Fill)
-                    .padding([5, 9])
-                    .on_press(Msg::Open(id.clone()))
-                    .style(nav(active)),
-            );
-            #[cfg(target_os = "linux")]
-            if r.voice {
-                let speakers = self
-                    .call
-                    .as_ref()
-                    .filter(|c| c.group && c.room == *id)
-                    .map(|c| c.speaking.borrow());
-                for user in r.voice_users() {
-                    let speaking = speakers.as_ref().is_some_and(|s| s.contains(user));
-                    let mut line = row![
-                        text(r.display(user))
-                            .width(Fill)
-                            .size(13)
-                            .color(if speaking { TEXT } else { MUTED })
-                    ]
-                    .spacing(4)
-                    .align_y(Center);
-                    if speaking {
-                        line =
-                            line.push(text("Speaking").size(12).font(BOLD).color(color!(0x65d99c)));
-                    }
-                    links = links.push(container(line).width(Fill).padding(iced::Padding {
-                        left: 28.,
-                        right: 10.,
-                        ..Default::default()
-                    }));
-                }
-            }
-        }
-        let name = if self.logged_in {
-            self.profile.as_str()
-        } else {
-            "Preview user"
-        };
-        let account_label = if self.logged_in {
-            "Matrix account"
-        } else {
-            "Local preview"
-        };
-        #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
-        let account_label = if self.logged_in && self.alerts.dnd == Some(true) {
-            "Do Not Disturb"
-        } else {
-            account_label
-        };
-        let user = button(
-            row![
-                avatar(name, 31.),
-                column![
-                    text(name).size(14).font(BOLD),
-                    text(account_label).size(11).color(MUTED)
+        let head: El = if has_menu {
+            let open = self.server_menu;
+            button(
+                row![
+                    title,
+                    icon(
+                        if open { Icon::Close } else { Icon::ChevronDown },
+                        18.,
+                        BODY
+                    )
                 ]
-            ]
-            .spacing(10)
-            .align_y(Center),
-        )
-        .padding(9)
-        .width(Fill)
-        .on_press(Msg::Account)
-        .style(nav(false));
-        let mut sidebar = column![head, rule::horizontal(1)];
+                .height(Fill)
+                .align_y(Center),
+            )
+            .width(Fill)
+            .height(48)
+            .padding([0, 16])
+            .on_press(Msg::ServerMenu(!open))
+            .style(move |_, s| button::Style {
+                background: (open || s == button::Status::Hovered).then(|| color!(0x35373c).into()),
+                ..Default::default()
+            })
+            .into()
+        } else {
+            container(title)
+                .padding([0, 16])
+                .center_y(48)
+                .width(Fill)
+                .into()
+        };
+        #[cfg_attr(
+            not(any(target_os = "linux", target_arch = "wasm32")),
+            allow(unused_mut)
+        )]
+        let mut sidebar = column![head, line_rule(color!(0x1f2023))];
         #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
         if self.logged_in
             && self.verified
             && let Section::Space(id) = &self.section
             && let Some(space) = store.list.get(id)
+            && self.alerts.spaces.panel
         {
-            sidebar = sidebar.push(
-                button(text("Space alerts").size(15))
-                    .style(nav(self.alerts.spaces.panel))
-                    .width(Fill)
-                    .padding([7, 16])
-                    .on_press(Msg::SpaceAlerts),
-            );
-            if self.alerts.spaces.panel {
-                let busy = self
-                    .pending
-                    .values()
-                    .any(|p| matches!(p,Request::SpacePref(s) if s==id));
-                let state = if busy {
-                    "Saving…"
-                } else if space.space_alerts == crate::notifications::Mode::Default {
-                    "Inherit"
-                } else {
-                    space.space_alerts.label()
-                };
-                let mut panel =
-                    column![text(format!("Space default: {state}")).size(13).font(BOLD)].spacing(3);
-                for m in crate::notifications::Mode::CHOICES {
-                    panel = panel.push(
-                        button(
-                            text(if m == crate::notifications::Mode::Default {
-                                "Inherit"
-                            } else {
-                                m.label()
-                            })
-                            .size(13),
-                        )
-                        .style(nav(m == space.space_alerts))
-                        .width(Fill)
-                        .on_press_maybe(
-                            (self.connected
-                                && self.alerts.ready
-                                && self.alerts.spaces.initialized
-                                && !busy
-                                && m != space.space_alerts)
-                                .then(|| Msg::SpaceMode(id.clone(), m)),
-                        ),
-                    );
-                }
-                panel = panel.push(
-                    text("Includes nested channels. Room settings take priority.")
-                        .size(12)
-                        .color(MUTED),
-                );
-                if self
-                    .pending
-                    .values()
-                    .any(|p| matches!(p, Request::SpaceRule(_)))
-                {
-                    panel = panel.push(text("Updating channel rules…").size(12));
-                }
-                if self.alerts.spaces.failed() {
-                    panel =
-                        panel.push(button("Retry syncing rules").on_press(Msg::RetrySpaceRules));
-                }
-                if self.alerts.spaces.conflict() {
-                    panel =
-                        panel.push(text("A customized Matrix rule was left unchanged.").size(12));
-                }
-                sidebar = sidebar.push(container(panel).padding([4, 10]));
-            }
-        }
-        if self.logged_in && self.verified {
-            sidebar = sidebar.push(
-                button(text("Mentions").size(15))
-                    .width(Fill)
-                    .padding([7, 16])
-                    .style(nav(self.mentions.is_some()))
-                    .on_press(Msg::OpenMentions),
-            );
-        }
-        let mut sidebar = sidebar
-            .push(
-                container(label(if self.section == Section::Direct {
-                    "DIRECT MESSAGES"
-                } else {
-                    "CHANNELS"
-                }))
-                .padding([14, 16]),
-            )
-            .push(scrollable(links).height(Fill));
-        if self.logged_in && self.verified {
-            let (label, parent) = match &self.section {
-                Section::Space(id) => ("Add channel", Some(id.clone())),
-                _ => ("New space", None),
+            let busy = self
+                .pending
+                .values()
+                .any(|p| matches!(p,Request::SpacePref(s) if s==id));
+            let state = if busy {
+                "Saving…"
+            } else if space.space_alerts == crate::notifications::Mode::Default {
+                "Inherit"
+            } else {
+                space.space_alerts.label()
             };
-            if let Some(space) = &parent {
-                sidebar = sidebar.push(
-                    button(text("Invite member").size(14))
-                        .padding([6, 16])
-                        .width(Fill)
-                        .style(nav(false))
-                        .on_press_maybe((self.connected && self.setup.is_none()).then(|| {
-                            Msg::Setup(crate::community::Input::InviteMember(space.clone()))
-                        })),
+            let mut panel = column![
+                row![
+                    text("SPACE NOTIFICATIONS")
+                        .size(12)
+                        .font(BOLD)
+                        .color(CHANNEL)
+                        .width(Fill),
+                    icon_button(
+                        Icon::Close,
+                        "Close",
+                        false,
+                        Some(Msg::SpaceAlerts),
+                        tooltip::Position::Top
+                    )
+                ]
+                .align_y(Center),
+                text(format!("Space default: {state}"))
+                    .size(13)
+                    .font(BOLD)
+                    .color(TEXT)
+            ]
+            .spacing(3);
+            for m in crate::notifications::Mode::CHOICES {
+                panel = panel.push(
+                    button(
+                        text(if m == crate::notifications::Mode::Default {
+                            "Inherit"
+                        } else {
+                            m.label()
+                        })
+                        .size(13),
+                    )
+                    .style(nav(m == space.space_alerts))
+                    .width(Fill)
+                    .on_press_maybe(
+                        (self.connected
+                            && self.alerts.ready
+                            && self.alerts.spaces.initialized
+                            && !busy
+                            && m != space.space_alerts)
+                            .then(|| Msg::SpaceMode(id.clone(), m)),
+                    ),
                 );
             }
+            panel = panel.push(
+                text("Includes nested channels. Room settings take priority.")
+                    .size(12)
+                    .color(MUTED),
+            );
+            if self
+                .pending
+                .values()
+                .any(|p| matches!(p, Request::SpaceRule(_)))
+            {
+                panel = panel.push(text("Updating channel rules…").size(12));
+            }
+            if self.alerts.spaces.failed() {
+                panel = panel.push(button("Retry syncing rules").on_press(Msg::RetrySpaceRules));
+            }
+            if self.alerts.spaces.conflict() {
+                panel = panel.push(text("A customized Matrix rule was left unchanged.").size(12));
+            }
             sidebar = sidebar.push(
-                button(text(label).size(14))
-                    .width(Fill)
-                    .padding([6, 16])
-                    .style(nav(false))
-                    .on_press_maybe(
-                        (self.connected && self.setup.is_none())
-                            .then_some(Msg::Setup(crate::community::Input::Start(parent))),
-                    ),
+                container(
+                    container(panel)
+                        .padding([8, 10])
+                        .width(Fill)
+                        .style(|_| surface(TRAY, 6.)),
+                )
+                .padding([8, 8]),
             );
         }
+        let mut links = Column::new().spacing(2).padding(Padding {
+            top: 8.,
+            ..Padding::ZERO
+        });
+        if self.logged_in && self.verified {
+            let open = self.mentions.is_some();
+            let mentions = button(
+                row![
+                    icon(Icon::At, 20., color!(0x80848e)),
+                    text("Mentions").size(16)
+                ]
+                .spacing(6)
+                .align_y(Center),
+            )
+            .width(Fill)
+            .padding([6, 8])
+            .on_press(Msg::OpenMentions)
+            .style(move |_, s| button::Style {
+                background: if open {
+                    Some(ACTIVE.into())
+                } else if s == button::Status::Hovered {
+                    Some(HOVER.into())
+                } else {
+                    None
+                },
+                text_color: if open || s == button::Status::Hovered {
+                    TEXT
+                } else {
+                    CHANNEL
+                },
+                border: Border::default().rounded(4),
+                ..Default::default()
+            });
+            links = links.push(container(mentions).padding(Padding {
+                left: 8.,
+                right: 8.,
+                ..Padding::ZERO
+            }));
+        }
+        let sidebar = sidebar.push(
+            scrollable(links.push(self.channel_list()))
+                .direction(thin_scrollbar())
+                .style(scroll_style(None))
+                .height(Fill),
+        );
         #[cfg(target_os = "linux")]
         let sidebar = sidebar.extend(self.call_dock());
-        let side =
-            container(sidebar.push(container(user).width(Fill).style(|_| surface(TRAY, 0.))))
-                .width(211)
-                .height(Fill)
-                .style(|_| surface(SIDE, 0.));
-        if self.setup.is_some() || self.mentions.is_some() {
+        let side = container(sidebar.push(self.user_panel()))
+            .width(240)
+            .height(Fill)
+            .style(|_| surface(SIDE, 0.));
+        if let Some(inbox) = &self.mentions {
             let panel = Column::new();
             #[cfg(target_os = "linux")]
             let panel = panel.extend(self.incoming_banner());
-            let content = if let Some(f) = &self.setup {
-                community::view(self, f)
-            } else {
-                mentions::view(self, self.mentions.as_ref().unwrap())
-            };
+            let content = mentions::view(self, inbox);
             return row![
                 rail,
                 side,
@@ -1002,77 +1889,157 @@ impl App {
             };
         }
         let channel = room.map(|r| r.name.as_str()).unwrap_or("Rooms");
-        let header = row![
-            text(if room.is_some_and(|r| r.voice) {
-                "♪"
-            } else if room.is_some_and(|r| r.dm) {
-                "@"
-            } else {
-                "#"
-            })
-            .size(25)
-            .color(DIM),
-            text(channel).font(BOLD).size(17),
-            Space::new().width(Fill),
-            button(text("People").size(13))
-                .on_press(Msg::TogglePeople)
-                .style(nav(self.people)),
-            button(text("Copy chat").size(13))
-                .on_press_maybe(room.map(|_| Msg::Copy))
-                .style(nav(false))
+        let lead: El = match room {
+            Some(r) if r.dm => avatar(&r.name, 24.),
+            Some(r) if r.voice => icon(Icon::Speaker, 24., color!(0x80848e)),
+            _ => icon(Icon::Hash, 24., color!(0x80848e)),
+        };
+        let mut header = row![
+            lead,
+            text(channel)
+                .font(BOLD)
+                .size(16)
+                .color(TEXT)
+                .wrapping(text::Wrapping::None)
         ]
-        .spacing(9)
+        .spacing(8)
         .align_y(Center);
-        let header = if self.logged_in && self.verified && room.is_some() {
-            header
-                .push(
-                    button(text("Permissions").size(13))
-                        .style(nav(self.permission_panel))
-                        .on_press(Msg::Permissions),
-                )
-                .push(
-                    button(text("Search").size(13))
-                        .style(nav(self.search.is_some()))
-                        .on_press_maybe(
-                            (self.search.is_none() && self.original.is_none())
-                                .then_some(Msg::OpenSearch),
-                        ),
-                )
-        } else {
-            header
-        };
-        #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
-        let header = if self.logged_in && self.verified && room.is_some() {
-            header.push(
-                button(text("Alerts").size(13))
-                    .style(nav(self.alerts.panel))
-                    .on_press(Msg::NotificationPanel),
-            )
-        } else {
-            header
-        };
+        match room.map(|r| r.topic.trim()).filter(|t| !t.is_empty()) {
+            Some(topic) => {
+                let mut short: String = topic.lines().next().unwrap_or_default().into();
+                if short.chars().count() > 140 {
+                    short = short.chars().take(139).collect::<String>() + "…";
+                }
+                header = header
+                    .push(
+                        container(Space::new())
+                            .width(1)
+                            .height(24)
+                            .style(|_| surface(LINE, 0.)),
+                    )
+                    .push(
+                        container(
+                            text(short)
+                                .size(14)
+                                .color(CHANNEL)
+                                .wrapping(text::Wrapping::None),
+                        )
+                        .clip(true)
+                        .width(Fill),
+                    );
+            }
+            None => header = header.push(Space::new().width(Fill)),
+        }
+        let full = self.logged_in && self.verified && room.is_some();
+        let mut tools = Row::new().spacing(8).align_y(Center);
         #[cfg(target_os = "linux")]
-        let header = if self.call.is_none()
+        if self.call.is_none()
             && self.verified
             && self.connected
             && self.inbox.ringing.is_none()
-            && room.is_some_and(|r| r.encrypted && (r.voice || r.dm_peer.is_some()))
+            && let Some(r) = room.filter(|r| r.encrypted && (r.voice || r.dm_peer.is_some()))
         {
-            if room.is_some_and(|r| r.voice) {
-                header.push(self.ptt_control(true)).push(
-                    button(text("Join voice").size(16).font(BOLD))
-                        .padding([5, 12])
-                        .style(nav(false))
+            if r.voice {
+                tools = tools.push(self.ptt_control(true)).push(
+                    button(text("Join voice").size(14).font(BOLD))
+                        .padding([6, 14])
+                        .style(|_, s| button::Style {
+                            background: Some(
+                                if s == button::Status::Hovered {
+                                    color!(0x1a8b4b)
+                                } else {
+                                    color!(0x248046)
+                                }
+                                .into(),
+                            ),
+                            text_color: Color::WHITE,
+                            border: Border::default().rounded(4),
+                            ..Default::default()
+                        })
                         .on_press(Msg::JoinVoice),
-                )
+                );
             } else {
-                header
-                    .push(button("Voice call").on_press(Msg::DialDm(false)))
-                    .push(button("Video call").on_press(Msg::DialDm(true)))
+                tools = tools
+                    .push(icon_button(
+                        Icon::Phone,
+                        "Start Voice Call",
+                        false,
+                        Some(Msg::DialDm(false)),
+                        tooltip::Position::Bottom,
+                    ))
+                    .push(icon_button(
+                        Icon::Video,
+                        "Start Video Call",
+                        false,
+                        Some(Msg::DialDm(true)),
+                        tooltip::Position::Bottom,
+                    ));
             }
-        } else {
-            header
-        };
+        }
+        #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
+        if full {
+            tools = tools.push(icon_button(
+                Icon::Bell,
+                "Notification Settings",
+                self.alerts.panel,
+                Some(Msg::NotificationPanel),
+                tooltip::Position::Bottom,
+            ));
+        }
+        if full {
+            tools = tools.push(icon_button(
+                Icon::Shield,
+                "Posting Permissions",
+                self.permission_panel,
+                Some(Msg::Permissions),
+                tooltip::Position::Bottom,
+            ));
+        }
+        tools = tools
+            .push(icon_button(
+                Icon::Members,
+                if self.people {
+                    "Hide Member List"
+                } else {
+                    "Show Member List"
+                },
+                self.people,
+                Some(Msg::TogglePeople),
+                tooltip::Position::Bottom,
+            ))
+            .push(icon_button(
+                Icon::Copy,
+                "Copy Conversation",
+                false,
+                room.map(|_| Msg::Copy),
+                tooltip::Position::Bottom,
+            ));
+        if full {
+            let open = self.search.is_some();
+            tools = tools.push(
+                button(
+                    row![
+                        text("Search")
+                            .size(14)
+                            .color(if open { BODY } else { CHANNEL })
+                            .width(Fill),
+                        icon(Icon::Search, 16., if open { BODY } else { CHANNEL })
+                    ]
+                    .height(Fill)
+                    .align_y(Center),
+                )
+                .width(if open { 220 } else { 150 })
+                .height(26)
+                .padding([0, 8])
+                .on_press_maybe((!open && self.original.is_none()).then_some(Msg::OpenSearch))
+                .style(|_, _| button::Style {
+                    background: Some(RAIL.into()),
+                    border: Border::default().rounded(4),
+                    ..Default::default()
+                }),
+            );
+        }
+        let header = header.push(tools);
         let banner = if !self.logged_in {
             Some(
                 container(
@@ -1094,8 +2061,8 @@ impl App {
             None
         };
         let mut chat = column![
-            container(header).padding([0, 17]).center_y(52).width(Fill),
-            rule::horizontal(1)
+            container(header).padding([0, 16]).center_y(48).width(Fill),
+            line_rule(color!(0x1f2023))
         ];
         if let Some(banner) = banner {
             chat = chat.push(banner)
@@ -1104,7 +2071,12 @@ impl App {
             && let Some(r) = room
         {
             let policy = &r.posting;
-            let mut panel = column![text("Room permissions · Posting").font(BOLD)].spacing(4);
+            let mut panel = column![panel_title(
+                Icon::Shield,
+                "Posting permissions".into(),
+                Msg::Permissions
+            )]
+            .spacing(8);
             if let Some((member, plain, encrypted)) = policy.summary()
                 && let Some(base) = policy.id()
                 && let Some(action) = policy.action()
@@ -1121,19 +2093,25 @@ impl App {
                     text(format!(
                         "{status} · member level {member}, message {plain}, encrypted {encrypted}"
                     ))
-                    .size(14),
+                    .size(14)
+                    .color(BODY),
                 );
                 if policy.patch(&self.matrix_id, action).is_some() {
                     panel = panel.push(
-                        button(text(if busy { "Updating…" } else { action.label() }).size(14))
-                            .style(nav(false))
-                            .on_press_maybe((self.connected && !busy).then(|| {
-                                Msg::SetPosting(crate::permissions::Change {
-                                    room: self.selected.clone(),
-                                    base: base.into(),
-                                    action,
-                                })
-                            })),
+                        button(
+                            text(if busy { "Updating…" } else { action.label() })
+                                .size(14)
+                                .font(BOLD),
+                        )
+                        .padding([7, 14])
+                        .style(primary)
+                        .on_press_maybe((self.connected && !busy).then(|| {
+                            Msg::SetPosting(crate::permissions::Change {
+                                room: self.selected.clone(),
+                                base: base.into(),
+                                action,
+                            })
+                        })),
                     );
                 } else {
                     panel =
@@ -1143,18 +2121,13 @@ impl App {
                     crate::permissions::Action::Restrict=>"Read-only raises the default event level and chat overrides. Higher-level members can still post.",
                     crate::permissions::Action::Restore=>"Restore the previous posting levels, keeping subsequent rule changes.",
                     crate::permissions::Action::Allow=>"Open plain and encrypted messages to ordinary members. Other event levels stay in place.",
-                }).size(13).color(MUTED));
+                }).size(13).color(CHANNEL));
             } else {
                 panel = panel.push(
                     text("Posting permissions unavailable until room state is loaded.").size(13),
                 );
             }
-            chat = chat.push(
-                container(panel)
-                    .padding([6, 14])
-                    .width(Fill)
-                    .style(|_| surface(TRAY, 5.)),
-            );
+            chat = chat.push(card(panel));
         }
         #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
         if self.alerts.panel
@@ -1163,20 +2136,60 @@ impl App {
             let selected = self.alerts.mode(&self.selected);
             let inherited = self.alerts.spaces.inherited(&self.selected);
             let pending = self.notifications_pending(&self.selected);
-            let mut options = Row::new().spacing(5);
+            let mut options = Row::new().spacing(6);
             for mode in crate::notifications::Mode::CHOICES {
+                let chosen = mode == selected;
                 options = options.push(
                     button(
-                        text(
-                            if mode == crate::notifications::Mode::Default && inherited != mode {
-                                "Use space default"
-                            } else {
-                                mode.label()
-                            },
-                        )
-                        .size(14),
+                        row![
+                            container(container(Space::new()).width(8).height(8).style(
+                                move |_| surface(
+                                    if chosen {
+                                        Color::WHITE
+                                    } else {
+                                        Color::TRANSPARENT
+                                    },
+                                    4.
+                                )
+                            ))
+                            .center(16)
+                            .style(move |_| container::Style {
+                                border: Border {
+                                    color: if chosen { Color::WHITE } else { ICON },
+                                    width: 2.,
+                                    radius: 8.0.into(),
+                                },
+                                ..Default::default()
+                            }),
+                            text(
+                                if mode == crate::notifications::Mode::Default && inherited != mode
+                                {
+                                    "Use space default"
+                                } else {
+                                    mode.label()
+                                },
+                            )
+                            .size(14)
+                        ]
+                        .spacing(8)
+                        .align_y(Center),
                     )
-                    .style(nav(mode == selected))
+                    .padding([8, 12])
+                    .style(move |_, s| button::Style {
+                        background: Some(
+                            if chosen {
+                                color!(0x5865f2, 0.25)
+                            } else if s == button::Status::Hovered {
+                                ACTIVE
+                            } else {
+                                HOVER
+                            }
+                            .into(),
+                        ),
+                        text_color: if chosen { Color::WHITE } else { BODY },
+                        border: Border::default().rounded(4),
+                        ..Default::default()
+                    })
                     .on_press_maybe(
                         (self.alerts.ready && self.connected && !pending && selected != mode)
                             .then(|| Msg::NotifyMode(self.selected.clone(), mode)),
@@ -1196,13 +2209,17 @@ impl App {
                 selected.label()
             };
             let mut settings = column![
-                text(format!("Room alerts · {} · {state}", r.name)).font(BOLD),
+                panel_title(
+                    Icon::Bell,
+                    format!("Room alerts · {} · {state}", r.name),
+                    Msg::NotificationPanel
+                ),
                 options.wrap(),
                 text("Mute ordinary messages; higher-priority mention rules still apply.")
                     .size(13)
-                    .color(MUTED)
+                    .color(CHANNEL)
             ]
-            .spacing(4);
+            .spacing(8);
             #[cfg(target_arch = "wasm32")]
             {
                 let (label, can_ask) = match crate::notifications::browser::permission().as_str() {
@@ -1232,12 +2249,7 @@ impl App {
                 settings =
                     settings.push(text("Desktop notification service unavailable.").size(13));
             }
-            chat = chat.push(
-                container(settings)
-                    .padding([6, 14])
-                    .width(Fill)
-                    .style(|_| surface(TRAY, 5.)),
-            );
+            chat = chat.push(card(settings));
         }
         #[cfg(target_os = "linux")]
         if let Some(b) = self.incoming_banner() {
@@ -1280,22 +2292,28 @@ impl App {
         {
             let people: std::collections::BTreeSet<_> =
                 r.history.values().map(|p| p.sender.as_str()).collect();
-            let mut list = column![label("IN THIS CONVERSATION")]
-                .spacing(13)
-                .padding(14);
+            let mut list = column![
+                container(label_owned(format!(
+                    "IN THIS CONVERSATION — {}",
+                    people.len()
+                )))
+                .padding([0, 8])
+            ]
+            .spacing(2)
+            .padding([20, 8]);
             for sender in people {
                 let n = r.display(sender);
-                list = list.push(
-                    row![avatar(n, 28.), text(n).size(14)]
-                        .spacing(8)
-                        .align_y(Center),
-                );
+                list = list.push(member_row(n, None, None));
             }
             middle = middle.push(
-                container(scrollable(list))
-                    .width(178)
-                    .height(Fill)
-                    .style(|_| surface(SIDE, 0.)),
+                container(
+                    scrollable(list)
+                        .direction(thin_scrollbar())
+                        .style(scroll_style(None)),
+                )
+                .width(240)
+                .height(Fill)
+                .style(|_| surface(SIDE, 0.)),
             );
         }
         chat = chat.push(middle);
@@ -1311,50 +2329,85 @@ impl App {
         .into()
     }
     fn conversation<'a>(&'a self, r: &'a Room) -> El<'a> {
-        let mut feed = Column::new().padding([16, 18]).spacing(2);
+        let mut feed = Column::new().padding([16, 0]).spacing(0);
         let original = self.original.as_ref().filter(|c| c.room == self.selected);
         let history = original.and_then(|c| c.slice.as_ref()).unwrap_or(r);
         let timeline = self.timeline_range(history);
+        let edge = |label: &'static str, msg: Option<Msg>| {
+            container(
+                button(text(label).size(13).font(BOLD))
+                    .padding([4, 10])
+                    .on_press_maybe(msg)
+                    .style(|_, s| button::Style {
+                        background: Some(
+                            if s == button::Status::Hovered {
+                                ACTIVE
+                            } else {
+                                SIDE
+                            }
+                            .into(),
+                        ),
+                        text_color: BODY,
+                        border: Border::default().rounded(12),
+                        ..Default::default()
+                    }),
+            )
+            .center_x(Fill)
+            .padding([4, 0])
+        };
         if original.is_none() && timeline.start > 0 {
-            feed = feed.push(
-                button(text("Earlier messages").size(12))
-                    .on_press(Msg::TimelineEdge(true))
-                    .style(nav(false)),
-            );
+            feed = feed.push(edge("Earlier messages", Some(Msg::TimelineEdge(true))));
         } else if original.is_none() && self.logged_in && !r.end {
-            feed = feed.push(
-                button(text("Earlier messages").size(12))
-                    .on_press_maybe(self.connected.then_some(Msg::More))
-                    .style(nav(false)),
-            );
+            feed = feed.push(edge(
+                "Earlier messages",
+                self.connected.then_some(Msg::More),
+            ));
         }
         if original.is_none() && timeline.start == 0 && (r.end || !self.logged_in) {
-            feed = feed
-                .push(
-                    container(text(if r.dm { "@" } else { "#" }).font(BOLD).size(30))
-                        .center(52)
-                        .style(|_| surface(ACTIVE, 26.)),
-                )
-                .push(
-                    text(format!(
-                        "{}{}",
-                        if r.dm { "" } else { "Welcome to #" },
+            let (badge, title, intro): (El, String, String) = if r.dm {
+                (
+                    avatar(&r.name, 80.),
+                    r.name.clone(),
+                    format!(
+                        "This is the beginning of your direct message history with {}.",
                         r.name
-                    ))
-                    .font(BOLD)
-                    .size(28)
-                    .color(TEXT),
+                    ),
                 )
-                .push(
-                    text(if r.topic.is_empty() {
-                        "This is the start of the conversation."
-                    } else {
-                        &r.topic
-                    })
-                    .size(14)
-                    .color(MUTED),
-                );
+            } else {
+                (
+                    container(icon(
+                        if r.voice { Icon::Speaker } else { Icon::Hash },
+                        42.,
+                        Color::WHITE,
+                    ))
+                    .center(68)
+                    .style(|_| surface(color!(0x41434a), 34.))
+                    .into(),
+                    format!("Welcome to #{}!", r.name),
+                    format!("This is the start of the #{} channel.", r.name),
+                )
+            };
+            let mut welcome = column![
+                badge,
+                text(title).font(BOLD).size(32).color(TEXT),
+                text(intro).size(16).color(MUTED)
+            ]
+            .spacing(8);
+            if !r.dm && !r.topic.trim().is_empty() {
+                welcome = welcome.push(text(&r.topic).size(14).color(CHANNEL));
+            }
+            feed = feed.push(container(welcome).padding([8, 16]));
         }
+        let today = chrono::Local::now().date_naive();
+        let stamp = |p: &'a crate::rooms::Post| -> String {
+            if p.day == today {
+                format!("Today at {}", p.clock)
+            } else if today.pred_opt() == Some(p.day) {
+                format!("Yesterday at {}", p.clock)
+            } else {
+                format!("{} {}", p.day.format("%-d %b %Y"), p.clock)
+            }
+        };
         let mut prev: Option<(&str, i64, chrono::NaiveDate)> = None;
         let count = history.posts().len();
         let anchor = original.and_then(|c| history.position(&c.event));
@@ -1381,7 +2434,9 @@ impl App {
                 cached
             };
             let date_change = prev.is_none_or(|(_, _, day)| day != p.day);
+            // Like Discord, a reply always starts a new group with its own header.
             let group = date_change
+                || p.reply.is_some()
                 || prev.is_none_or(|(sender, time, _)| {
                     sender != p.sender || p.time.saturating_sub(time) > 300_000
                 });
@@ -1389,103 +2444,49 @@ impl App {
                 feed = feed.push(
                     container(
                         row![
-                            rule::horizontal(1),
-                            text(&p.day_label).size(11).color(MUTED),
-                            rule::horizontal(1)
+                            line_rule(LINE),
+                            text(&p.day_label).size(12).font(BOLD).color(CHANNEL),
+                            line_rule(LINE)
                         ]
                         .spacing(8)
                         .align_y(Center),
                     )
-                    .padding([9, 0]),
+                    .padding(Padding {
+                        top: 20.,
+                        bottom: 4.,
+                        left: 16.,
+                        right: 16.,
+                    }),
                 );
             }
             if divider.is_some() && p.event_id.as_deref() == divider {
                 feed = feed.push(
-                    row![
-                        rule::horizontal(1),
-                        text("New messages")
-                            .size(12)
-                            .font(BOLD)
-                            .color(color!(0xffb6bc)),
-                        rule::horizontal(1)
-                    ]
-                    .spacing(8)
-                    .align_y(Center),
+                    container(
+                        row![
+                            line_rule(RED),
+                            container(text("NEW").size(12).font(BOLD).color(Color::WHITE))
+                                .padding([1, 5])
+                                .style(|_| surface(RED, 4.))
+                        ]
+                        .align_y(Center),
+                    )
+                    .padding(Padding {
+                        top: 8.,
+                        bottom: 4.,
+                        left: 16.,
+                        right: 16.,
+                    }),
                 );
             }
             let name = r.display(&p.sender);
-            let mut message = Column::new().spacing(2);
-            if let Some(target) = &p.reply {
-                let q = r.quote(target).or_else(|| history.quote(target));
-                let preview = q
-                    .map(|q| format!("{}: {}", r.display(&q.sender), q.excerpt))
-                    .unwrap_or_else(|| "Earlier message".into());
-                message = message.push(
-                    button(text(format!("View original · {preview}")).size(13))
-                        .padding([2, 5])
-                        .style(nav(false))
-                        .on_press(Msg::Jump(target.clone())),
-                );
-            }
-            let mut line = row![text(p.text()).size(16).width(Fill)]
-                .align_y(Center)
-                .spacing(6);
-            if p.revision.is_some() {
-                line = line.push(text("edited").size(11).color(DIM));
-            }
-            if self.logged_in
-                && let Some(id) = &p.event_id
-            {
-                if p.may_edit(&self.matrix_id) && r.has_metadata && r.encrypted == p.encrypted {
-                    line = line.push(
-                        button(text("Edit").size(12))
-                            .padding([1, 6])
-                            .style(nav(false))
-                            .on_press_maybe(
-                                (self.connected && self.editing.is_none())
-                                    .then(|| Msg::Edit(id.clone())),
-                            ),
-                    );
-                }
-                line = line.push(
-                    button(text("Reply").size(12))
-                        .padding([1, 6])
-                        .style(nav(false))
-                        .on_press(Msg::Reply(id.clone())),
-                );
-                if p.reactable {
-                    line = line.push(
-                        button(text("React").size(12))
-                            .padding([1, 6])
-                            .style(nav(self
-                                .reaction_picker
-                                .as_ref()
-                                .is_some_and(|p| &p.target == id)))
-                            .on_press_maybe(
-                                (self.verified && self.connected)
-                                    .then(|| Msg::ReactionPicker(id.clone())),
-                            ),
-                    );
-                }
-                if self.verified && p.report_id(&self.matrix_id).is_some() {
-                    line = line.push(
-                        button(text("Report").size(12))
-                            .padding([1, 6])
-                            .style(nav(false))
-                            .on_press_maybe(
-                                (self.connected
-                                    && self.reporting.is_none()
-                                    && !self.report_pending())
-                                .then(|| Msg::Report(self.selected.clone(), id.clone())),
-                            ),
-                    );
-                }
-            }
-            if let Some(edit) = self
+            let editing = self
                 .editing
                 .as_ref()
-                .filter(|d| d.room == self.selected && Some(&d.event) == p.event_id.as_ref())
-            {
+                .filter(|d| d.room == self.selected && Some(&d.event) == p.event_id.as_ref());
+            let mut message = Column::new().spacing(4);
+            // An attachment's body is usually just its filename; Discord shows the file alone.
+            let caption = p.media.as_ref().is_none_or(|f| p.text().trim() != f.name);
+            if let Some(edit) = editing {
                 let input = text_editor(&edit.input)
                     .id("message-edit")
                     .on_action(Msg::ChangeEdit)
@@ -1502,118 +2503,58 @@ impl App {
                         }
                         text_editor::Binding::from_key_press(press)
                     })
-                    .padding(7)
+                    .padding([10, 14])
                     .height(Length::Shrink)
-                    .max_height(120);
+                    .max_height(160)
+                    .style(field_style);
                 let draft = edit.input.text();
-                message = message
-                    .push(text("Editing message").size(13).font(BOLD).color(MUTED))
-                    .push(input)
-                    .push(
-                        row![
-                            button(if edit.pending.is_some() {
-                                "Saving…"
+                let can_save = self.connected
+                    && edit.pending.is_none()
+                    && !draft.trim().is_empty()
+                    && draft != p.text();
+                message = message.push(input).push(
+                    row![
+                        text("Escape to").size(12).color(BODY),
+                        button(text("cancel").size(12))
+                            .padding(0)
+                            .style(plain(LINK, color!(0x5fc5ff)))
+                            .on_press_maybe(edit.pending.is_none().then_some(Msg::CancelEdit)),
+                        text("·").size(12).color(BODY),
+                        text("Enter to").size(12).color(BODY),
+                        button(
+                            text(if edit.pending.is_some() {
+                                "saving…"
                             } else {
-                                "Save edit"
+                                "save edit"
                             })
-                            .on_press_maybe(
-                                (self.connected
-                                    && edit.pending.is_none()
-                                    && !draft.trim().is_empty()
-                                    && draft != p.text())
-                                .then_some(Msg::SaveEdit)
-                            ),
-                            button("Cancel")
-                                .on_press_maybe(edit.pending.is_none().then_some(Msg::CancelEdit))
-                        ]
-                        .spacing(6),
-                    );
-            } else {
-                message = message.push(line);
+                            .size(12)
+                        )
+                        .padding(0)
+                        .style(plain(LINK, color!(0x5fc5ff)))
+                        .on_press_maybe(can_save.then_some(Msg::SaveEdit))
+                    ]
+                    .spacing(4)
+                    .align_y(Center),
+                );
+            } else if caption {
+                let mut spans = vec![span(p.text()).color(BODY)];
+                if p.revision.is_some() {
+                    spans.push(span(" (edited)").size(11).color(CHANNEL));
+                }
+                message = message.push(
+                    rich_text(spans)
+                        .size(16)
+                        .line_height(1.375)
+                        .on_link_click(iced::never),
+                );
+            } else if p.revision.is_some() {
+                message = message.push(text("(edited)").size(11).color(CHANNEL));
+            }
+            if let Some(file) = &p.media {
+                message = message.push(self.attachment(file));
             }
             if let Some(bar) = reaction_bar::view(self, p) {
                 message = message.push(bar);
-            }
-            if original.is_some_and(|c| Some(&c.event) == p.event_id.as_ref()) {
-                feed = feed.push(
-                    text(
-                        if self.search.as_ref().is_some_and(|s| {
-                            s.hits.iter().any(|h| Some(&h.id) == p.event_id.as_ref())
-                        }) {
-                            "Search match"
-                        } else {
-                            "Original message"
-                        },
-                    )
-                    .size(13)
-                    .color(color!(0xa8b1ff))
-                    .font(BOLD),
-                );
-            }
-            let mut entry = Column::new().spacing(2);
-            if group {
-                let info = row![
-                    text(name).size(16).font(BOLD).color(TEXT),
-                    text(&p.clock).size(11).color(MUTED)
-                ]
-                .spacing(9)
-                .align_y(Center);
-                entry = entry.push(
-                    container(
-                        row![
-                            avatar(name, 36.),
-                            column![info, message].spacing(2).width(Fill)
-                        ]
-                        .spacing(13),
-                    )
-                    .padding([5, 0]),
-                );
-            } else {
-                entry = entry.push(row![Space::new().width(36), message.width(Fill)].spacing(13));
-            }
-            prev = Some((p.sender.as_str(), p.time, p.day));
-            if let Some(file) = &p.media {
-                if let Some(source) = &file.preview {
-                    let preview: El = if let Some(handle) = self.inline.ready(source) {
-                        image(handle)
-                            .width(320)
-                            .height(208)
-                            .content_fit(iced::ContentFit::Contain)
-                            .border_radius(8)
-                            .into()
-                    } else if self.inline.pending(source) {
-                        text("Loading image…").size(12).color(DIM).into()
-                    } else {
-                        button(
-                            text(if self.inline.failed(source) {
-                                "Retry image preview"
-                            } else {
-                                "Show image preview"
-                            })
-                            .size(12),
-                        )
-                        .on_press(Msg::ShowInline(source.clone()))
-                        .style(nav(false))
-                        .into()
-                    };
-                    entry = entry.push(row![Space::new().width(36), preview].spacing(13));
-                }
-                entry = entry.push(
-                    row![
-                        Space::new().width(36),
-                        button(
-                            text(format!(
-                                "Save {}  {}",
-                                file.name,
-                                file.size.map(crate::media::size).unwrap_or_default()
-                            ))
-                            .size(14)
-                        )
-                        .on_press(Msg::SaveFile(file.clone()))
-                        .style(button::secondary)
-                    ]
-                    .spacing(13),
-                );
             }
             if self.logged_in
                 && let Some(id) = p.event_id.as_deref()
@@ -1628,34 +2569,133 @@ impl App {
                     } else {
                         format!(" +{more}")
                     };
-                    entry = entry.push(
-                        row![
-                            Space::new().width(36),
-                            text(format!("Seen by {}{suffix}", head.join(", ")))
-                                .size(12)
-                                .color(MUTED)
-                        ]
-                        .spacing(13),
+                    message = message.push(
+                        text(format!("Seen by {}{suffix}", head.join(", ")))
+                            .size(12)
+                            .color(CHANNEL),
                     );
                 }
             }
+            let target = original.is_some_and(|c| Some(&c.event) == p.event_id.as_ref());
+            let mut block = Column::new().spacing(2);
+            if target {
+                block = block.push(
+                    text(
+                        if self.search.as_ref().is_some_and(|s| {
+                            s.hits.iter().any(|h| Some(&h.id) == p.event_id.as_ref())
+                        }) {
+                            "Search match"
+                        } else {
+                            "Original message"
+                        },
+                    )
+                    .size(12)
+                    .color(color!(0xa8b1ff))
+                    .font(BOLD),
+                );
+            }
+            if let Some(quoted) = &p.reply {
+                block = block.push(self.reply_reference(r, history, quoted));
+            }
+            block = block.push(if group {
+                let head = row![
+                    text(name)
+                        .size(16)
+                        .font(BOLD)
+                        .color(TEXT)
+                        .wrapping(text::Wrapping::None),
+                    text(stamp(p)).size(12).color(CHANNEL)
+                ]
+                .spacing(8)
+                .align_y(Center);
+                row![
+                    container(avatar(name, 40.)).padding(Padding {
+                        top: 2.,
+                        ..Padding::ZERO
+                    }),
+                    column![head, message].spacing(2).width(Fill)
+                ]
+                .spacing(16)
+            } else {
+                row![Space::new().width(40), message.width(Fill)].spacing(16)
+            });
+            let mentioned = crate::rooms::items(&p.mentions["user_ids"])
+                .any(|u| u.as_str() == Some(self.matrix_id.as_str()));
+            let (tint, bar) = if target {
+                (Some(color!(0x5865f2, 0.1)), BLURPLE)
+            } else if mentioned {
+                (Some(color!(0xf0b232, 0.08)), color!(0xf0b232))
+            } else {
+                (None, Color::TRANSPARENT)
+            };
+            let body = container(
+                row![
+                    container(Space::new())
+                        .width(2)
+                        .height(Fill)
+                        .style(move |_| surface(bar, 0.)),
+                    container(block).width(Fill).padding(Padding {
+                        top: 2.,
+                        bottom: 2.,
+                        left: 14.,
+                        right: 48.,
+                    })
+                ]
+                .height(Length::Shrink),
+            )
+            .width(Fill)
+            .style(move |_| container::Style {
+                background: tint.map(Into::into),
+                ..Default::default()
+            });
+            let gutter: El = if group || editing.is_some() {
+                Space::new().width(56).into()
+            } else {
+                container(text(&p.clock).size(11).color(CHANNEL))
+                    .width(56)
+                    .align_x(iced::alignment::Horizontal::Right)
+                    .padding(Padding {
+                        top: 6.,
+                        right: 4.,
+                        ..Padding::ZERO
+                    })
+                    .into()
+            };
+            let tools = editing
+                .is_none()
+                .then(|| self.message_tools(r, p))
+                .flatten();
+            prev = Some((p.sender.as_str(), p.time, p.day));
             let (_, row) = history.key_at(index).expect("timeline index is in range");
             let id = p
                 .event_id
                 .as_ref()
                 .map_or_else(|| format!("post-row-{row}"), |id| format!("post-{id}"));
-            feed = feed.push(container(entry).width(Fill).id(id));
+            feed = feed.push(
+                container(hover::row(body, gutter, tools, ROW_HOVER))
+                    .width(Fill)
+                    .padding(Padding {
+                        top: if group { 14. } else { 0. },
+                        ..Padding::ZERO
+                    })
+                    .id(id),
+            );
         }
         let has_older = timeline.start > 0;
         let has_newer = timeline.end < count;
         if original.is_none() && has_newer {
-            feed = feed.push(
-                button(text("Newer messages").size(12))
-                    .on_press(Msg::TimelineEdge(false))
-                    .style(nav(false)),
-            );
+            feed = feed.push(edge("Newer messages", Some(Msg::TimelineEdge(false))));
         }
-        let feed = scrollable(feed).height(Fill).id(self.timeline_id());
+        let feed = scrollable(feed)
+            .height(Fill)
+            .id(self.timeline_id())
+            .direction(scrollable::Direction::Vertical(
+                scrollable::Scrollbar::new()
+                    .width(8)
+                    .scroller_width(8)
+                    .margin(4),
+            ))
+            .style(scroll_style(Some(SIDE)));
         let feed = if original.is_some() {
             feed
         } else {
@@ -1674,34 +2714,42 @@ impl App {
         };
         let mut viewport = Column::new();
         if let Some(c) = original {
-            let mut header = row![text("Message history").width(Fill).font(BOLD)];
+            let jump = |label: &'static str, msg: Msg| {
+                button(text(label).size(14).font(BOLD))
+                    .padding([2, 8])
+                    .style(plain(Color::WHITE, color!(0xdee0fc)))
+                    .on_press(msg)
+            };
+            let mut header = row![
+                text("You're viewing older messages")
+                    .size(14)
+                    .color(Color::WHITE)
+                    .width(Fill)
+            ];
             if anchor.is_some_and(|i| i > 0) {
-                header = header.push(
-                    button(if c.preceding {
+                header = header.push(jump(
+                    if c.preceding {
                         "Back to original"
                     } else {
                         "Preceding messages"
-                    })
-                    .on_press(Msg::Preceding),
-                );
+                    },
+                    Msg::Preceding,
+                ));
             }
             let header = if self.search.is_some() {
                 header
-                    .push(
-                        button("Back to results")
-                            .style(nav(false))
-                            .on_press(Msg::SearchResults),
-                    )
-                    .push(
-                        button("Return to timeline")
-                            .style(nav(false))
-                            .on_press(Msg::ReturnToReading),
-                    )
+                    .push(jump("Back to results", Msg::SearchResults))
+                    .push(jump("Return to timeline", Msg::ReturnToReading))
             } else {
-                header.push(button("Back to latest").on_press(Msg::Latest))
+                header.push(jump("Back to latest", Msg::Latest))
             };
             let header = header.spacing(5).align_y(Center);
-            viewport = viewport.push(container(header).padding([4, 16]));
+            viewport = viewport.push(
+                container(header)
+                    .padding([6, 16])
+                    .width(Fill)
+                    .style(|_| surface(color!(0x4752c4), 0.)),
+            );
         }
         if self
             .pending
@@ -1745,10 +2793,17 @@ impl App {
                     binding
                 }
             })
-            .padding(11)
+            .padding([11, 0])
+            .size(16)
             .height(Length::Shrink)
-            .min_height(42)
-            .max_height(100);
+            // Content height; the 11 px padding above and below makes a 44 px bar.
+            .min_height(22)
+            .max_height(220)
+            .style(|theme, status| text_editor::Style {
+                background: Color::TRANSPARENT.into(),
+                border: Border::default(),
+                ..field_style(theme, status)
+            });
         let sending = self
             .pending
             .values()
@@ -1764,53 +2819,79 @@ impl App {
             let input = text_input("Reason for reporting", &d.reason)
                 .id("report-reason")
                 .on_input_maybe((!busy).then_some(Msg::ReportReason))
-                .on_submit_maybe(ready.then_some(Msg::SubmitReport));
-            let submit = button(if busy {
-                "Submitting…"
-            } else {
-                "Submit report"
+                .on_submit_maybe(ready.then_some(Msg::SubmitReport))
+                .padding(10)
+                .style(input_style);
+            let submit = button(
+                text(if busy {
+                    "Submitting…"
+                } else {
+                    "Submit report"
+                })
+                .size(14)
+                .font(BOLD),
+            )
+            .padding([8, 14])
+            .style(move |_, s| button::Style {
+                background: Some(
+                    match s {
+                        button::Status::Disabled => color!(0xa12d2f),
+                        button::Status::Hovered => color!(0xc22d31),
+                        _ => color!(0xda373c),
+                    }
+                    .into(),
+                ),
+                text_color: if ready {
+                    Color::WHITE
+                } else {
+                    color!(0xd9a2a3)
+                },
+                border: Border::default().rounded(4),
+                ..Default::default()
             })
-            .style(if ready { nav(true) } else { nav(false) })
             .on_press_maybe(ready.then_some(Msg::SubmitReport));
-            let cancel = button("Cancel")
-                .style(nav(false))
+            let cancel = button(text("Cancel").size(14))
+                .padding([8, 14])
+                .style(plain(BODY, Color::WHITE))
                 .on_press_maybe((!busy).then_some(Msg::CancelReport));
             let panel=column![
-                text(format!("Report message · {}",d.preview)).font(BOLD).size(14),
-                text("Your homeserver admin receives the event ID and your reason. The message text is not attached.").size(13).color(MUTED),
-                row![input,submit,cancel].align_y(Center).spacing(6),
-            ].spacing(5);
+                row![icon(Icon::Flag, 20., RED), text("Report message").font(BOLD).size(16).color(TEXT)].spacing(8).align_y(Center),
+                text(&d.preview).size(14).color(BODY),
+                text("Your homeserver admin receives the event ID and your reason. The message text is not attached.").size(13).color(CHANNEL),
+                row![input,cancel,submit].align_y(Center).spacing(8),
+            ].spacing(8);
             return column![
                 viewport.push(feed).height(Fill),
-                container(panel).padding([10, 16])
+                container(
+                    container(panel)
+                        .padding(16)
+                        .width(Fill)
+                        .style(|_| container::Style {
+                            border: Border {
+                                color: color!(0x26272b),
+                                width: 1.,
+                                radius: 8.0.into()
+                            },
+                            ..surface(SIDE, 8.)
+                        })
+                )
+                .padding(Padding {
+                    left: 16.,
+                    right: 16.,
+                    bottom: 24.,
+                    top: 0.
+                })
             ]
             .width(Fill)
             .height(Fill)
             .into();
-        }
-        if let Some(q) = self.reply_drafts.get(&self.selected) {
-            tray = tray.push(
-                row![
-                    text(format!(
-                        "Replying to {} · {}",
-                        r.display(&q.sender),
-                        q.excerpt
-                    ))
-                    .size(14)
-                    .width(Fill),
-                    button("Cancel reply")
-                        .padding([2, 6])
-                        .on_press(Msg::CancelReply)
-                ]
-                .align_y(Center),
-            );
         }
         if let Some(reason) = skipped {
             tray = tray.push(
                 row![
                     text(reason).size(13).color(color!(0xffc785)).width(Fill),
                     button(text("Dismiss").size(13))
-                        .style(nav(false))
+                        .style(plain(LINK, color!(0x5fc5ff)))
                         .on_press(Msg::DismissSkipped(self.selected.clone()))
                 ]
                 .spacing(6)
@@ -1820,58 +2901,164 @@ impl App {
                 tray = tray.push(
                     text("Choose another file or dismiss to send just the text.")
                         .size(12)
-                        .color(MUTED),
+                        .color(CHANNEL),
                 );
             }
         }
         if self.hover_files {
             tray = tray.push(
-                text(format!("Drop files to attach to {}", r.name))
-                    .color(TEXT)
-                    .font(BOLD),
+                container(
+                    text(format!("Drop files to attach to {}", r.name))
+                        .color(Color::WHITE)
+                        .font(BOLD),
+                )
+                .padding([10, 14])
+                .width(Fill)
+                .style(|_| surface(BLURPLE, 8.)),
             );
         }
+        let reply = self.reply_drafts.get(&self.selected).map(|q| {
+            let close = button(container(icon(Icon::Close, 12., SIDE)).center(16))
+                .padding(0)
+                .on_press(Msg::CancelReply)
+                .style(|_, s| button::Style {
+                    background: Some(
+                        if s == button::Status::Hovered {
+                            BODY
+                        } else {
+                            ICON
+                        }
+                        .into(),
+                    ),
+                    border: Border::default().rounded(8),
+                    ..Default::default()
+                });
+            container(
+                row![
+                    text("Replying to").size(14).color(CHANNEL),
+                    text(r.display(&q.sender).to_owned())
+                        .size(14)
+                        .font(BOLD)
+                        .color(BODY)
+                        .wrapping(text::Wrapping::None),
+                    container(
+                        text(q.excerpt.clone())
+                            .size(14)
+                            .color(CHANNEL)
+                            .wrapping(text::Wrapping::None)
+                    )
+                    .clip(true)
+                    .width(Fill),
+                    with_tip(close, "Cancel reply", tooltip::Position::Top)
+                ]
+                .spacing(5)
+                .align_y(Center),
+            )
+            .padding([9, 16])
+            .width(Fill)
+            .style(|_| container::Style {
+                background: Some(SIDE.into()),
+                border: Border::default().rounded(border::top(8)),
+                ..Default::default()
+            })
+        });
+        let attach = with_tip(
+            button(container(icon(Icon::Plus, 16., FIELD)).center(24))
+                .padding(0)
+                .on_press(Msg::PickFiles)
+                .style(|_, s| button::Style {
+                    background: Some(
+                        if s == button::Status::Hovered {
+                            BODY
+                        } else {
+                            ICON
+                        }
+                        .into(),
+                    ),
+                    border: Border::default().rounded(12),
+                    ..Default::default()
+                }),
+            "Attach files",
+            tooltip::Position::Top,
+        );
+        let can_send = !sending
+            && !restricted
+            && (!self.logged_in || self.connected)
+            && (has_files && self.batch.is_none() && !self.media_config_pending()
+                || !has_files && skipped.is_none() && !self.editor.text().trim().is_empty());
+        let retry = files.is_some_and(|q| q.iter().any(|a| a.cancelled || a.error.is_some()));
+        let send: El = if retry && !(sending || uploading) {
+            button(text("Retry").size(14).font(BOLD))
+                .padding([5, 12])
+                .on_press_maybe(can_send.then_some(Msg::Send))
+                .style(|_, s| button::Style {
+                    background: Some(
+                        if s == button::Status::Hovered {
+                            color!(0x4752c4)
+                        } else {
+                            BLURPLE
+                        }
+                        .into(),
+                    ),
+                    text_color: Color::WHITE,
+                    border: Border::default().rounded(4),
+                    ..Default::default()
+                })
+                .into()
+        } else {
+            icon_button(
+                Icon::Send,
+                if sending || uploading {
+                    "Sending…"
+                } else {
+                    "Send"
+                },
+                false,
+                can_send.then_some(Msg::Send),
+                tooltip::Position::Top,
+            )
+        };
+        let mut field = Column::new();
         if let Some(files) = files.filter(|q| !q.is_empty()) {
             let cards =
                 Row::with_children(files.iter().map(|a| attachment_card(&self.selected, a)))
                     .spacing(8)
                     .padding([2, 0]);
-            tray = tray.push(scrollable(cards).horizontal().width(Fill).height(138));
+            field = field
+                .push(
+                    container(scrollable(cards).horizontal().width(Fill).height(140)).padding(
+                        Padding {
+                            top: 12.,
+                            left: 16.,
+                            right: 16.,
+                            bottom: 6.,
+                        },
+                    ),
+                )
+                .push(line_rule(color!(0x2e2f34)));
         }
-        let composer = row![
-            tooltip(
-                button(text("+").size(20))
-                    .on_press(Msg::PickFiles)
-                    .style(button::secondary),
-                "Attach files",
-                tooltip::Position::Top
-            ),
-            editor,
-            button(
-                text(if sending || uploading {
-                    "Sending…"
-                } else if files.is_some_and(|q| q.iter().any(|a| a.cancelled || a.error.is_some()))
-                {
-                    "Retry"
+        field = field.push(
+            row![attach, editor, send]
+                .spacing(14)
+                .align_y(Center)
+                .padding(Padding {
+                    left: 16.,
+                    right: 8.,
+                    ..Padding::ZERO
+                }),
+        );
+        let attached = reply.is_some();
+        let composer = container(field)
+            .width(Fill)
+            .style(move |_| container::Style {
+                background: Some(FIELD.into()),
+                border: Border::default().rounded(if attached {
+                    border::bottom(8)
                 } else {
-                    "Send"
-                })
-                .size(14)
-                .font(BOLD)
-            )
-            .on_press_maybe(
-                (!sending
-                    && !restricted
-                    && (!self.logged_in || self.connected)
-                    && (has_files && self.batch.is_none() && !self.media_config_pending()
-                        || !has_files
-                            && skipped.is_none()
-                            && !self.editor.text().trim().is_empty()))
-                .then_some(Msg::Send)
-            )
-        ]
-        .spacing(8)
-        .align_y(Center);
+                    border::radius(8)
+                }),
+                ..Default::default()
+            });
         let foot = if restricted {
             "Read-only for your account"
         } else if !self.logged_in {
@@ -1881,15 +3068,20 @@ impl App {
         } else {
             "Matrix room"
         };
-        let mut footer =
-            row![text(foot).size(11).color(DIM), Space::new().width(Fill)].align_y(Center);
+        let mut footer = row![].spacing(4).align_y(Center).height(24);
+        if self.logged_in && r.encrypted && !restricted {
+            footer = footer.push(icon(Icon::Lock, 12., CHANNEL));
+        }
+        footer = footer
+            .push(text(foot).size(12).color(CHANNEL))
+            .push(Space::new().width(Fill));
         if self.logged_in && self.verified {
             let id = r.read.target().map(str::to_owned);
             let available = self.connected && !self.writing_read(&self.selected) && id.is_some();
             footer = footer.push(
                 button(text(if r.unread { "Mark read" } else { "Mark unread" }).size(12))
-                    .style(nav(false))
-                    .padding([1, 6])
+                    .padding([1, 4])
+                    .style(plain(CHANNEL, BODY))
                     .on_press_maybe(available.then(|| {
                         Msg::MarkRoom(self.selected.clone(), if r.unread { id } else { None })
                     })),
@@ -1900,52 +3092,94 @@ impl App {
             container(
                 column![
                     tray,
-                    composer,
+                    Column::new().extend(reply.map(Into::into)).push(composer),
                     footer
-                        .push(text("Shift + Enter for a new line").size(11).color(DIM))
-                        .spacing(8)
                 ]
-                .spacing(5)
+                .spacing(4)
             )
-            .padding([10, 16])
+            .padding(Padding {
+                left: 16.,
+                right: 16.,
+                top: 0.,
+                bottom: 2.,
+            })
         ]
         .width(Fill)
         .height(Fill)
         .into()
     }
     fn account_view(&self) -> El<'_> {
+        if self.logged_in && self.verified {
+            return self.settings_view();
+        }
         macro_rules! field {
             ($label:expr,$value:expr,$kind:ident) => {{
-                let input = text_input($label, $value).on_input(Msg::$kind).padding(11);
+                let input = text_input($label, $value)
+                    .on_input(Msg::$kind)
+                    .padding(10)
+                    .size(16)
+                    .style(input_style);
                 #[cfg(target_arch = "wasm32")]
                 let input = input.on_paste(|_| Msg::WebPaste(super::Field::$kind));
                 input
             }};
         }
-        let mut form = column![label("UNTETHERED  /  ACCOUNT")]
-            .spacing(14)
-            .width(362);
+        let caption = |s: &'static str| text(s).size(12).font(BOLD).color(MUTED);
+        let mut form = column![].spacing(18).width(Fill);
         #[cfg(target_os = "linux")]
         if let Some(b) = self.incoming_banner() {
             form = form.push(b);
         }
         #[cfg(target_os = "linux")]
         if let Some(dock) = self.call_dock() {
-            form = form.push(container(dock).max_width(211));
+            form = form.push(container(dock).max_width(260));
         }
         if !self.logged_in {
             form = form
-                .push(text("Welcome back").size(32).font(BOLD))
-                .push(text("Sign in to your Matrix homeserver.").color(MUTED))
-                .push(field!("Homeserver · matrix.org", &self.server, Server))
-                .push(field!("Matrix username", &self.username, Username))
                 .push(
-                    field!("Password", &self.password, Password)
-                        .secure(true)
-                        .on_submit(Msg::Login),
+                    column![
+                        text("Welcome back").size(24).font(BOLD).color(TEXT),
+                        text("Sign in to your Matrix homeserver.")
+                            .size(16)
+                            .color(MUTED)
+                    ]
+                    .spacing(8)
+                    .width(Fill)
+                    .align_x(Center),
                 )
                 .push(
-                    button("Sign in").padding([9, 16]).on_press_maybe(
+                    column![
+                        caption("HOMESERVER"),
+                        field!("Homeserver · matrix.org", &self.server, Server)
+                    ]
+                    .spacing(8),
+                )
+                .push(
+                    column![
+                        caption("USERNAME"),
+                        field!("Matrix username", &self.username, Username)
+                    ]
+                    .spacing(8),
+                )
+                .push(
+                    column![
+                        caption("PASSWORD"),
+                        field!("Password", &self.password, Password)
+                            .secure(true)
+                            .on_submit(Msg::Login)
+                    ]
+                    .spacing(8),
+                )
+                .push(
+                    button(
+                        container(text("Sign in").size(16).font(BOLD))
+                            .center_x(Fill)
+                            .padding([3, 0]),
+                    )
+                    .width(Fill)
+                    .padding([8, 16])
+                    .style(primary)
+                    .on_press_maybe(
                         (self.connected
                             && !self.pending.values().any(|p| matches!(p, Request::Login)))
                         .then_some(Msg::Login),
@@ -1957,21 +3191,46 @@ impl App {
             #[cfg(not(target_arch = "wasm32"))]
             {
                 form = form
-                    .push(text("Verify this device").size(28).font(BOLD))
-                    .push(text(&self.matrix_id))
                     .push(
-                        text_input("Recovery key or passphrase", &self.recovery)
-                            .on_input(Msg::Recovery)
-                            .padding(11)
-                            .secure(true)
-                            .on_submit(Msg::Verify),
+                        column![
+                            text("Verify this device").size(24).font(BOLD).color(TEXT),
+                            text(&self.matrix_id).size(14).color(MUTED)
+                        ]
+                        .spacing(8)
+                        .width(Fill)
+                        .align_x(Center),
                     )
                     .push(
-                        button(if self.verifying() {
-                            "Verifying…"
-                        } else {
-                            "Verify device"
-                        })
+                        column![
+                            // Not the placeholder's words: tests tap "passphrase" to focus the field.
+                            caption("RECOVERY KEY"),
+                            text_input("Recovery key or passphrase", &self.recovery)
+                                .on_input(Msg::Recovery)
+                                .padding(10)
+                                .size(16)
+                                .style(input_style)
+                                .secure(true)
+                                .on_submit(Msg::Verify)
+                        ]
+                        .spacing(8),
+                    )
+                    .push(
+                        button(
+                            container(
+                                text(if self.verifying() {
+                                    "Verifying…"
+                                } else {
+                                    "Verify device"
+                                })
+                                .size(16)
+                                .font(BOLD),
+                            )
+                            .center_x(Fill)
+                            .padding([3, 0]),
+                        )
+                        .width(Fill)
+                        .padding([8, 16])
+                        .style(primary)
                         .on_press_maybe(
                             (self.connected
                                 && !self.verifying()
@@ -1980,103 +3239,297 @@ impl App {
                             .then_some(Msg::Verify),
                         ),
                     )
-                    .push(text(self.verification_feedback()).size(14));
+                    .push(text(self.verification_feedback()).size(14).color(BODY));
                 if self.sdk.is_none() {
                     form = form.push(
                         text("Emoji comparison isn’t available with this version of gomuks.")
                             .size(13)
-                            .color(MUTED),
+                            .color(CHANNEL),
                     );
                 }
-            }
-        } else {
-            form = form
-                .push(text(&self.profile).size(25).font(BOLD))
-                .push(text("Verified Matrix device").color(MUTED))
-                .push(
-                    button("Check call server support")
-                        .on_press_maybe(self.connected.then_some(Msg::CheckCalls)),
-                )
-                .push(text(&self.rtc_status).size(13));
-            let public = self.read_sharing.public;
-            form = form.push(
-                column![
-                    text("Read receipts").font(BOLD),
-                    text(if public {
-                        "Room members can see what you’ve read."
-                    } else {
-                        "Read receipts are private to your account."
-                    })
-                    .size(13)
-                    .color(MUTED),
-                    button(
-                        text(if public {
-                            "Keep receipts private"
-                        } else {
-                            "Share receipts with room members"
-                        })
-                        .size(14)
-                    )
-                    .style(nav(public))
-                    .on_press_maybe(
-                        (self.connected && !self.changing_read_sharing())
-                            .then_some(Msg::ShareReads(!public))
-                    )
-                ]
-                .spacing(4),
-            );
-            #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
-            {
-                let dnd = self.alerts.dnd;
-                let label = if self.changing_dnd() {
-                    "Saving…"
-                } else {
-                    match dnd {
-                        Some(false) => "Pause alerts",
-                        Some(true) => "Resume alerts",
-                        None => "Unavailable",
-                    }
-                };
-                let control = button(text(label).size(14))
-                    .style(nav(dnd == Some(true)))
-                    .on_press_maybe(
-                        dnd.filter(|_| self.connected && !self.changing_dnd())
-                            .map(|on| Msg::SetDnd(!on)),
-                    );
-                form=form.push(column![
-                    row![text("Do Not Disturb").font(BOLD).width(Fill), control].align_y(Center),
-                    text("Pauses Matrix message notifications across your account and silences Untethered’s incoming ringtone. Calls can still be answered.")
-                        .size(13).color(MUTED)
-                ].spacing(4));
             }
         }
         #[cfg(not(target_arch = "wasm32"))]
         if self.sdk.is_some() {
-            form = form.push(if !self.logged_in {
-                self.sdk_login_choices()
-            } else if !self.verified {
+            form = form.push(if self.logged_in {
                 self.sdk_verify_choices()
             } else {
-                self.sdk_account_settings()
+                self.sdk_login_choices()
             });
         }
-        if (!self.logged_in || self.verified) && !self.status.is_empty() {
+        if !self.logged_in && !self.status.is_empty() {
             form = form.push(text(&self.status).size(14).color(MUTED));
         }
-        if !self.logged_in || self.verified {
+        if !self.logged_in {
             form = form.push(
-                button(if self.logged_in {
-                    "Back to rooms"
-                } else {
-                    "Back to preview"
-                })
-                .on_press(Msg::Back)
-                .style(button::secondary),
+                button(text("Back to preview").size(14))
+                    .padding(0)
+                    .style(plain(LINK, color!(0x5fc5ff)))
+                    .on_press(Msg::Back),
             );
         }
-        container(container(form).padding(30).style(|_| surface(SIDE, 12.)))
-            .center(Fill)
-            .style(|_| surface(RAIL, 0.))
+        let backdrop = iced::Background::Gradient(
+            iced::gradient::Linear::new(iced::Radians(2.4))
+                .add_stop(0.0, color!(0x404eed))
+                .add_stop(0.55, color!(0x2c2f8c))
+                .add_stop(1.0, RAIL)
+                .into(),
+        );
+        container(
+            container(form)
+                .padding(32)
+                .width(480)
+                .style(|_| surface(CHAT, 6.)),
+        )
+        .center(Fill)
+        .style(move |_| container::Style {
+            background: Some(backdrop),
+            ..Default::default()
+        })
+        .into()
+    }
+    /// Discord-style User Settings: a category list on the left, the page on
+    /// the right and a close control that returns to the conversation.
+    fn settings_view(&self) -> El<'_> {
+        let nav = column![
+            container(label("USER SETTINGS")).padding([6, 10]),
+            button(text("My Account").size(16))
+                .width(Fill)
+                .padding([6, 10])
+                .style(|_, _| button::Style {
+                    background: Some(ACTIVE.into()),
+                    text_color: TEXT,
+                    border: Border::default().rounded(4),
+                    ..Default::default()
+                }),
+        ]
+        .spacing(2)
+        .width(218);
+        let left = container(nav)
+            .width(Length::FillPortion(1))
+            .height(Fill)
+            .align_x(iced::alignment::Horizontal::Right)
+            .padding(Padding {
+                top: 60.,
+                right: 8.,
+                bottom: 20.,
+                left: 20.,
+            })
+            .style(|_| surface(SIDE, 0.));
+        let secondary = |_: &Theme, s: button::Status| button::Style {
+            background: Some(
+                match s {
+                    button::Status::Hovered | button::Status::Pressed => color!(0x6d6f78),
+                    button::Status::Disabled => color!(0x3f4147),
+                    button::Status::Active => color!(0x4e5058),
+                }
+                .into(),
+            ),
+            text_color: if s == button::Status::Disabled {
+                CHANNEL
+            } else {
+                Color::WHITE
+            },
+            border: Border::default().rounded(4),
+            ..Default::default()
+        };
+        let setting = |title: &'static str, detail: String, control: El<'static>| -> El<'static> {
+            row![
+                column![
+                    text(title).size(16).font(BOLD).color(TEXT),
+                    text(detail).size(14).color(MUTED)
+                ]
+                .spacing(4)
+                .width(Fill),
+                control
+            ]
+            .spacing(16)
+            .align_y(Center)
             .into()
+        };
+        let mut page = column![text("My Account").size(20).font(BOLD).color(TEXT)].spacing(20);
+        #[cfg(target_os = "linux")]
+        if let Some(b) = self.incoming_banner() {
+            page = page.push(b);
+        }
+        #[cfg(target_os = "linux")]
+        if let Some(dock) = self.call_dock() {
+            page = page.push(container(dock).max_width(260));
+        }
+        let profile = column![
+            container(Space::new())
+                .height(72)
+                .width(Fill)
+                .style(|_| container::Style {
+                    background: Some(BLURPLE.into()),
+                    border: Border::default().rounded(border::top(8)),
+                    ..Default::default()
+                }),
+            container(
+                row![
+                    container(avatar(&self.profile, 72.))
+                        .padding(5)
+                        .style(|_| surface(TRAY, 41.)),
+                    column![
+                        text(&self.profile).size(20).font(BOLD).color(TEXT),
+                        text(&self.matrix_id).size(14).color(MUTED)
+                    ]
+                    .spacing(2)
+                    .width(Fill),
+                    container(
+                        row![
+                            icon(Icon::Shield, 14., GREEN),
+                            text("Verified device").size(12).font(BOLD).color(GREEN)
+                        ]
+                        .spacing(4)
+                        .align_y(Center)
+                    )
+                    .padding([4, 8])
+                    .style(|_| surface(color!(0x23a55a, 0.12), 4.))
+                ]
+                .spacing(16)
+                .align_y(Center)
+            )
+            .padding(16)
+        ];
+        page = page.push(container(profile).width(Fill).style(|_| surface(TRAY, 8.)));
+        let group = |heading: &'static str, rows: Vec<El<'static>>| -> El<'static> {
+            column![
+                label(heading),
+                container(Column::with_children(rows).spacing(20))
+                    .padding(16)
+                    .width(Fill)
+                    .style(|_| surface(SIDE, 8.))
+            ]
+            .spacing(8)
+            .into()
+        };
+        let calls = setting(
+            "Call server",
+            if self.rtc_status.is_empty() {
+                "Check whether your homeserver advertises MatrixRTC for calls.".into()
+            } else {
+                self.rtc_status.clone()
+            },
+            button(text("Check call server support").size(14))
+                .padding([7, 14])
+                .style(secondary)
+                .on_press_maybe(self.connected.then_some(Msg::CheckCalls))
+                .into(),
+        );
+        page = page.push(group("VOICE & VIDEO", vec![calls]));
+        let public = self.read_sharing.public;
+        let receipts = setting(
+            "Read receipts",
+            if public {
+                "Room members can see what you’ve read.".into()
+            } else {
+                "Read receipts are private to your account.".into()
+            },
+            button(
+                text(if public {
+                    "Keep receipts private"
+                } else {
+                    "Share receipts with room members"
+                })
+                .size(14),
+            )
+            .padding([7, 14])
+            .style(secondary)
+            .on_press_maybe(
+                (self.connected && !self.changing_read_sharing())
+                    .then_some(Msg::ShareReads(!public)),
+            )
+            .into(),
+        );
+        page = page.push(group("PRIVACY", vec![receipts]));
+        #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
+        {
+            let dnd = self.alerts.dnd;
+            let label = if self.changing_dnd() {
+                "Saving…"
+            } else {
+                match dnd {
+                    Some(false) => "Pause alerts",
+                    Some(true) => "Resume alerts",
+                    None => "Unavailable",
+                }
+            };
+            let control = button(text(label).size(14))
+                .padding([7, 14])
+                .style(if dnd == Some(true) {
+                    primary
+                } else {
+                    secondary
+                })
+                .on_press_maybe(
+                    dnd.filter(|_| self.connected && !self.changing_dnd())
+                        .map(|on| Msg::SetDnd(!on)),
+                );
+            page = page.push(group(
+                "NOTIFICATIONS",
+                vec![setting(
+                    "Do Not Disturb",
+                    "Pauses Matrix message notifications across your account and silences Untethered’s incoming ringtone. Calls can still be answered.".into(),
+                    control.into(),
+                )],
+            ));
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.sdk.is_some() {
+            page = page.push(self.sdk_account_settings());
+        }
+        if !self.status.is_empty() {
+            page = page.push(text(&self.status).size(14).color(MUTED));
+        }
+        let close = column![
+            with_tip(
+                button(container(icon(Icon::Close, 18., ICON)).center(36))
+                    .padding(0)
+                    .on_press(Msg::Back)
+                    .style(|_, s| button::Style {
+                        background: (s == button::Status::Hovered).then(|| HOVER.into()),
+                        border: Border {
+                            color: if s == button::Status::Hovered {
+                                BODY
+                            } else {
+                                ICON
+                            },
+                            width: 2.,
+                            radius: 18.0.into(),
+                        },
+                        ..Default::default()
+                    }),
+                "Back to rooms",
+                tooltip::Position::Bottom
+            ),
+            text("ESC").size(13).font(BOLD).color(CHANNEL)
+        ]
+        .spacing(8)
+        .align_x(Center);
+        let right = container(
+            row![
+                scrollable(container(page.max_width(740)).padding(Padding {
+                    top: 60.,
+                    right: 20.,
+                    bottom: 60.,
+                    left: 40.,
+                }))
+                .direction(thin_scrollbar())
+                .style(scroll_style(None))
+                .width(Fill)
+                .height(Fill),
+                container(close).padding(Padding {
+                    top: 60.,
+                    right: 21.,
+                    ..Padding::ZERO
+                })
+            ]
+            .height(Fill),
+        )
+        .width(Length::FillPortion(2))
+        .height(Fill)
+        .style(|_| surface(CHAT, 0.));
+        row![left, right].height(Fill).into()
     }
 }

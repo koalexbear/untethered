@@ -68,7 +68,7 @@ def check_layout(stack,desks,users,secret,original_mics,publications):
         data=sp.check_output(["import","-window",alice.win,"png:-"],env=alice.env,timeout=6)
         im=Image.open(io.BytesIO(data)).convert("RGB")
         # Mask the room sidebar, which has independent speaking indicators.
-        im.paste((0,0,0),(0,0,281,im.height))
+        im.paste((0,0,0),(0,0,313,im.height))
         return im
     def state(form,phase):
         def matches():
@@ -147,7 +147,7 @@ def check_layout(stack,desks,users,secret,original_mics,publications):
     def fallback():
         im=screen()
         return ((r:=pattern_box(im,palettes[0][0])) and 200<r[2]-r[0]<500 and not pattern_box(im,palettes[1][3]) and
-                "focus" not in {w for w,x,_ in alice.words() if x>280} and
+                "focus" not in {w for w,x,_ in alice.words() if x>312} and
                 videos()=={users[1]:original[users[1]]})
     wait_for("focused departure restores live grid",fallback,15)
     publishers[0].click("stop")

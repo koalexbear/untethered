@@ -45,8 +45,8 @@ In Code OSS, **Ctrl+Shift+B** builds the Rust binary; **Terminal → Run Task �
 untethered: Run** launches the desktop app.
 
 The first launch opens a **local preview**: try the space rail, direct messages,
-channel switching, People, Copy chat, or the composer (Enter sends, Shift+Enter adds
-a line). Preview messages are never sent and disappear when you quit. Choose
+channel switching, the member list and copy buttons in the channel header, or the
+composer (Enter sends, Shift+Enter adds a line). Preview messages are never sent and disappear when you quit. Choose
 **Sign in to Matrix** for live rooms. Enter a homeserver such as `matrix.org`;
 the client adds `https://`. This prototype supports password login and verification
 with the account’s existing recovery key (grouped or compact) or recovery passphrase.
@@ -56,14 +56,27 @@ needs support from the client engine; the pinned gomuks release does not expose
 that flow through its frontend API. Room sync, encryption, history, and sends use the upstream
 gomuks engine. The UI currently renders plain text and initial-based avatars.
 
-**Replies:** Click **Reply** beside a message, type your response, and send.
-The composer shows who you’re replying to; **Cancel reply** keeps your text.
-Click **View original** on a reply to jump to the exact Matrix event. If it
+**Discord-style layout:** Hover a message to show its toolbar: **Add Reaction**,
+**Reply**, **Edit** (your own text messages) and **Report Message** (other
+people’s). Header icons open notification settings, posting permissions, the
+member list and room search; hover any icon for its name. Click the space name
+at the top of the channel list for **Invite People**, **Create Channel** and
+**Notification Settings**, or use **+** beside a channel category. **+** at
+the bottom of the server rail creates a space. Click your name or the gear at
+the bottom left for **User Settings**. Escape closes menus, dialogs and
+settings. Category headers collapse; a collapsed category still lists unread
+and selected channels.
+
+**Replies:** Hover a message, click **Reply**, type your response, and send.
+The bar above the composer shows who you’re replying to; its **×** (Cancel
+reply) keeps your text. Click the quoted line above a reply to jump to the
+exact Matrix event. If it
 is outside the loaded timeline, Untethered loads that part of the room’s
 history through gomuks. **Preceding messages** shows what led up to it, and
 **Back to latest** returns to the conversation.
 
-**Linux desktop notifications:** Open **Alerts** in the room header. **All
+**Linux desktop notifications:** Click the bell (**Notification Settings**) in
+the room header. **All
 messages** enables ordinary message alerts; **Mute ordinary** quiets them
 while higher-priority Matrix rules, such as direct mentions, still apply.
 **Account default** removes the room override. The setting syncs with your
@@ -71,8 +84,9 @@ Matrix account. While Untethered is running, alerts go to the desktop
 notification service; the room you’re currently viewing in a focused
 window doesn’t also show a popup.
 
-**Space alerts:** Select a space from the rail, open **Space alerts**, and
-choose **All messages** or **Mute ordinary**. The setting applies to joined
+**Space alerts:** Select a space from the rail, click its name at the top of
+the channel list, choose **Notification Settings**, and pick **All messages**
+or **Mute ordinary**. The setting applies to joined
 channels, including channels in nested spaces. An explicit room setting
 takes priority. **Inherit** removes the space preference; the nearest
 configured parent applies, or your account defaults if there is none.
@@ -81,8 +95,8 @@ mentions still follow your Matrix mention rule, and Do Not Disturb still
 wins. Untethered updates the underlying Matrix push rules as it syncs
 changes to space membership. [Linux and browser tests](scripts/room-alerts.md#verify-space-alerts).
 
-**Do Not Disturb:** Click your account at the bottom of the sidebar and choose
-**Pause alerts**. It silences message notifications across your Matrix account,
+**Do Not Disturb:** Open **User Settings** from the bottom of the sidebar and
+choose **Pause alerts**. It silences message notifications across your Matrix account,
 including direct mentions. Messages still arrive, and the mentions inbox still
 updates. On Linux you can answer or decline an incoming call without a ringtone.
 Choose **Resume alerts** on either Linux or web to restore the existing room
@@ -103,25 +117,27 @@ Use **Mark unread** below the composer to leave a reminder; it stays until
 you choose **Mark read**, even after restart.
 
 Read receipts are private by default. To let other room members see your
-future reads, select **Account → Share receipts with room members**. Choose
+future reads, select **User Settings → Share receipts with room members**. Choose
 **Keep receipts private** to stop sharing. Other people’s public receipts
 appear as **Seen by** beneath the message. [Linux, Chromium and Element
 test](scripts/read-state.md).
 
-**Report a message:** Select **Report** beside someone else’s message, enter
+**Report a message:** Hover someone else’s message, click **Report Message**, enter
 a reason, and choose **Submit report**. The report goes to your homeserver
 administrator. In an encrypted room, the administrator can read your reason;
 Untethered does not attach the decrypted message or post the reason to the room.
 [Verified on Linux desktop and in Chromium](scripts/room-permissions.md#verify-message-reports).
 
-**Room posting permissions:** Open **Permissions** in the room header to see
+**Room posting permissions:** Click the shield (**Posting Permissions**) in the
+room header to see
 the levels required for plain and encrypted messages. If your role allows it,
 choose **Make read-only** to stop ordinary members from posting. Members with
 sufficient power can still post announcements. **Restore posting** brings
 back the previous posting levels, including inherited defaults, and keeps
 rules another administrator changed in the meantime.
 
-**Room membership:** Open **People**, find the member by name or Matrix ID,
+**Room membership:** Open the member list from the room header, find the member
+by name or Matrix ID,
 and select their row. **Kick** removes a joined member. They cannot post while
 out, but can rejoin a public room without an invitation. **Ban** also prevents
 rejoining. Either action accepts an optional reason. To readmit a banned
@@ -130,19 +146,19 @@ member, select their **Banned** row and choose
 changes to **Joined** when they accept. Membership controls use your room role
 and the selected account’s full Matrix ID.
 
-**Room search:** Click **Search** in the room header, enter a word or phrase,
+**Room search:** Click the **Search** box in the room header, enter a word or phrase,
 and press Enter. Results come from this device’s gomuks history and use the
 current text of edited messages. **Check coverage** shows the number of
 readable messages cached for this room and the oldest date it found. Open
 a result to see it in context. **Back to results** keeps your query;
 **Return to timeline** takes you back to where you were reading.
 
-**Edits:** Click **Edit** on one of your sent text messages or replies. Press
-Enter or **Save edit** to update it in place; **Cancel** or Escape discards
+**Edits:** Hover one of your sent text messages or replies and click **Edit**.
+Press Enter or **save edit** to update it in place; **cancel** or Escape discards
 the change. Editing leaves your unsent composer draft alone. An edited reply
-keeps its **View original** link.
+keeps its link to the original.
 
-**Reactions:** Click **React** beside a message to choose a quick reaction
+**Reactions:** Hover a message and click **Add Reaction** to choose a quick reaction
 or enter your own emoji or text. Click an existing reaction to add yours;
 click a highlighted reaction to remove only yours. Reactions stay on the
 same message when its text is edited. In encrypted rooms, gomuks and Element
@@ -156,8 +172,8 @@ JPEG, GIF and WebP previews are static. Oversized or unsupported images still
 send as ordinary attachments within the upload limit. Each file is a standard
 Matrix media event. Draft attachments stay in their original room when you switch.
 Uploads are sequential, with up to 10 staged files per room and a 64 MiB/file cap
-(lower if the homeserver advertises a smaller limit). Click **Save** on a received
-attachment. Preview mode simulates a send locally; it never uploads.
+(lower if the homeserver advertises a smaller limit). Click a received file’s
+name or its **Download** button to save it. Preview mode simulates a send locally; it never uploads.
 
 If a file is too large, the composer shows its name, size, and the limit
 in bytes. Valid files from the same selection stay staged. If none fit,
@@ -182,7 +198,7 @@ through the app's existing data device; no clipboard watcher or helper daemon is
 
 Received images show an inline thumbnail in the active conversation. The client
 uses encrypted Matrix thumbnails when available, or decodes a small original
-(up to 4 MiB) via gomuks. **Save** still downloads the original. The repeatable
+(up to 4 MiB) via gomuks. Hover an image and click **Download** to save the original. The repeatable
 `scripts/test-media-interop.py` test checks actual pixels in an independent browser
 device after both login and reload against a disposable Synapse.
 
@@ -191,12 +207,12 @@ Dolphin multi-file drag, room switching during upload, and byte-for-byte PNG/PDF
 downloads in both directions using the two clients’ visible controls.
 
 **Linux DM calls (experimental):** Open an encrypted direct message with one
-other joined user and click **Voice call**. Element rings; when the recipient
+other joined user and click the phone icon (**Start Voice Call**). Element rings; when the recipient
 accepts, Untethered uses the default microphone and output through `pacat`
 (PulseAudio or PipeWire-Pulse). **Hang up** releases both streams. Calling
 needs a verified Matrix device and a homeserver advertising a LiveKit
 `livekit_service_url` with OpenID authorization. Source builds need Clang for
-the LiveKit SDK. **Account → Check call server support** queries the gomuks
+the LiveKit SDK. **User Settings → Check call server support** queries the gomuks
 transport-discovery RPC; legacy deployments can also advertise in `.well-known`.
 
 With Untethered open, an incoming Element DM voice call plays a ringtone and
@@ -204,7 +220,8 @@ shows the caller, **Accept**, and **Decline**. Declining notifies Element
 without opening your microphone. Accepting joins the existing encrypted call.
 Either participant can hang up.
 
-**Linux DM video (experimental):** Choose **Video call** in an encrypted DM.
+**Linux DM video (experimental):** Click the camera icon (**Start Video Call**)
+in an encrypted DM.
 The other person sees an incoming video invitation. Your camera is requested
 through the Camera portal after they accept; accepting leaves **their**
 camera off until they choose **Start camera**. The same camera control is
@@ -214,8 +231,8 @@ a participant tile to focus it; the dock keeps the call controls together.
 **Stop camera** keeps the conversation going; **Hang up** releases capture.
 [Two-way Linux video test](experiments/rtc-audio/README.md#verify-dm-video).
 
-**To watch your own share:** click **Share window**, choose a window in the
-desktop picker, then look for **Your screen · LIVE**. It opens on the stage.
+**To watch your own share:** click **Share screen**, choose a screen or window
+in the desktop picker, then look for **Your screen · LIVE**. It opens on the stage.
 If you switch to someone’s camera, click **Your screen** in the strip to watch
 it again. Your choice of view doesn’t change what anyone else receives.
 **Theater** hides the sidebars; **Open chat** returns to the docked preview.
@@ -226,7 +243,7 @@ the tab alongside their microphone. Uncheck **Play shared audio** to hear
 just the conversation; this changes only your playback. **Deafen** silences
 both and restores your previous choice when turned off.
 
-**To send an app’s sound with your window:** start **Share window**, play
+**To send an app’s sound with your window:** start **Share screen**, play
 audio in the app, then click **Choose app audio → Send sound from** and
 select its playback stream. If it just started playing, click **Refresh
 devices**. Only the selected stream is shared, even if other apps are
@@ -271,7 +288,7 @@ stops; choose another camera and press **Start camera** to resume.
 During a brief network interruption, the Linux call bar shows **Reconnecting**
 and releases the audio devices. If both devices are still in the same Matrix
 call when connectivity returns, encrypted audio resumes automatically. Once
-membership has expired, starting another call requires a new **Voice call**.
+membership has expired, starting another call requires a new **Start Voice Call**.
 
 If direct media is blocked, both clients can use the TURN relay advertised by
 LiveKit. The [relay-only test](experiments/rtc-audio/README.md#verify-turn-only-calls)
@@ -307,12 +324,17 @@ the key or switching applications closes your microphone; you still hear
 the room. **Mute** and **Deafen** override the key. The choice carries over
 to your next voice room until you quit the app.
 
-In the voice-room call bar, click **Share window** and pick a window in your
-desktop's chooser. Other participants see the live window in the voice room.
+In the voice-room call bar, click **Share screen** and pick a screen or a
+window in your desktop's chooser. Other participants see it live; **Open call
+view** puts it on the stage. Shares keep their source size up to 1920×1080 and
+send up to 30 fps (2.5 Mbps cap); the pointer is included when the portal
+offers it. Cameras send 1280×720 at up to 30 fps (1.7 Mbps cap). A 1600×900
+test window arrived at 1600×928 and 30 fps on both receivers
+([measurements](experiments/rtc-audio/README.md#verify-portal-window-sharing)).
 You can browse another channel and use **Stop sharing** there without
 leaving voice. Capture requires a ScreenCast portal backend, PipeWire and
 GStreamer (`gst-launch-1.0`, `pipewiresrc`, and the base video plugins).
-The share carries window pixels; microphones remain separate encrypted tracks.
+The share carries screen pixels; microphones remain separate encrypted tracks.
 
 **Start camera** uses the Linux Camera portal and the camera selected under
 **Devices** (system default initially). Other participants see a **Camera** tile with your name.

@@ -9,6 +9,7 @@ from urllib.parse import quote
 import requests
 from qa_native_paste import child,isolated_env,start_display,wait_for
 from qa_replies import screen_words
+from qa_ui import CHAT_X
 
 
 def check_read_state(stack,tmp,hs,backend,room,me,hdr,http,web,peer,web_words):
@@ -38,9 +39,12 @@ def check_read_state(stack,tmp,hs,backend,room,me,hdr,http,web,peer,web_words):
     def find(label,check,read=native_words):
         try:return wait_for(label,lambda:check(read()),15)
         except RuntimeError:print(label,"visible words:",read(),flush=True);raise
-    def word(ws,s):return next(((xx,y) for w,xx,y in ws if w==s and xx>280),None)
+    def word(ws,s):return next(((xx,y) for w,xx,y in ws if w==s and xx>CHAT_X),None)
+    def new_tag(ws):
+        # The unread divider is a red line with a NEW tag at its right end.
+        return next(((xx,y) for w,xx,y in ws if w=="new" and xx>1000),None)
     def phrase(ws,first,second):
-        return next(((xx,y) for w,xx,y in ws if w==first and xx>280 for v,x2,y2 in ws
+        return next(((xx,y) for w,xx,y in ws if w==first and xx>CHAT_X for v,x2,y2 in ws
                      if v==second and 0<x2-xx<100 and abs(y2-y)<4),None)
     def marker(r,key):
         uri=f"{hs}/_matrix/client/v3/user/{quote(me,safe='')}/rooms/{quote(r,safe='')}/account_data/{key}"
@@ -95,7 +99,7 @@ def check_read_state(stack,tmp,hs,backend,room,me,hdr,http,web,peer,web_words):
     find("web search active",lambda ws:word(ws,"coverage"),web_words)
     second=send(room,"Amber unread",True)
     def divider(ws):
-        d=phrase(ws,"new","messages");a=phrase(ws,"amber","unread");s=phrase(ws,"sunrise","marker")
+        d=new_tag(ws);a=phrase(ws,"amber","unread");s=phrase(ws,"sunrise","marker")
         return d and a and s and s[1]<d[1]<a[1]
     find("unread boundary between exact old and new messages",divider)
     hold(first)
@@ -115,8 +119,8 @@ def check_read_state(stack,tmp,hs,backend,room,me,hdr,http,web,peer,web_words):
     exact(third);wait_for("manual flag cleared",lambda:marker(room,"m.marked_unread")=={"unread":False})
     for read in (native_words,web_words):
         find("clean room on both clients",lambda ws:phrase(ws,"mark","unread"),read)
-        find("other room highlight badge retained",lambda ws:any(w=="orchard" and xx<280 and any(
-            x2<280 and x2>xx and abs(y-y2)<6 and "1" in v for v,x2,y2 in ws) for w,xx,y in ws),read)
+        find("other room highlight badge retained",lambda ws:any(w=="orchard" and xx<CHAT_X and any(
+            x2<CHAT_X and x2>xx and abs(y-y2)<6 and "1" in v for v,x2,y2 in ws) for w,xx,y in ws),read)
     assert receipts(other).get("m.read.private")!=orchard and marker(other,"m.fully_read")!={"event_id":orchard}
     assert receipts(room).get("m.read")==initial.get("m.read")
     visible=peer.evaluate("""([r,u])=>window.mxMatrixClientPeg.get().getRoom(r).getEventReadUpTo(u)""",[room,me])
@@ -151,7 +155,7 @@ def check_read_state(stack,tmp,hs,backend,room,me,hdr,http,web,peer,web_words):
     x("windowfocus","--sync",other_window)
     last=send(room,"After edit")
     def after_edit(ws):
-        a=phrase(ws,"revised","honey");d=phrase(ws,"new","messages");m=phrase(ws,"after","edit")
+        a=phrase(ws,"revised","honey");d=new_tag(ws);m=phrase(ws,"after","edit")
         return a and d and m and a[1]<d[1]<m[1]
     find("divider follows a receipt on an aggregated edit",after_edit)
     assert receipts(room).get("m.read")==shared

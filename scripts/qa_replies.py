@@ -12,15 +12,14 @@ from PIL import Image
 from playwright.sync_api import sync_playwright
 from qa_kwin_element import element_server,login_element
 from qa_native_paste import child,isolated_env,start_display,wait_for
+from qa_ui import CHAT_X,Ui,read
 from qa_upload_cancel import slow_gateway
 
 
 def screen_words(raw):
-    im=Image.open(io.BytesIO(raw)).convert("RGB");buf=io.BytesIO()
-    im.resize((im.width*2,im.height*2)).save(buf,"PNG")
-    t=sp.check_output(["tesseract","stdin","stdout","--psm","11","tsv"],input=buf.getvalue(),stderr=sp.DEVNULL)
-    return [(s[11].lower().strip(".,:|"),(int(s[6])+int(s[8])//2)//2,(int(s[7])+int(s[9])//2)//2)
-            for line in t.decode().splitlines() if len(s:=line.split("\t"))==12 and s[0]=="5"]
+    # The shared reader also finds labels on filled buttons and in open dialogs.
+    im=Image.open(io.BytesIO(raw)).convert("RGB")
+    return [(w.lower().strip(".,:|()"),x,y) for w,x,y in read(im)]
 
 
 def test_replies(tmp,hs,root,backend,seed,http,port,*,reactions=False,room_search=False,alerts=False,permissions=False,ban=False,kick=False,report=False,client_web=None,mentions=False,peer_hs=None,spaces=False,setup=False):
@@ -82,13 +81,15 @@ def test_replies(tmp,hs,root,backend,seed,http,port,*,reactions=False,room_searc
             client=reporter_ctx.new_page()
             login_client(client,client_web,native)
             def words():return screen_words(client.screenshot())
+            ui=Ui(words,lambda pos:client.mouse.move(*pos),
+                  lambda:Image.open(io.BytesIO(client.screenshot())).convert("RGB"))
             if setup:
                 from qa_community_setup import check_setup
                 def restart():
                     client.reload()
                     client.wait_for_function("document.title.includes('Untethered') && !document.title.includes('Preview') && !document.title.includes('Account')",timeout=45000)
                 check_setup(hs,http,hdr,bh,page,locate,lambda pos:client.mouse.click(*pos,delay=60),
-                            lambda s:client.keyboard.type(s,delay=5),restart,paths)
+                            lambda s:client.keyboard.type(s,delay=5),restart,paths,ui)
                 return
             if mentions:
                 from qa_mentions_inbox import check_inbox
@@ -103,7 +104,7 @@ def test_replies(tmp,hs,root,backend,seed,http,port,*,reactions=False,room_searc
             def enter(n=1):
                 for _ in range(n):client.keyboard.press("Enter")
             check_reports(tmp,hs,api,room,page,hdr,http,messages,locate,lambda pos:client.mouse.click(*pos),
-                          lambda s:client.keyboard.type(s,delay=5),enter)
+                          lambda s:client.keyboard.type(s,delay=5),enter,ui)
             return
         env=isolated_env(tmp,backend,"x11")
         if spaces:start_display(stack,tmp,env,"x11",1820,980)
@@ -127,13 +128,16 @@ def test_replies(tmp,hs,root,backend,seed,http,port,*,reactions=False,room_searc
         def words():
             return screen_words(sp.check_output(["import","-window",win,"png:-"],env=env,timeout=6))
         def click(pos):x("mousemove","--window",win,*map(str,pos),"click","1")
-        def lines(words,label):return [(x,y) for v,x,y in words if v==label and x>280]
+        def capture():
+            return Image.open(io.BytesIO(sp.check_output(["import","-window",win,"png:-"],env=env,timeout=6))).convert("RGB")
+        ui=Ui(words,lambda pos:x("mousemove","--window",win,*map(str,pos)),capture)
+        def lines(words,label):return [(x,y) for v,x,y in words if v==label and x>CHAT_X]
         if setup:
             from qa_community_setup import check_setup
             def restart_setup():
                 nonlocal win
                 native_life.close();win=launch("Untethered.*(Lounge|Workshop|media-proof)")
-            check_setup(hs,http,hdr,bh,page,locate,click,lambda s:x("type","--clearmodifiers",s),restart_setup,paths)
+            check_setup(hs,http,hdr,bh,page,locate,click,lambda s:x("type","--clearmodifiers",s),restart_setup,paths,ui)
             return
         if spaces:
             from qa_space_alerts import check_spaces,native_sender
@@ -149,7 +153,7 @@ def test_replies(tmp,hs,root,backend,seed,http,port,*,reactions=False,room_searc
                 x("windowraise",desktop.other,"mousemove","--window",desktop.other,"70","25")
                 desktop.focus(desktop.other)
             check_spaces(hs,page,me,hdr,http,room,words,space_click,foreground,
-                background,restart,native_sender(tmp,hs,page,hdr,http),desktop,"Untethered")
+                background,restart,native_sender(tmp,hs,page,hdr,http),desktop,"Untethered",ui=ui)
             return
         if mentions:
             from qa_mentions_inbox import check_inbox
@@ -162,7 +166,7 @@ def test_replies(tmp,hs,root,backend,seed,http,port,*,reactions=False,room_searc
         if report:
             from qa_message_report import check_reports
             check_reports(tmp,hs,api,room,page,hdr,http,messages,locate,click,lambda s:x("type","--clearmodifiers",s),
-                          lambda n=1:x("key",*(["Return"]*n)))
+                          lambda n=1:x("key",*(["Return"]*n)),ui)
             return
         if permissions or ban or kick:
             def restart_native():
@@ -172,11 +176,11 @@ def test_replies(tmp,hs,root,backend,seed,http,port,*,reactions=False,room_searc
             if ban or kick:
                 from qa_room_removal import check_removal
                 check_removal(page,api,room,peer_hs,hdr,bh,http,locate,click,restart_native,
-                              lambda *args:x(*[win if arg=="WIN" else arg for arg in args]),kick=kick)
+                              lambda *args:x(*[win if arg=="WIN" else arg for arg in args]),ui,kick=kick)
             else:
                 from qa_room_permissions import check_permissions
                 check_permissions(page,api,room,native,hdr,bh,http,locate,click,restart_native,
-                                  lambda *args:x(*[win if arg=="WIN" else arg for arg in args]))
+                                  lambda *args:x(*[win if arg=="WIN" else arg for arg in args]),ui)
             return
         if alerts:
             from qa_room_alerts import check_room_alerts
@@ -184,7 +188,7 @@ def test_replies(tmp,hs,root,backend,seed,http,port,*,reactions=False,room_searc
                 nonlocal win
                 native_life.close()
                 win=launch()
-            check_room_alerts(tmp,hs,page,room,native,hdr,http,desktop,locate,click,restart_native,lambda:win)
+            check_room_alerts(tmp,hs,page,room,native,hdr,http,desktop,locate,click,restart_native,lambda:win,ui)
             return
         if room_search:
             from qa_room_search import check_room_search
@@ -210,13 +214,15 @@ def test_replies(tmp,hs,root,backend,seed,http,port,*,reactions=False,room_searc
             def room_get(suffix,version="v3"):
                 return http("GET",f"{hs}/_matrix/client/{version}/rooms/{quote(room,safe='')}"+suffix,headers=hdr).json()
             check_reactions(page,room,uid,room_get,
-                            locate,react_click,hover,restart)
+                            locate,react_click,hover,restart,ui)
             return
         first,_,second,_=messages(["Beacon original","Cobalt waypoint","Beacon original","Amber waypoint"])
-        def select_first(ws):
-            originals=sorted(y for _,y in lines(ws,"beacon"))
-            return len(originals)==2 and next(((x,y) for x,y in lines(ws,"reply") if abs(y-originals[0])<6),None)
-        click(locate("Reply on first of two identical messages",select_first))
+        def first_original(ws):
+            originals=sorted(lines(ws,"beacon"),key=lambda p:p[1])
+            return len(originals)==2 and originals[0]
+        # Message actions appear in the toolbar of the hovered row.
+        row=locate("first of two identical messages",first_original)
+        click(wait_for("Reply on first of two identical messages",lambda:ui.message(row,"reply"),15))
         locate("native reply draft",lambda ws:lines(ws,"replying"))
         # Element drafts its reply to the other event using its public Reply button.
         tile(second).hover()
@@ -235,14 +241,13 @@ def test_replies(tmp,hs,root,backend,seed,http,port,*,reactions=False,room_searc
         assert len(er)==1 and er[0]["target"]==second,er
         locate("both original replies on the native timeline",lambda ws:lines(ws,"northern") and lines(ws,"southern"))
         def edit_native(word,body):
-            def action(ws):
-                rows=lines(ws,word)
-                return rows and next(((px,y) for px,y in lines(ws,"edit") if abs(y-rows[-1][1])<6),None)
-            click(locate("native edit action for "+word,action))
-            locate("editable message",lambda ws:lines(ws,"editing"))
+            row=locate("native message "+word,lambda ws:(rows:=lines(ws,word)) and rows[-1])
+            click(wait_for("native edit action for "+word,lambda:ui.message(row,"edit"),15))
+            # The edit field shows "Escape to cancel · Enter to save edit".
+            locate("editable message",lambda ws:lines(ws,"escape"))
             x("key","ctrl+a");x("type","--clearmodifiers",body);x("key","Return")
             tile(nr[0]["id"]).get_by_text(body,exact=True).wait_for()
-            locate("native saved revision",lambda ws:lines(ws,body.split()[0].lower()) and not lines(ws,"editing"))
+            locate("native saved revision",lambda ws:lines(ws,body.split()[0].lower()) and not lines(ws,"escape"))
         def replacing(eid):
             return page.evaluate("([r,id])=>window.mxMatrixClientPeg.get().getRoom(r).findEventById(id)?.replacingEventId()",[room,eid])
         # Both native saves must replace the stable reply, not chain edits.
@@ -279,15 +284,16 @@ def test_replies(tmp,hs,root,backend,seed,http,port,*,reactions=False,room_searc
         print(f"Element decrypted Untethered's reply → {first}; Element replied to the look-alike → {second}. "
               "Synapse: 89 distinct Megolm messages, including 3 replacements targeting the 2 reply IDs.",flush=True)
         def jump_above(body):
+            # The quoted line above a reply ("@sender Beacon original") opens it.
             def find(ws):
                 b=lines(ws,body)
                 if not b:return None
-                links=[(x,y) for x,y in lines(ws,"view") if 0<b[-1][1]-y<45]
-                return max(links,key=lambda p:p[1],default=None)
+                quotes=[(x,y) for x,y in lines(ws,"beacon") if 0<b[-1][1]-y<70]
+                return max(quotes,key=lambda p:p[1],default=None)
             click(locate("original link for "+body,find))
         def check_marker(marker):
             locate("highlighted original in its actual history",lambda ws:
-                   lines(ws,"original") and lines(ws,"history") and lines(ws,"beacon") and
+                   lines(ws,"original") and lines(ws,"older") and lines(ws,"beacon") and
                    any(0<y-lines(ws,"beacon")[0][1]<54 for _,y in lines(ws,marker)))
         def latest():
             click(locate("return to recent timeline",lambda ws:next(iter(lines(ws,"latest")),None)))

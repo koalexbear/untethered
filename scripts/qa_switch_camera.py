@@ -16,7 +16,7 @@ def verify_switch(stack,desk,remote_box,local_box,fresh_audio,tracks,baseline,am
         return [names.get(o["info"]["output-node-id"]) for o in data if o.get("type")=="PipeWire:Interface:Link"
                 and o["info"]["state"]=="active" and names.get(o["info"]["output-node-id"]) in ("qa-room-camera","qa-second-camera")]
     def words():
-        return [(w.strip("|:.,").lower(),x,y) for w,x,y in kde.words((281,380,1179,850))]
+        return [(w.strip("|:.,").lower(),x,y) for w,x,y in kde.words((313,380,1179,850))]
     def pos(name):
         return next(((x,y) for w,x,y in words() if w==name),None)
     def click(x,y):

@@ -57,7 +57,7 @@ class Sibling:
         self.win=wait_for("second Linux window",window)
         self.cmd("xdotool","windowsize",self.win,"1180","760","windowfocus",self.win)
         self.click(162,728);self.label("welcome")
-        for y,field in [(333,"server"),(391,"username"),(447,"password")]:
+        for y,field in [(299,"server"),(381,"username"),(464,"password")]:
             self.click(510,y);self.type(account[field])
         self.cmd("xdotool","key","Return");self.tap("passphrase");self.type(account["key"]);self.cmd("xdotool","key","Return")
         self.label("media-proof")

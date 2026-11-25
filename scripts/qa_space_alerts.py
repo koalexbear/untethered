@@ -7,6 +7,7 @@ from contextlib import closing
 from pathlib import Path
 from urllib.parse import quote
 
+from qa_ui import CHAT_X
 from qa_native_paste import child,isolated_env,start_display,wait_for
 
 PREFIX="com.untethered.space_alerts.v1"
@@ -53,7 +54,7 @@ def companion(stack,tmp,backend):
     return desk,decoded
 
 
-def check_spaces(hs,peer,me,hdr,http,room,words,click,focus,hide,restart,send,desk,app,second_device=None):
+def check_spaces(hs,peer,me,hdr,http,room,words,click,focus,hide,restart,send,desk,app,second_device=None,*,ui):
     api=hs+"/_matrix/client/v3"
     def create(name,space=False):
         r=peer.evaluate("""async ([name,u,space])=>(await window.mxMatrixClientPeg.get().createRoom({
@@ -85,18 +86,24 @@ def check_spaces(hs,peer,me,hdr,http,room,words,click,focus,hide,restart,send,de
             print("Underrides:",rules()["underride"][:4],"UI:",words(),flush=True);raise
     def pos(label,bounds,ws):
         return next(((x,y) for w,x,y in ws if w.lower().strip(".,:|")==label and bounds[0]<x<bounds[1]),None)
-    def find(label,bounds=(70,280)):
+    def find(label,bounds=(70,CHAT_X)):
         try:return wait_for("UI "+label,lambda:pos(label,bounds,words()),12)
         except RuntimeError:print("Visible UI:",words(),flush=True);raise
-    def tap(label,bounds=(70,280)):click(*find(label,bounds))
+    def tap(label,bounds=(70,CHAT_X)):click(*find(label,bounds))
+    def space_alerts():
+        # Space name → dropdown → Notification Settings opens the sidebar panel.
+        click(*wait_for("space Notification Settings",lambda:ui.space_menu("notification settings",lambda p:click(*p)),15))
+    def room_alerts():
+        # The bell icon in the channel header.
+        click(*wait_for("room Notification Settings",lambda:ui.header("notification settings"),20))
     def space_option(m):
         # Three equal-height buttons above the help paragraph. Anchor to the
         # painted final button, independent of wrapping/current-value text.
         # On native, OCR sometimes merges "All" with a rail glyph at its left.
         def geometry():
             ws=words()
-            button_rows=[y for w,x,y in ws if 70<x<280 and w=="mute"]
-            help_rows=[y for w,x,y in ws if 70<x<280 and w=="includes"]
+            button_rows=[y for w,x,y in ws if 70<x<CHAT_X and w=="mute"]
+            help_rows=[y for w,x,y in ws if 70<x<CHAT_X and w=="includes"]
             if not button_rows or not help_rows:return None
             last=max(button_rows)
             if not 12<min(help_rows)-last<38:return None
@@ -109,7 +116,7 @@ def check_spaces(hs,peer,me,hdr,http,room,words,click,focus,hide,restart,send,de
         # screen OCR often ignores isolated one-letter glyphs.
         i=sorted([parent,nested]).index({"Garden":parent,"Beds":nested}[name])
         def selected():
-            if any(w==name.lower() and 70<x<280 and y<45 for w,x,y in words()):return True
+            if any(w==name.lower() and 70<x<CHAT_X and y<45 for w,x,y in words()):return True
             click(38,150+i*52)
         wait_for("selected space "+name,selected,18)
     count=0
@@ -129,26 +136,26 @@ def check_spaces(hs,peer,me,hdr,http,room,words,click,focus,hide,restart,send,de
         if second_device:assert second_device[0].count()==count
     select_space("Garden")
     find("orchard");find("media-proof")  # direct and nested channels in parent sidebar
-    tap("alerts");space_option("quiet");settled({room:[],child:[]})
+    space_alerts();space_option("quiet");settled({room:[],child:[]})
     deliver(room,"Quiet direct",None,False);deliver(child,"Quiet nested",None,False)
     deliver(child,"Mention beacon",me,True);deliver(control,"Outside garden",None,True)
     focus();tap("media-proof")
-    if not pos("mute",(280,1180),words()):tap("alerts",(280,1180))
-    tap("all",(280,1180))
+    if not pos("mute",(CHAT_X,1180),words()):room_alerts()
+    tap("all",(CHAT_X,1180))
     wait_for("room override",lambda:any(r["rule_id"]==room and r["actions"]==["notify"] for r in rules()["room"]))
     deliver(room,"Room exception",None,True)
-    restart();select_space("Garden");tap("alerts")
+    restart();select_space("Garden");space_alerts()
     assert http("GET",api+"/user/"+quote(me,safe="")+"/rooms/"+quote(parent,safe="")+"/account_data/"+PREFIX,
                 headers=hdr).json()=={"mode":"quiet"}
     deliver(child,"Quiet after restart",None,False)
     select_space("Beds")
-    if not pos("mute",(70,280),words()):tap("alerts")
+    if not pos("mute",(70,CHAT_X),words()):space_alerts()
     space_option("all");settled({room:[],child:["notify"]})
     if app=="Untethered":
         # Separate the change of notification policy from the instant of
         # switching keyboard focus away from the currently selected channel.
         # The app still receives background traffic while looking at its inbox.
-        tap("mentions");find("inbox",(280,1180))
+        tap("mentions");find("inbox",(CHAT_X,1180))
     deliver(child,"Nearer space wins",None,True)
     master=api+"/pushrules/global/override/.m.rule.master/enabled"
     def dnd(on):
@@ -156,14 +163,14 @@ def check_spaces(hs,peer,me,hdr,http,room,words,click,focus,hide,restart,send,de
         assert http("GET",master,headers=hdr).json()=={"enabled":on}
         focus()
         if on:find("disturb")
-        else:wait_for("DND off in receiver footer",lambda:any(w=="account" and x<280 and y>650 for w,x,y in words()))
+        else:wait_for("DND off in receiver footer",lambda:any(w=="online" and x<CHAT_X and y>650 for w,x,y in words()))
     dnd(True);deliver(child,"DND override",me,False);dnd(False)
     link(nested,child,False);settled({room:[]})
     deliver(child,"Removed child",None,True)
     link(parent,child,True);settled({room:[],child:[]})
     deliver(child,"Newly linked",None,False)
     select_space("Garden")
-    if not pos("mute",(70,280),words()):tap("alerts")
+    if not pos("mute",(70,CHAT_X),words()):space_alerts()
     space_option("default");settled({})
     deliver(child,"Default restored",None,True)
     after=rules();exception=next(r for r in after["room"] if r["rule_id"]==room)
