@@ -4,17 +4,21 @@
     {
       "label": "untethered: Build",
       "type": "process",
-      "command": "bash",
-      "args": ["${workspaceFolder}/scripts/dev.sh", "build"],
+      "command": "cargo",
+      "args": ["build", "--locked", "-j", "3", "--manifest-path", "${workspaceFolder}/rust-client/Cargo.toml"],
       "group": { "kind": "build", "isDefault": true },
-      "problemMatcher": ["$gcc"]
+      "problemMatcher": []
     },
     {
       "label": "untethered: Run",
       "type": "process",
       "command": "bash",
-      "args": ["${workspaceFolder}/scripts/dev.sh", "run"],
-      "problemMatcher": ["$gcc"]
+      "args": ["${workspaceFolder}/scripts/rust-client.sh"],
+      "windows": {
+        "command": "powershell.exe",
+        "args": ["-NoProfile", "-File", "${workspaceFolder}/scripts/rust-client.ps1"]
+      },
+      "problemMatcher": []
     }
   ]
 }

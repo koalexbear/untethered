@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Untethered</title>
+  <link rel="icon" href="data:,">
+  <link data-trunk rel="rust" href="../Cargo.toml" data-bin="untethered-iced">
+  <style>
+    html,body,canvas{margin:0;width:100%;height:100%;overflow:hidden;background:#1a1b1e}canvas{outline:0}
+    #verify-dialog{color-scheme:dark;font:16px/1.45 system-ui,sans-serif;color:#f2f3f5;background:#2b2d31;border:0;border-radius:12px;width:min(360px,80vw);padding:28px}
+    #verify-dialog::backdrop{background:#1e1f22}#verify-dialog h1{font-size:26px;margin:0}
+    #verify-dialog input{box-sizing:border-box;width:100%;padding:10px;margin:.4em 0 1em;font:inherit}
+    #verify-dialog button{font:inherit;font-weight:600;border:none;border-radius:5px;padding:8px 16px;background:#5865f2;color:white}
+    #verify-dialog button:disabled{opacity:.55}
+    #verify-dialog small{color:#b5bac1}#verify-feedback{min-height:1.45em}
+  </style>
+</head>
+<body>
+  <noscript>Enable JavaScript to run Untethered.</noscript>
+  <dialog id="verify-dialog" aria-labelledby="verify-title">
+    <form id="verify-form" autocomplete="off">
+      <h1 id="verify-title">Verify this device</h1><p id="verify-user"></p>
+      <label for="verify-secret">Recovery key or passphrase</label>
+      <input type="password" id="verify-secret" autocomplete="off" autocapitalize="off" spellcheck="false" autofocus>
+      <button type="submit" disabled>Verify device</button>
+      <p id="verify-feedback" role="status" aria-live="polite"></p>
+      <small>Emoji comparison isn’t available with this version of gomuks.</small>
+    </form>
+  </dialog>
+</body>
+</html>

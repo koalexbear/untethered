@@ -1,0 +1,12 @@
+--- a/mediaupload.go
++++ b/mediaupload.go
+@@ -294 +294,3 @@
+-func (gmx *Gomuks) UploadFileDirect(
++type UntetheredUploadClientKey struct{}
++
++func (gmx *Gomuks) UploadFileDirect(
+@@ -323 +325,3 @@
+-	resp, err := gmx.Client.Client.UploadMedia(ctx, mautrix.ReqUploadMedia{
++	client, _ := ctx.Value(UntetheredUploadClientKey{}).(*http.Client)
++	resp, err := gmx.Client.Client.UploadMedia(ctx, mautrix.ReqUploadMedia{
++		Client: client,

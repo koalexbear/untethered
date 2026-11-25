@@ -1,7 +1,11 @@
 /src/
 /pkg/
 *.pkg.tar.*
-*.deb
+/untethered-src/
+/gomuks-*-linux-amd64
 *.log
 
 /.dev/
+/rust-client/target/
+/experiments/rtc-audio/target/
+/rust-client/web/dist/

@@ -1,0 +1,24 @@
+--- a/wasmuks.ts
++++ b/wasmuks.ts
+@@ -19 +19,2 @@
+-import initSqlite from "./sqlite_bridge.ts"
++import initSqlite from "./sqlite_bridge.ts"
++import { withProfileLock } from "./profile-lock.js"
+@@ -68,2 +69,4 @@
+-;(async () => {
+-	const go = new Go()
++;withProfileLock(async () => {
++	const go = new Go()
++	let exitCode = 0
++	go.exit = (code: number) => { exitCode = code }
+@@ -79 +82 @@
+-			error: `Go process exited`,
++			error: `Go process exited (${exitCode})`,
+@@ -82 +85 @@
+-})().catch(err => {
++}).catch(err => {
+--- a/sqlite_bridge.ts
++++ b/sqlite_bridge.ts
+@@ -70 +70 @@
+-	sqlite3.PoolUtil = await sqlite3.installOpfsSAHPoolVfs({})
++	sqlite3.PoolUtil = await sqlite3.installOpfsSAHPoolVfs({ preserveOnInitFailure: true })
