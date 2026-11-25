@@ -191,7 +191,10 @@ mod tests {
             app.selected = "!r".into();
             let base = json!({"room_id":"!r","event_id":"$reply","rowid":2,"sender":"@them:h","type":"m.room.encrypted","decrypted_type":"m.room.message",
                "decrypted":{"msgtype":"m.text","body":"reply","m.relates_to":{"m.in_reply_to":{"event_id":"$parent"}}},"reactions":{"👍":1}});
-            app.live.list.entry("!r".into()).or_default().insert(&base);
+            app.live.sync(&json!({"rooms": {"!r": {
+                "timeline": [{"event_rowid": 2}],
+                "events": [&base]
+            }}}));
             let op = Toggle::for_post("!r", app.visible_post("$reply").unwrap(), "👍").unwrap();
             app.toggle_reaction(op.clone());
             app.toggle_reaction(op.clone());

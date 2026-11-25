@@ -1,22 +1,19 @@
 //! Vector call controls stay legible at fractional desktop scale.
-use super::{BOLD, El, Msg, TEXT};
+use super::{El, Msg, RAIL, surface};
 use iced::{
-    Alignment::Center,
     Border, Color, Point, Rectangle, Renderer, Size, Theme, color, mouse,
     widget::{
         button,
         canvas::{self, Canvas, Frame, Geometry, Path, Stroke},
-        row, text,
+        container, text, tooltip,
     },
 };
 
 #[derive(Clone, Copy)]
 pub(super) enum Icon {
     Mic,
-    Headphones,
     Camera,
     Screen,
-    Devices,
     Hangup,
 }
 struct Glyph(Icon, bool);
@@ -48,13 +45,6 @@ impl canvas::Program<Msg> for Glyph {
                     b.move_to(p(7., 18.));
                     b.line_to(p(13., 18.));
                 }
-                Icon::Headphones => {
-                    b.move_to(p(3., 13.));
-                    b.bezier_curve_to(p(2., 0.), p(18., 0.), p(17., 13.));
-                    for x in [3., 13.] {
-                        b.rounded_rectangle(p(x, 10.), Size::new(4., 6.), 1.5.into());
-                    }
-                }
                 Icon::Camera => {
                     b.rounded_rectangle(p(2., 5.), Size::new(11., 10.), 2.0.into());
                     b.move_to(p(13., 9.));
@@ -68,15 +58,6 @@ impl canvas::Program<Msg> for Glyph {
                     b.line_to(p(10., 18.));
                     b.move_to(p(6., 18.));
                     b.line_to(p(14., 18.));
-                }
-                Icon::Devices => {
-                    for (x, y) in [(4., 7.), (10., 13.), (16., 6.)] {
-                        b.move_to(p(x, 3.));
-                        b.line_to(p(x, y - 2.));
-                        b.circle(p(x, y), 2.);
-                        b.move_to(p(x, y + 2.));
-                        b.line_to(p(x, 17.));
-                    }
                 }
                 Icon::Hangup => {
                     b.move_to(p(2., 12.));
@@ -113,28 +94,30 @@ pub(super) fn control(
     } else {
         color!(0x383a40)
     };
-    button(
-        row![
-            Canvas::new(Glyph(icon, slash)).width(20).height(20),
-            text(label.to_owned()).size(13).font(BOLD)
-        ]
-        .spacing(6)
-        .align_y(Center),
-    )
-    .padding([9, 12])
-    .style(move |_, s| button::Style {
-        background: Some(
-            (if s == button::Status::Hovered {
-                Color::from_rgb(fill.r + 0.1, fill.g + 0.1, fill.b + 0.1)
-            } else {
-                fill
+    let control =
+        button(container(Canvas::new(Glyph(icon, slash)).width(20).height(20)).center(34))
+            .padding(0)
+            .style(move |_, status| {
+                let background = match status {
+                    button::Status::Hovered | button::Status::Pressed => {
+                        Color::from_rgb(fill.r + 0.1, fill.g + 0.1, fill.b + 0.1)
+                    }
+                    button::Status::Disabled => Color { a: 0.45, ..fill },
+                    _ => fill,
+                };
+                button::Style {
+                    background: Some(background.into()),
+                    border: Border::default().rounded(8),
+                    ..Default::default()
+                }
             })
-            .into(),
-        ),
-        text_color: TEXT,
-        border: Border::default().rounded(18),
-        ..Default::default()
-    })
-    .on_press_maybe(action)
+            .on_press_maybe(action);
+    tooltip(
+        control,
+        container(text(label.to_owned()).size(13)).padding([4, 7]),
+        tooltip::Position::Top,
+    )
+    .style(|_| surface(RAIL, 5.))
+    .gap(6)
     .into()
 }

@@ -110,6 +110,11 @@ pub fn visible_at_tail(timeline: Id, event: &str) -> Task<bool> {
     ))
     .map(|m| m.visible && (m.max - m.top).abs() <= 1.)
 }
+pub fn restore_row(timeline: Id, mut b: Bookmark) -> Task<crate::Msg> {
+    b.tail = false;
+    restore(timeline, b)
+}
+
 pub fn restore(timeline: Id, b: Bookmark) -> Task<crate::Msg> {
     operate(Measure::new(
         timeline.clone(),

@@ -25,6 +25,15 @@ and reads its loopback address from stdout. It authenticates with a fresh
 per-launch secret and opens a local WebSocket for Matrix commands and events.
 Closing the app shuts down the child. There’s no separate service to start.
 
+The Linux launcher tries wgpu first and falls back to tiny-skia. To compare
+renderers with the default development profile, close the client between runs
+and test scrolling and typing in the same room with the same amount of history.
+
+```sh
+ICED_BACKEND=tiny-skia bash scripts/rust-client.sh
+ICED_BACKEND=wgpu bash scripts/rust-client.sh
+```
+
 In Code OSS, **Ctrl+Shift+B** builds the Rust binary; **Terminal → Run Task →
 untethered: Run** launches the desktop app.
 

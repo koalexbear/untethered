@@ -122,6 +122,8 @@ impl App {
             {
                 return Task::none();
             }
+            #[cfg(target_os = "linux")]
+            self.minimize_call();
             self.close_mentions();
             self.close_original();
             self.clear_search();

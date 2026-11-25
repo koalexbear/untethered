@@ -203,6 +203,14 @@ enum Msg {
     SearchResults,
     ReturnToReading,
     More,
+    TimelineEdge(bool),
+    TimelineRestored,
+    MoveTimeline {
+        room: String,
+        from: Option<(i64, i64)>,
+        to: Option<(i64, i64)>,
+        bookmark: search::bookmark::Bookmark,
+    },
     Copy,
     TogglePeople,
     MemberFilter(String),
@@ -311,6 +319,9 @@ struct App {
     drafts: BTreeMap<String, String>,
     reply_drafts: BTreeMap<String, rooms::Quote>,
     original: Option<replies::Original>,
+    // Exclusive timestamp/row-ID boundary. None follows the latest message.
+    timeline_end: Option<(i64, i64)>,
+    timeline_restoring: bool,
     search: Option<search::Search>,
     mentions: Option<mentions::Inbox>,
     editing: Option<edits::Editing>,
@@ -395,6 +406,8 @@ impl App {
             drafts: Default::default(),
             reply_drafts: Default::default(),
             original: None,
+            timeline_end: None,
+            timeline_restoring: false,
             search: None,
             mentions: None,
             editing: None,
@@ -429,27 +442,23 @@ impl App {
             &self.demo
         }
     }
-    fn visible(&self) -> Vec<(&String, &rooms::Room)> {
+    fn timeline_range(&self, room: &rooms::Room) -> std::ops::Range<usize> {
+        const WINDOW: usize = 120;
+        let end = self
+            .timeline_end
+            .map_or_else(|| room.posts().len(), |key| room.index_at(key));
+        end.saturating_sub(WINDOW)..end
+    }
+
+    fn visible(&self) -> impl Iterator<Item = (&String, &rooms::Room)> {
         let rooms = self.rooms();
-        let channels = if let Section::Space(space) = &self.section {
-            rooms.channels(space)
-        } else {
-            Default::default()
+        let ids: &[String] = match &self.section {
+            Section::All => &rooms.ordered_rooms,
+            Section::Direct => &rooms.ordered_direct,
+            Section::Space(space) => rooms.ordered_spaces.get(space).map_or(&[], Vec::as_slice),
         };
-        let mut list: Vec<_> = rooms
-            .list
-            .iter()
-            .filter(|(id, r)| {
-                !r.space
-                    && match &self.section {
-                        Section::All => true,
-                        Section::Direct => r.dm,
-                        Section::Space(_) => channels.contains_key(id.as_str()),
-                    }
-            })
-            .collect();
-        list.sort_by_key(|(id, r)| (r.name.to_lowercase(), *id));
-        list
+        ids.iter()
+            .filter_map(|id| rooms.list.get(id).map(|room| (id, room)))
     }
     fn rpc(&mut self, cmd: &str, data: Value, req: Request) {
         self.seq += 1;
@@ -486,10 +495,20 @@ impl App {
             );
         }
     }
+    #[cfg(target_os = "linux")]
+    fn minimize_call(&mut self) {
+        if let Some(call) = &mut self.call {
+            call.stage_open = false;
+            call.theater = false;
+        }
+    }
+
     fn open(&mut self, id: String) {
         if self.selected == id {
             return;
         }
+        #[cfg(target_os = "linux")]
+        self.minimize_call();
         self.close_original();
         self.scrolled_away = false;
         self.reset_directory();
@@ -505,6 +524,7 @@ impl App {
         self.editor =
             text_editor::Content::with_text(self.drafts.get(&id).map(String::as_str).unwrap_or(""));
         self.selected = id.clone();
+        self.timeline_end = None;
         if self.people {
             self.read_directory(None);
         }
@@ -525,11 +545,11 @@ impl App {
         if matches!(&self.section,Section::Space(s) if !self.rooms().list.contains_key(s)) {
             self.section = Section::All;
         }
-        let visible = self.visible();
-        if !visible.iter().any(|(id, _)| **id == self.selected) {
-            let first = visible
-                .first()
-                .map(|(id, _)| (*id).clone())
+        if !self.visible().any(|(id, _)| id == &self.selected) {
+            let first = self
+                .visible()
+                .next()
+                .map(|(id, _)| id.clone())
                 .unwrap_or_default();
             self.open(first);
         }
@@ -719,6 +739,7 @@ impl App {
                     self.close_original();
                     self.editor = text_editor::Content::new();
                     self.loaded.clear();
+                    self.timeline_end = None;
                     self.selected.clear();
                     self.section = Section::All;
                     self.account = !self.logged_in;
@@ -748,9 +769,13 @@ impl App {
                     #[cfg(target_os = "linux")]
                     self.clear_ring();
                     self.loaded.clear();
+                    self.timeline_end = None;
                     self.selected.clear();
                     self.pending
                         .retain(|_, p| !matches!(p, Request::Members(_) | Request::Page(_)));
+                }
+                if data["rooms"][&self.selected]["reset"] == true {
+                    self.timeline_end = None;
                 }
                 self.live.sync(data);
                 self.read_sharing.sync(data);
@@ -1286,28 +1311,32 @@ impl App {
             Msg::ReturnToCall(id) => {
                 if let Some(c) = &self.call
                     && c.id == id
+                    && !c.cancel.is_closed()
                     && self.verified
                     && !self.setup_busy()
                     && self.live.list.contains_key(&c.room)
                 {
                     let room = c.room.clone();
-                    self.call.as_mut().unwrap().chat_open = false;
                     self.cancel_setup_if_idle();
                     self.close_mentions();
                     self.account = false;
-                    if !self.visible().iter().any(|(r, _)| r.as_str() == room) {
+                    if !self.visible().any(|(r, _)| r.as_str() == room) {
                         self.section = Section::All;
                     }
                     self.open(room);
+                    if let Some(call) = &mut self.call {
+                        call.stage_open = true;
+                    }
                 }
             }
             #[cfg(target_os = "linux")]
             Msg::CallLayout(id, chat) => {
                 if let Some(c) = &mut self.call
                     && c.id == id
+                    && c.stage_open
                 {
                     if chat {
-                        c.chat_open = true;
+                        c.stage_open = false;
                         c.theater = false;
                     } else {
                         c.theater = !c.theater;
@@ -1670,11 +1699,15 @@ impl App {
                 self.reconcile();
             }
             Msg::Open(id) => {
+                #[cfg(target_os = "linux")]
+                self.minimize_call();
                 self.cancel_setup_if_idle();
                 self.close_mentions();
                 self.open(id);
             }
             Msg::OpenMentions => {
+                #[cfg(target_os = "linux")]
+                self.minimize_call();
                 self.cancel_setup_if_idle();
                 self.open_mentions();
             }
@@ -1720,6 +1753,8 @@ impl App {
             }
             Msg::Moderate(c) => self.moderate(c),
             Msg::Account => {
+                #[cfg(target_os = "linux")]
+                self.minimize_call();
                 self.close_mentions();
                 self.account = true;
             }
@@ -1842,6 +1877,7 @@ impl App {
             }
             Msg::Latest => {
                 self.close_original();
+                self.timeline_end = None;
                 return self.anchor_history();
             }
             Msg::Preceding => {
@@ -1923,11 +1959,56 @@ impl App {
                 }
             }
             Msg::More => self.page(),
+            Msg::TimelineRestored => self.timeline_restoring = false,
+            Msg::TimelineEdge(older) => {
+                if self.timeline_restoring || self.original.is_some() || self.search.is_some() {
+                    return Task::none();
+                }
+                let Some(room) = self.rooms().list.get(&self.selected) else {
+                    return Task::none();
+                };
+                let range = self.timeline_range(room);
+                const STEP: usize = 60;
+                let end = if older && range.start > 0 {
+                    range.end - STEP.min(range.start)
+                } else if !older && range.end < room.posts().len() {
+                    range.end + STEP
+                } else {
+                    return Task::none();
+                };
+                let to = room.key_at(end);
+                let from = self.timeline_end;
+                let room = self.selected.clone();
+                return search::bookmark::capture(self.timeline_id()).map(move |bookmark| {
+                    Msg::MoveTimeline {
+                        room: room.clone(),
+                        from,
+                        to,
+                        bookmark,
+                    }
+                });
+            }
+            Msg::MoveTimeline {
+                room,
+                from,
+                to,
+                bookmark,
+            } if room == self.selected
+                && from == self.timeline_end
+                && self.original.is_none()
+                && self.search.is_none() =>
+            {
+                self.timeline_end = to;
+                self.scrolled_away = true;
+                self.timeline_restoring = true;
+                return search::bookmark::restore_row(self.timeline_id(), bookmark)
+                    .chain(Task::done(Msg::TimelineRestored));
+            }
+            Msg::MoveTimeline { .. } => {}
             Msg::Copy => {
                 if let Some(r) = self.rooms().list.get(&self.selected) {
                     let text = r
                         .posts()
-                        .iter()
                         .map(|p| format!("{}: {}", r.display(&p.sender), p.text()))
                         .collect::<Vec<_>>()
                         .join("\n");
