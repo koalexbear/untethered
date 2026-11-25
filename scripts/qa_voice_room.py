@@ -11,6 +11,7 @@ import threading
 import time
 from collections import deque
 from contextlib import ExitStack
+from pathlib import Path
 from urllib.parse import quote
 
 from PIL import Image
@@ -28,6 +29,11 @@ PCM.append(bytes(len(PCM[0])))
 BINS = [[cmath.exp(-1j * math.tau * hz * n / 12000) for n in range(1200)] for hz in TONES]
 
 
+def client_cores(i):
+    cores=sorted(os.sched_getaffinity(0))
+    return cores[4*i:4*i+4] if len(cores)>=4*i+4 else cores[:4]
+
+
 class Desktop:
     def __init__(self,stack,root,env,i,kde=None,*,prefix=(),room="Atrium",log=None):
         self.env=env
@@ -36,6 +42,7 @@ class Desktop:
         self.tone=i
         self.windows=deque(maxlen=12)
         self.audit=None
+        self.stats=None  # UNTETHERED_QA_VIDEO_STATS log, when enabled
         pcm=["--raw","--rate=48000","--channels=1","--format=s16le","--latency-msec=40"]
         def process(args,**kw):
             proc=sp.Popen(args,env=env,stderr=sp.DEVNULL,**kw)
@@ -63,7 +70,8 @@ class Desktop:
             kde.position(self.win,0,0,1180,850)
             return
         # Limit per-client rendering/codec parallelism in this three-GUI fixture.
-        cores=sorted(os.sched_getaffinity(0))[:4]
+        # Separate four-core sets, when available, stand in for separate machines.
+        cores=client_cores(i)
         binary=os.getenv("UNTETHERED_QA_CLIENT") or root/"rust-client/target/debug/untethered-iced"
         self.client=stack.enter_context(child([*prefix,"taskset","-c",",".join(map(str,cores)),binary],env,stderr=log))
         def ready():
@@ -86,38 +94,78 @@ class Desktop:
         return [(re.sub(r"^\W+|\W+$","",s[11]).lower(),(int(s[6])+int(s[8])//2)//2,(int(s[7])+int(s[9])//2)//2)
                 for line in t.stdout.decode().splitlines() if len(s:=line.split("\t"))==12 and s[0]=="5"]
 
+    def shot(self):
+        if self.kde:return self.kde.capture().crop((0,0,1180,850))
+        return Image.open(io.BytesIO(sp.check_output(["import","-window",self.win,"png:-"],env=self.env,timeout=6))).convert("RGB")
+
+    def hover(self,x,y):
+        if self.kde:self.kde.actions("pointer",[{"type":"pointerMove","x":x,"y":y}])
+        else:self.cmd("xdotool","mousemove","--window",self.win,str(x),str(y))
+
+    def icon_buttons(self,im):
+        """Centres of the docked call bar's 34 px icon buttons, left to right.
+
+        Their labels exist only as hover tooltips. Scan the plain rows above
+        each glyph and keep a row only when it holds at least three squares."""
+        import itertools
+        fills=[(56,58,64),(35,118,78),(181,51,69),(81,84,104)]
+        fills+=[(min(255,r+25),min(255,g+25),min(255,b+25)) for r,g,b in fills]
+        near={(r+i,g+j,b+k) for r,g,b in fills for i in range(-3,4) for j in range(-3,4) for k in range(-3,4)}
+        pixels=im.load();tops=[]
+        for y in range(30,im.height-36,2):
+            for ok,group in itertools.groupby(range(im.width),lambda x:pixels[x,y] in near):
+                xs=list(group)
+                if not ok or not 27<=len(xs)<=36:continue
+                cx=(xs[0]+xs[-1])//2
+                if not any(abs(cx-x)<12 and 0<=y-t<36 for x,t in tops):tops.append((cx,y))
+        rows=[[b for b in tops if abs(b[1]-t)<=4] for _,t in tops]
+        row=max(rows,key=len,default=[])
+        return sorted((x,t+15) for x,t in row) if len(row)>=3 else []
+
+    def tooltip(self,x,y):
+        """Hover a control and OCR only the tooltip that appears above it.
+
+        Status text can sit right behind the tooltip, so crop to the pixels
+        that changed between the pointer resting below the row and hovering."""
+        from PIL import ImageChops
+        area=(max(0,x-150),max(0,y-70),x+150,y-19)
+        self.hover(x,y+60);time.sleep(.25)
+        before=self.shot().crop(area)
+        self.hover(x,y);time.sleep(.4)
+        after=self.shot().crop(area)
+        box=ImageChops.difference(before,after).convert("L").point(lambda v:255 if v>24 else 0).getbbox()
+        if not box:return ""
+        im=after.crop(box)
+        buf=io.BytesIO();im.resize((im.width*3,im.height*3)).save(buf,"PNG")
+        return sp.run(["tesseract","stdin","stdout","--psm","7"],input=buf.getvalue(),capture_output=True).stdout.decode().lower()
+
     def click(self,label):
         if self.kde:self.kde.command("kdotool","windowactivate",self.win)
+        icons={"mute":[0],"unmute":[0],"start":[1],"camera":[1],"share":[2],"sharing":[2],
+               "stop":[2,1],"cancel":[2,1],"leave":[3],"hang":[3]}
         def locate():
-            if label in {"start","stop","share","sharing","hang","devices","mute","deafen","leave","cancel","unmute","undeafen"}:
-                # OCR individual pills; page-wide OCR sometimes joins the icon
-                # to the label or mistakes a participant's caption for a button.
-                import itertools
-                im=self.kde.capture().crop((0,0,1180,850)) if self.kde else Image.open(io.BytesIO(
-                    sp.check_output(["import","-window",self.win,"png:-"],env=self.env,timeout=6))).convert("RGB")
-                fills={(56,58,64),(35,118,78),(181,51,69),(81,84,104)}
-                fills|={(min(255,r+26),min(255,g+26),min(255,b+26)) for r,g,b in list(fills)}
-                for py in range(72,im.height-4,8):
-                    for ok,group in itertools.groupby(range(288,1174),lambda xx:im.getpixel((xx,py)) in fills):
-                        xs=list(group)
-                        if not ok or len(xs)<55:continue
-                        x=sum((xs[0],xs[-1]))//2;y=py
-                        # Find top/bottom via the left rounding-free interior,
-                        # ignoring the label in the middle of the pill.
-                        color=im.getpixel((x,y));edge=xs[0]+7
-                        top=y
-                        while top>42 and im.getpixel((edge,top-1))==color:top-=1
-                        if y-top>7:continue
-                        check=im.crop((xs[0]+23,top+6,xs[-1]+3,top+31)).resize(((len(xs)-20)*3,75))
-                        buf=io.BytesIO();check.save(buf,"PNG")
-                        txt=sp.run(["tesseract","stdin","stdout","--psm","7"],input=buf.getvalue(),capture_output=True).stdout.decode().lower()
-                        if re.search(r"\b"+label+r"\b",txt):return x,top+18
+            if label in icons:
+                buttons=self.icon_buttons(self.shot())
+                # Try the usual slot first; the tooltip text decides.
+                order=[i for i in icons[label] if i<len(buttons)]
+                for i in order+[i for i in range(len(buttons)) if i not in order]:
+                    if re.search(r"\b"+label+r"\b",self.tooltip(*buttons[i])):return buttons[i]
+                return None
             return next(((x,y) for word,x,y in self.words() if word==label),None)
         x,y=wait_for(label,locate,12)
         if self.kde:
             self.kde.actions("pointer",[{"type":"pointerMove","x":x,"y":y},{"type":"pause","duration":380},
                 {"type":"pointerDown","button":0},{"type":"pause","duration":170},{"type":"pointerUp","button":0}])
         else:self.cmd("xdotool","mousemove","--window",self.win,str(x),str(y),"click","1")
+
+    def open_stage(self):
+        """Calls start docked in the sidebar; expand this client to the stage."""
+        def opened():
+            words={w for w,_,_ in self.words()}
+            if "theater" in words:return True
+            if "open" in words:self.click("open")
+            return False
+        wait_for("call stage",opened,20)
 
     def hears(self,expected):
         windows=list(self.windows)
@@ -209,6 +257,13 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
             env=isolated_env(d,backend,"wayland" if wayland else "x11");env.update(TOKIO_WORKER_THREADS="2",RAYON_NUM_THREADS="2",GOMAXPROCS="2")
             if not wayland:start_display(stack,d,env,"x11")
             env.update(PULSE_SERVER="unix:"+str(sock),PULSE_SOURCE=f"Mic{i}.monitor",PULSE_SINK=f"Out{i}")
+            log=None
+            if share or camera:
+                # Debug builds print per-track video stats every heartbeat.
+                env["UNTETHERED_QA_VIDEO_STATS"]="1"
+                # KWIN_QA_DEBUG keeps the logs after the disposable home is removed.
+                logs=Path(os.environ.get("KWIN_QA_DEBUG") or d)/f"native-{i}.log"
+                log=stack.enter_context(logs.open("w"))
             if i==0:
                 stack.enter_context(child(["pulseaudio","-n","--daemonize=no","--exit-idle-time=-1","--use-pid-file=no",
                     f"--load=module-native-protocol-unix socket={sock} auth-anonymous=1",
@@ -218,8 +273,9 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
             kde=None
             if wayland:
                 from qa_kwin import KWin
-                kde=KWin(stack,d,root,backend,env=env,screencast=True)
-            desks.append(Desktop(stack,root,env,i,kde))
+                kde=KWin(stack,d,root,backend,env=env,screencast=True,native_log=log)
+            desks.append(Desktop(stack,root,env,i,kde,log=log))
+            if log:desks[-1].stats=logs
         try:
             def audio_counts():
                 def devices(kind):

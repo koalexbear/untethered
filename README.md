@@ -207,8 +207,8 @@ a participant tile to focus it; the dock keeps the call controls together.
 **Stop camera** keeps the conversation going; **Hang up** releases capture.
 [Two-way Linux video test](experiments/rtc-audio/README.md#verify-dm-video).
 
-**To watch your own share:** click **Share window**, choose a window in the
-desktop picker, then look for **Your screen · LIVE**. It opens on the stage.
+**To watch your own share:** click **Share screen**, choose a screen or window
+in the desktop picker, then look for **Your screen · LIVE**. It opens on the stage.
 If you switch to someone’s camera, click **Your screen** in the strip to watch
 it again. Your choice of view doesn’t change what anyone else receives.
 **Theater** hides the sidebars; **Open chat** returns to the docked preview.
@@ -219,7 +219,7 @@ the tab alongside their microphone. Uncheck **Play shared audio** to hear
 just the conversation; this changes only your playback. **Deafen** silences
 both and restores your previous choice when turned off.
 
-**To send an app’s sound with your window:** start **Share window**, play
+**To send an app’s sound with your window:** start **Share screen**, play
 audio in the app, then click **Choose app audio → Send sound from** and
 select its playback stream. If it just started playing, click **Refresh
 devices**. Only the selected stream is shared, even if other apps are
@@ -300,12 +300,17 @@ the key or switching applications closes your microphone; you still hear
 the room. **Mute** and **Deafen** override the key. The choice carries over
 to your next voice room until you quit the app.
 
-In the voice-room call bar, click **Share window** and pick a window in your
-desktop's chooser. Other participants see the live window in the voice room.
+In the voice-room call bar, click **Share screen** and pick a screen or a
+window in your desktop's chooser. Other participants see it live; **Open call
+view** puts it on the stage. Shares keep their source size up to 1920×1080 and
+send up to 30 fps (2.5 Mbps cap); the pointer is included when the portal
+offers it. Cameras send 1280×720 at up to 30 fps (1.7 Mbps cap). A 1600×900
+test window arrived at 1600×928 and 30 fps on both receivers
+([measurements](experiments/rtc-audio/README.md#verify-portal-window-sharing)).
 You can browse another channel and use **Stop sharing** there without
 leaving voice. Capture requires a ScreenCast portal backend, PipeWire and
 GStreamer (`gst-launch-1.0`, `pipewiresrc`, and the base video plugins).
-The share carries window pixels; microphones remain separate encrypted tracks.
+The share carries screen pixels; microphones remain separate encrypted tracks.
 
 **Start camera** uses the Linux Camera portal and the camera selected under
 **Devices** (system default initially). Other participants see a **Camera** tile with your name.

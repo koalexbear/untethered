@@ -118,6 +118,7 @@ def verify(stack,tmp,root,backend,page,room,alice,bob,secret,incoming,switch_cam
                     btn.click(timeout=7000)
                 return False
             wait_for("both video sources published",cameras_on,20)
+            desk.open_stage()  # the call starts docked in the sidebar
             before=tracks()
             assert set(before)=={(u,k) for u in (alice,bob) for k in ("CAMERA","MICROPHONE")}
             assert all(enc=="GCM" and not muted for _,enc,muted in before.values())
