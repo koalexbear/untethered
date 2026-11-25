@@ -178,6 +178,7 @@ ApplicationWindow {
     component ProfileButton: ToolButton {
         id: profileButton
         required property string symbol
+        property bool destructive: false
         Layout.preferredWidth: 30
         Layout.preferredHeight: 32
         padding: 6
@@ -191,7 +192,7 @@ ApplicationWindow {
 
         contentItem: Canvas {
             id: profileIcon
-            readonly property color ink: profileButton.checked ? "#f095a4"
+            readonly property color ink: (profileButton.checked || profileButton.destructive) && profileButton.enabled ? "#f095a4"
                 : profileButton.enabled ? window.palette.text : window.muted
             onInkChanged: requestPaint()
             Connections {
@@ -231,6 +232,44 @@ ApplicationWindow {
                     ctx.lineTo(13, 18)
                     ctx.moveTo(10, 15)
                     ctx.lineTo(10, 18)
+                    break
+                case "camera":
+                    ctx.roundedRect(2, 5, 11, 10, 2, 2)
+                    ctx.moveTo(13, 8)
+                    ctx.lineTo(18, 5)
+                    ctx.lineTo(18, 15)
+                    ctx.lineTo(13, 12)
+                    break
+                case "share":
+                    ctx.roundedRect(2, 3, 16, 12, 2, 2)
+                    ctx.moveTo(6, 18)
+                    ctx.lineTo(14, 18)
+                    ctx.moveTo(10, 12)
+                    ctx.lineTo(10, 6)
+                    ctx.moveTo(7, 9)
+                    ctx.lineTo(10, 6)
+                    ctx.lineTo(13, 9)
+                    break
+                case "audio":
+                    ctx.moveTo(2, 6)
+                    ctx.lineTo(18, 6)
+                    ctx.moveTo(7, 3)
+                    ctx.lineTo(7, 9)
+                    ctx.moveTo(2, 14)
+                    ctx.lineTo(18, 14)
+                    ctx.moveTo(13, 11)
+                    ctx.lineTo(13, 17)
+                    break
+                case "hangup":
+                    ctx.moveTo(2, 11)
+                    ctx.quadraticCurveTo(10, 4, 18, 11)
+                    ctx.lineTo(18, 14)
+                    ctx.lineTo(14, 14)
+                    ctx.lineTo(14, 11)
+                    ctx.quadraticCurveTo(10, 9, 6, 11)
+                    ctx.lineTo(6, 14)
+                    ctx.lineTo(2, 14)
+                    ctx.closePath()
                     break
                 case "headphones":
                     ctx.moveTo(3, 13)
@@ -808,7 +847,7 @@ ApplicationWindow {
                 }
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 54
+                    Layout.preferredHeight: window.callOpen ? 90 : 54
                     Layout.leftMargin: 8
                     Layout.rightMargin: 8
                     Layout.bottomMargin: 8
@@ -817,89 +856,164 @@ ApplicationWindow {
                     color: window.fieldSurface
                     border.color: window.divider
 
-                    RowLayout {
+                    ColumnLayout {
                         anchors.fill: parent
                         anchors.leftMargin: 8
                         anchors.rightMargin: 6
-                        spacing: 4
+                        anchors.topMargin: 5
+                        anchors.bottomMargin: 5
+                        spacing: 0
 
-                        Avatar {
-                            source: chat.profileAvatar
-                            name: chat.profileName.startsWith("@") ? chat.profileName.slice(1) : chat.profileName
-                            Layout.preferredWidth: 32
-                            Layout.preferredHeight: 32
-                            Rectangle {
-                                anchors.right: parent.right
-                                anchors.bottom: parent.bottom
-                                width: 12
-                                height: 12
-                                radius: width / 2
-                                border.width: 2
-                                border.color: window.fieldSurface
-                                color: chat.ready ? "#69be95" : window.muted
-                            }
-                        }
-
-                        ColumnLayout {
+                        RowLayout {
                             Layout.fillWidth: true
-                            Layout.leftMargin: 4
-                            spacing: 1
+                            Layout.fillHeight: true
+                            spacing: 4
 
-                            Label {
-                                text: chat.profileName
-                                textFormat: Text.PlainText
+                            Avatar {
+                                source: chat.profileAvatar
+                                name: chat.profileName.startsWith("@") ? chat.profileName.slice(1) : chat.profileName
+                                Layout.preferredWidth: 32
+                                Layout.preferredHeight: 32
+                                Rectangle {
+                                    anchors.right: parent.right
+                                    anchors.bottom: parent.bottom
+                                    width: 12
+                                    height: 12
+                                    radius: width / 2
+                                    border.width: 2
+                                    border.color: window.fieldSurface
+                                    color: chat.ready ? "#69be95" : window.muted
+                                }
+                            }
+
+                            ColumnLayout {
                                 Layout.fillWidth: true
-                                elide: Text.ElideRight
-                                font.pixelSize: 14
-                                ToolTip.text: chat.profile
-                                ToolTip.visible: profileHover.hovered
-                                HoverHandler { id: profileHover }
+                                Layout.leftMargin: 4
+                                spacing: 1
+
+                                Label {
+                                    text: chat.profileName
+                                    textFormat: Text.PlainText
+                                    Layout.fillWidth: true
+                                    elide: Text.ElideRight
+                                    font.pixelSize: 14
+                                    ToolTip.text: chat.profile
+                                    ToolTip.visible: profileHover.hovered
+                                    HoverHandler { id: profileHover }
+                                }
+                                Label {
+                                    text: chat.ready ? "Connected" : "Disconnected"
+                                    color: window.muted
+                                    font.pixelSize: 11
+                                }
                             }
-                            Label {
-                                text: chat.ready ? "Connected" : "Disconnected"
-                                color: window.muted
-                                font.pixelSize: 11
+
+                            Item {
+                                visible: !window.callOpen
+                                Layout.preferredWidth: 98
+                                Layout.preferredHeight: 32
+
+                                RowLayout {
+                                    id: idleCallActions
+                                    anchors.fill: parent
+                                    spacing: 4
+                                }
+                            }
+
+                            ProfileButton {
+                                symbol: "settings"
+                                Accessible.name: "User settings"
+                                ToolTip.text: "User settings · Ctrl+,"
+                                ToolTip.visible: hovered
+                                onClicked: settings.open()
                             }
                         }
 
-                        ProfileButton {
-                            symbol: "microphone"
-                            enabled: chat.nativeConnected
-                            checked: chat.nativeMuted
-                            Accessible.name: checked ? "Unmute microphone" : "Mute microphone"
-                            ToolTip.text: window.callOpen ? Accessible.name : "No active call"
-                            ToolTip.visible: hovered
-                            onClicked: chat.toggleNativeMicrophone()
-                        }
-                        ProfileButton {
-                            symbol: "call"
-                            enabled: window.callOpen
-                            Accessible.name: "Return to call"
-                            ToolTip.text: Accessible.name
-                            ToolTip.visible: hovered
-                            onClicked: window.openCallPane()
-                        }
-                        ProfileButton {
-                            symbol: "headphones"
-                            enabled: window.callOpen
-                            checkable: true
-                            checked: window.callOutputMuted
-                            Accessible.name: checked ? "Unmute call audio" : "Mute call audio"
-                            ToolTip.text: Accessible.name
-                            ToolTip.visible: hovered
-                            onClicked: {
-                                window.callOutputMuted = !window.callOutputMuted
-                                if (chat.nativeCall)
-                                    chat.setNativeOutputMuted(window.callOutputMuted)
+                        RowLayout {
+                            id: activeCallActions
+                            visible: window.callOpen
+                            Layout.alignment: Qt.AlignHCenter
+                            spacing: 4
+
+                            ProfileButton {
+                                parent: window.callOpen ? activeCallActions : idleCallActions
+                                symbol: "microphone"
+                                enabled: chat.nativeConnected
+                                checked: chat.nativeMuted
+                                Accessible.name: checked ? "Unmute microphone" : "Mute microphone"
+                                ToolTip.text: window.callOpen ? Accessible.name : "No active call"
+                                ToolTip.visible: hovered
+                                onClicked: chat.toggleNativeMicrophone()
+                            }
+                            ProfileButton {
+                                parent: window.callOpen ? activeCallActions : idleCallActions
+                                symbol: "call"
+                                enabled: window.callOpen
+                                Accessible.name: "Return to call"
+                                ToolTip.text: Accessible.name
+                                ToolTip.visible: hovered
+                                onClicked: window.openCallPane()
+                            }
+                            ProfileButton {
+                                parent: window.callOpen ? activeCallActions : idleCallActions
+                                symbol: "headphones"
+                                enabled: window.callOpen
+                                checked: window.callOutputMuted
+                                Accessible.name: checked ? "Unmute call audio" : "Mute call audio"
+                                ToolTip.text: Accessible.name
+                                ToolTip.visible: hovered
+                                onClicked: {
+                                    window.callOutputMuted = !window.callOutputMuted
+                                    if (chat.nativeCall)
+                                        chat.setNativeOutputMuted(window.callOutputMuted)
+                                }
+                            }
+                            ProfileButton {
+                                symbol: "camera"
+                                enabled: chat.nativeConnected
+                                Accessible.name: chat.nativeCamera ? "Turn camera off" : "Turn camera on"
+                                ToolTip.text: Accessible.name
+                                ToolTip.visible: hovered
+                                onClicked: chat.toggleNativeCamera()
+                            }
+                            ProfileButton {
+                                symbol: "share"
+                                enabled: chat.nativeConnected
+                                Accessible.name: chat.nativeSharing ? "Stop sharing" : "Share screen"
+                                ToolTip.text: Accessible.name
+                                ToolTip.visible: hovered
+                                onClicked: {
+                                    if (chat.nativeSharing) {
+                                        chat.stopNativeShare()
+                                        return
+                                    }
+                                    const sources = chat.nativeShareSources()
+                                    if (sources.portal) {
+                                        chat.startNativeShare(-1, false)
+                                    } else {
+                                        nativeSharePicker.sources = sources
+                                        nativeSharePicker.open()
+                                    }
+                                }
+                            }
+                            ProfileButton {
+                                symbol: "audio"
+                                enabled: chat.nativeConnected
+                                Accessible.name: "Call audio settings"
+                                ToolTip.text: Accessible.name
+                                ToolTip.visible: hovered
+                                onClicked: nativeAudioSettings.open()
+                            }
+                            ProfileButton {
+                                symbol: "hangup"
+                                destructive: true
+                                Accessible.name: "Leave call"
+                                ToolTip.text: Accessible.name
+                                ToolTip.visible: hovered
+                                onClicked: chat.closeCall()
                             }
                         }
-                        ProfileButton {
-                            symbol: "settings"
-                            Accessible.name: "User settings"
-                            ToolTip.text: "User settings · Ctrl+,"
-                            ToolTip.visible: hovered
-                            onClicked: settings.open()
-                        }
+
                     }
                 }
             }
@@ -1017,45 +1131,7 @@ ApplicationWindow {
                         visible: nativeVideoGrid.count === 0
                         Layout.fillHeight: true
                     }
-                    RowLayout {
-                        Layout.alignment: Qt.AlignHCenter
-                        NavigationButton {
-                            text: chat.nativeMuted ? "Unmute" : "Mute"
-                            enabled: chat.nativeConnected
-                            onClicked: chat.toggleNativeMicrophone()
-                        }
-                        NavigationButton {
-                            text: chat.nativeCamera ? "Camera off" : "Camera on"
-                            enabled: chat.nativeConnected
-                            onClicked: chat.toggleNativeCamera()
-                        }
-                        NavigationButton {
-                            text: chat.nativeSharing ? "Stop sharing" : "Share screen"
-                            enabled: chat.nativeConnected
-                            onClicked: {
-                                if (chat.nativeSharing) {
-                                    chat.stopNativeShare()
-                                    return
-                                }
-                                const sources = chat.nativeShareSources()
-                                if (sources.portal) {
-                                    chat.startNativeShare(-1, false)
-                                } else {
-                                    nativeSharePicker.sources = sources
-                                    nativeSharePicker.open()
-                                }
-                            }
-                        }
-                        NavigationButton {
-                            text: "Audio settings"
-                            enabled: chat.nativeConnected
-                            onClicked: nativeAudioSettings.open()
-                        }
-                        NavigationButton {
-                            text: "Leave call"
-                            onClicked: chat.closeCall()
-                        }
-                    }
+
                 }
 
                 Dialog {
