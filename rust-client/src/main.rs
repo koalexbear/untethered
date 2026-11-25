@@ -213,6 +213,12 @@ enum Msg {
     },
     Copy,
     TogglePeople,
+    /// Open or close the server dropdown in the channel sidebar.
+    ServerMenu(bool),
+    /// Close the topmost menu, dialog or settings page.
+    Escape,
+    /// Collapse or expand a channel category, keyed by section and kind.
+    Collapse(String),
     MemberFilter(String),
     SelectMember(String),
     MemberReason(String),
@@ -334,6 +340,8 @@ struct App {
     verified: bool,
     account: bool,
     people: bool,
+    server_menu: bool,
+    collapsed: BTreeSet<String>,
     directory: moderation::Directory,
     permission_panel: bool,
     profile: String,
@@ -420,6 +428,8 @@ impl App {
             verified: false,
             account: false,
             people: false,
+            server_menu: false,
+            collapsed: Default::default(),
             directory: Default::default(),
             permission_panel: false,
             profile: String::new(),
@@ -1067,6 +1077,16 @@ impl App {
             | Msg::ShowInline(_) => true,
             _ => false,
         };
+        if matches!(
+            msg,
+            Msg::Setup(_) | Msg::Section(_) | Msg::Open(_) | Msg::Account | Msg::OpenMentions
+        ) {
+            self.server_menu = false;
+        }
+        #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
+        if matches!(msg, Msg::SpaceAlerts) {
+            self.server_menu = false;
+        }
         match msg {
             #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
             Msg::NotificationPanel => self.alerts.panel = !self.alerts.panel,
@@ -1734,6 +1754,21 @@ impl App {
                     return self.anchor_history();
                 }
             }
+            Msg::ServerMenu(open) => self.server_menu = open,
+            Msg::Escape => {
+                if self.server_menu {
+                    self.server_menu = false;
+                } else if self.setup.is_some() && !self.setup_busy() {
+                    return self.setup_input(community::Input::Close);
+                } else if self.account && self.logged_in && self.verified {
+                    self.account = false;
+                }
+            }
+            Msg::Collapse(key) => {
+                if !self.collapsed.remove(&key) {
+                    self.collapsed.insert(key);
+                }
+            }
             Msg::TogglePeople => {
                 self.people = !self.people;
                 self.reset_directory();
@@ -2168,6 +2203,10 @@ fn main() -> iced::Result {
                         modifiers,
                         ..
                     } => Some(Msg::Tab(modifiers.shift())),
+                    iced::keyboard::Event::KeyPressed {
+                        key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
+                        ..
+                    } => Some(Msg::Escape),
                     _ => None,
                 }),
             ])

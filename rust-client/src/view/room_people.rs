@@ -1,64 +1,149 @@
-use super::{App, BOLD, El, MUTED, Msg, SIDE, nav, surface};
+use super::{
+    ACTIVE, App, BLURPLE, BODY, BOLD, CHANNEL, El, FLOAT, HOVER, Icon, MUTED, Msg, RED, SIDE, TEXT,
+    avatar, icon_button, input_style, label_owned, plain, scroll_style, surface, thin_scrollbar,
+};
 use crate::moderation::{Action, Kind};
 use iced::{
-    Fill,
-    widget::{Column, Row, Space, button, column, container, row, scrollable, text, text_input},
+    Alignment::Center,
+    Border, Color, Fill, color,
+    widget::{Column, Row, button, column, container, row, scrollable, text, text_input, tooltip},
 };
+
+fn action_button<'a>(action: Action, msg: Option<Msg>) -> El<'a> {
+    let danger = matches!(action, Action::Kick | Action::Ban);
+    button(text(action.label()).size(14).font(BOLD))
+        .padding([6, 12])
+        .on_press_maybe(msg)
+        .style(move |_, s| {
+            let (base, hover) = if danger {
+                (color!(0xda373c), color!(0xa12828))
+            } else {
+                (BLURPLE, color!(0x4752c4))
+            };
+            button::Style {
+                background: Some(
+                    match s {
+                        button::Status::Hovered => hover,
+                        button::Status::Disabled => Color { a: 0.5, ..base },
+                        _ => base,
+                    }
+                    .into(),
+                ),
+                text_color: Color::WHITE,
+                border: Border::default().rounded(4),
+                ..Default::default()
+            }
+        })
+        .into()
+}
+
+/// A membership kind, its heading and the (ID, name) pairs shown under it.
+type Group<'a> = (Kind, &'static str, Vec<(&'a String, &'a str)>);
 
 pub(super) fn view(app: &App) -> El<'_> {
     let d = &app.directory;
     let busy = app.membership_busy();
     let mut panel = column![
         row![
-            text("Room members").font(BOLD).width(Fill),
+            text_input("Search members", &d.filter)
+                .on_input(Msg::MemberFilter)
+                .size(14)
+                .padding([6, 8])
+                .style(input_style)
+                .width(Fill),
             button(text("Refresh").size(12))
-                .style(nav(false))
+                .padding([2, 4])
+                .style(plain(CHANNEL, BODY))
                 .on_press_maybe((app.connected && !busy).then_some(Msg::RefreshMembers))
-        ],
-        text_input("Find member by name or ID", &d.filter)
-            .on_input(Msg::MemberFilter)
-            .size(13)
-            .padding(5),
+        ]
+        .spacing(6)
+        .align_y(Center),
     ]
-    .spacing(6)
-    .padding(10);
+    .spacing(10)
+    .padding([12, 8]);
     if let Some(id) = &d.selected
         && let Some(m) = d.users.get(id)
     {
-        panel = panel
-            .push(text(id).size(13).font(BOLD))
-            .push(text(format!("Membership: {}", m.kind.label())).size(13));
-        let mut actions = Row::new().spacing(4);
+        let name = if m.name.is_empty() {
+            crate::rooms::short(id)
+        } else {
+            &m.name
+        };
+        let mut card = column![
+            row![
+                avatar(name, 48.),
+                column![
+                    text(name).size(16).font(BOLD).color(TEXT),
+                    text(id).size(12).color(MUTED),
+                ]
+                .spacing(2)
+                .width(Fill),
+                icon_button(
+                    Icon::Close,
+                    "Close",
+                    false,
+                    Some(Msg::MemberFilter(d.filter.clone())),
+                    tooltip::Position::Left
+                )
+            ]
+            .spacing(10)
+            .align_y(Center),
+            text(format!("MEMBERSHIP · {}", m.kind.label().to_uppercase()))
+                .size(12)
+                .font(BOLD)
+                .color(CHANNEL),
+        ]
+        .spacing(10);
+        let mut actions = Row::new().spacing(6);
         let mut available = false;
         for action in Action::ALL {
             if let Some(change) = app.member_change(action) {
                 available = true;
-                actions = actions.push(
-                    button(text(action.label()).size(14))
-                        .style(nav(false))
-                        .on_press_maybe((!busy).then_some(Msg::Moderate(change))),
-                );
+                actions = actions.push(action_button(
+                    action,
+                    (!busy).then_some(Msg::Moderate(change)),
+                ));
             }
         }
         if available {
-            panel = panel
+            card = card
                 .push(
                     text_input("Reason (optional)", &d.reason)
                         .on_input_maybe((!busy).then_some(Msg::MemberReason))
-                        .size(13)
-                        .padding(5),
+                        .size(14)
+                        .padding([6, 8])
+                        .style(input_style),
                 )
                 .push(actions.wrap());
         }
-    }
-    if busy {
-        panel = panel.push(text("Updating room membership…").size(12).color(MUTED));
-    }
-    if !d.note.is_empty() {
-        panel = panel.push(text(&d.note).size(12));
+        if busy {
+            card = card.push(text("Updating room membership…").size(12).color(MUTED));
+        }
+        if !d.note.is_empty() {
+            card = card.push(text(&d.note).size(12).color(BODY));
+        }
+        panel = panel.push(
+            container(card)
+                .padding(12)
+                .width(Fill)
+                .style(|_| surface(FLOAT, 8.)),
+        );
+    } else {
+        if busy {
+            panel = panel.push(text("Updating room membership…").size(12).color(MUTED));
+        }
+        if !d.note.is_empty() {
+            panel = panel.push(text(&d.note).size(12).color(BODY));
+        }
     }
     let query = d.filter.trim().to_lowercase();
-    let mut list = Column::new().spacing(2);
+    let mut groups: [Group; 5] = [
+        (Kind::Joined, "MEMBERS", vec![]),
+        (Kind::Knocking, "REQUESTED", vec![]),
+        (Kind::Invited, "INVITED", vec![]),
+        (Kind::Banned, "BANNED", vec![]),
+        (Kind::Left, "LEFT", vec![]),
+    ];
     let mut total = 0;
     for (id, m) in &d.users {
         if query.is_empty() && m.kind == Kind::Left && d.selected.as_ref() != Some(id) {
@@ -79,34 +164,87 @@ pub(super) fn view(app: &App) -> El<'_> {
         } else {
             &m.name
         };
+        if let Some(group) = groups.iter_mut().find(|(k, ..)| *k == m.kind) {
+            group.2.push((id, name));
+        }
+    }
+    let mut list = Column::new().spacing(2);
+    for (kind, title, members) in groups {
+        if members.is_empty() {
+            continue;
+        }
         list = list.push(
-            button(
-                column![
-                    row![
-                        text(name).size(14),
-                        Space::new().width(Fill),
-                        text(m.kind.label()).size(12)
-                    ],
-                    text(id).size(11).color(MUTED)
-                ]
-                .spacing(1),
-            )
-            .width(Fill)
-            .padding([4, 5])
-            .style(nav(d.selected.as_ref() == Some(id)))
-            .on_press(Msg::SelectMember(id.clone())),
+            container(label_owned(format!("{title} — {}", members.len()))).padding(iced::Padding {
+                top: 16.,
+                bottom: 4.,
+                left: 8.,
+                right: 8.,
+            }),
         );
+        for (id, name) in members {
+            let selected = d.selected.as_ref() == Some(id);
+            let dim = kind != Kind::Joined;
+            list = list.push(
+                button(
+                    row![
+                        avatar(name, 32.),
+                        column![
+                            text(name).size(15).wrapping(text::Wrapping::None),
+                            text(id.as_str())
+                                .size(12)
+                                .color(CHANNEL)
+                                .wrapping(text::Wrapping::None)
+                        ]
+                        .spacing(1)
+                    ]
+                    .spacing(12)
+                    .align_y(Center),
+                )
+                .width(Fill)
+                .padding([5, 8])
+                .on_press(Msg::SelectMember(id.clone()))
+                .style(move |_, s| button::Style {
+                    background: if selected {
+                        Some(ACTIVE.into())
+                    } else if s == button::Status::Hovered {
+                        Some(HOVER.into())
+                    } else {
+                        None
+                    },
+                    text_color: if selected || s == button::Status::Hovered {
+                        TEXT
+                    } else if dim {
+                        color!(0x80848e)
+                    } else {
+                        BODY
+                    },
+                    border: Border::default().rounded(4),
+                    ..Default::default()
+                }),
+            );
+        }
     }
     if total == 0 && !busy {
-        list = list.push(text("No matching members.").size(13).color(MUTED));
+        list = list
+            .push(container(text("No matching members.").size(13).color(MUTED)).padding([12, 8]));
     }
     if total > 80 {
-        panel =
-            panel.push(text(format!("Showing 80 of {total}. Type to narrow the list.")).size(12));
+        panel = panel.push(
+            text(format!("Showing 80 of {total}. Type to narrow the list."))
+                .size(12)
+                .color(RED),
+        );
     }
-    container(panel.push(scrollable(list).height(Fill)))
-        .width(258)
-        .height(Fill)
-        .style(|_| surface(SIDE, 0.))
-        .into()
+    container(
+        panel.push(
+            scrollable(list)
+                .direction(thin_scrollbar())
+                .style(scroll_style(None))
+                .height(Fill),
+        ),
+    )
+    .width(240)
+    .height(Fill)
+    .style(|_| surface(SIDE, 0.))
+    .into()
 }
