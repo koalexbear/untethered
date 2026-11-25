@@ -160,6 +160,24 @@ fn history_order(app: &App, room: &str) -> Vec<usize> {
         .collect()
 }
 
+/// The neighbouring posts that break the order, with their event IDs, to
+/// look up in the SDK traces.
+fn disorder(app: &App, room: &str) -> String {
+    let posts: Vec<(usize, Option<String>)> = app.live.list[room]
+        .posts()
+        .filter_map(|p| {
+            let n = p.text().strip_prefix("history ")?.parse().ok()?;
+            Some((n, p.event_id.clone()))
+        })
+        .collect();
+    posts
+        .windows(2)
+        .filter(|w| w[0].0 > w[1].0)
+        .map(|w| format!("{} {:?} before {} {:?}", w[0].0, w[0].1, w[1].0, w[1].1))
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
 async fn paginate_to_start(app: &mut App, rx: &Receiver<Event>, room: &str) {
     // A page can hold only state events, which have no Post; allow a few.
     for _ in 0..12 {
@@ -337,7 +355,8 @@ async fn matrix_sdk_login_restore_and_encrypted_round_trip() {
     let order = history_order(&app, room);
     assert!(
         order.is_sorted(),
-        "history out of order after pagination: {order:?}"
+        "history out of order after pagination: {order:?} ({})",
+        disorder(&app, room)
     );
 
     app.editor = text_editor::Content::with_text(&mine);
@@ -450,7 +469,8 @@ async fn matrix_sdk_login_restore_and_encrypted_round_trip() {
     let order = history_order(&app, room);
     assert!(
         order.len() == older && order.is_sorted(),
-        "restored history incomplete or out of order: {order:?}"
+        "restored history incomplete or out of order: {order:?} ({})",
+        disorder(&app, room)
     );
     println!("matrix-sdk: restart restored the session, both encrypted messages and the edit");
     stop(app, engine).await;

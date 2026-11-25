@@ -848,7 +848,7 @@ impl Engine {
             ..
         } = live;
         // Our own sign-out must not also report a rejected token.
-        drop(tasks);
+        tasks.stop().await;
         let _ = tokio::time::timeout(Duration::from_secs(5), sync.stop()).await;
         let server = tokio::time::timeout(Duration::from_secs(15), client.logout()).await;
         drop((sync, client));
@@ -886,6 +886,7 @@ impl Engine {
             }
             Notice::TokenRejected => {
                 if let Some(live) = self.live.take() {
+                    live.tasks.stop().await;
                     live.sync.stop().await;
                 }
                 session::forget(&self.profile).await;
@@ -901,8 +902,10 @@ impl Engine {
     async fn shutdown(&mut self) {
         if let Some(task) = self.browser.take() {
             task.abort();
+            let _ = task.await;
         }
         if let Some(live) = self.live.take() {
+            live.tasks.stop().await;
             let _ = tokio::time::timeout(Duration::from_secs(5), live.sync.stop()).await;
         }
     }
@@ -1023,6 +1026,19 @@ struct Tasks(Vec<tokio::task::JoinHandle<()>>);
 impl Tasks {
     fn spawn(&mut self, task: impl Future<Output = ()> + Send + 'static) {
         self.0.push(tokio::spawn(task));
+    }
+
+    /// Abort and wait. Aborting alone lets a running task finish its poll
+    /// later, still holding what it captured (the profile, and with it the
+    /// profile lock a restarted engine needs).
+    async fn stop(mut self) {
+        let tasks = std::mem::take(&mut self.0);
+        for task in &tasks {
+            task.abort();
+        }
+        for task in tasks {
+            let _ = task.await;
+        }
     }
 }
 impl Drop for Tasks {

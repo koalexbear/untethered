@@ -321,7 +321,11 @@ sso:
         history = 55
         for i in range(history):
             seed.rpc("send_message", {"room_id": room, "text": f"history {i}"})
-        seed.decrypted(f"history {history - 1}")
+            # gomuks sends in the background, and parallel sends can reach the
+            # server out of order. Wait for each so the room's order is 0..54.
+            body = f"history {i}"
+            seed.find(body, lambda e: (e.get("decrypted") or {}).get("body") == body
+                      and str(e.get("event_id", "")).startswith("$"))
         old_event = seed.decrypted("history 3")["event_id"]
         time.sleep(3)  # let gomuks upload the new Megolm session to key backup
         seed.close()
