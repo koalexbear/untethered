@@ -208,8 +208,15 @@ the conversation. [Live screen-share test and screenshots](experiments/rtc-audio
 When someone shares a browser tab **with audio**, the Linux client plays
 the tab alongside their microphone. Uncheck **Play shared audio** to hear
 just the conversation; this changes only your playback. **Deafen** silences
-both and restores your previous choice when turned off. Untethered’s own
-Linux **Share window** still sends window pixels, not system audio.
+both and restores your previous choice when turned off.
+
+**To send an app’s sound with your window:** start **Share window**, play
+audio in the app, then click **Choose app audio → Send sound from** and
+select its playback stream. If it just started playing, click **Refresh
+devices**. Only the selected stream is shared, even if other apps are
+using the same speakers. **Stop app audio** leaves the video and microphone
+running. Stopping the window share also stops the app recording. This
+works with PulseAudio and PipeWire-Pulse and uses `pactl` and `parec`.
 
 ![Untethered showing the user's own shared playtest board during a call](experiments/rtc-audio/evidence/own-share-stage.png)
 

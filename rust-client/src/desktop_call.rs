@@ -37,6 +37,7 @@ use url::Url;
 mod cameras;
 mod channel;
 mod room_video;
+mod share_audio;
 pub(crate) use cameras::{CameraChoice, list_cameras};
 pub(super) use room_video::{Feed, Previews, VideoInput};
 
@@ -78,6 +79,7 @@ pub struct AudioMode {
     pub muted: bool,
     pub deafened: bool,
     pub share_silent: bool,
+    pub send_app: Option<(uuid::Uuid, crate::call_devices::AppStream)>,
     pub(super) talk: TalkGate,
     pub mic: Route,
     pub speaker: Route,
@@ -143,6 +145,7 @@ pub struct ActiveCall {
     pub video_status: [room_video::Status; 2],
     pub previews: Previews,
     pub preview_hidden: bool,
+    pub app_note: String,
     pub chat_open: bool,
     pub theater: bool,
     pub speaking: watch::Receiver<std::collections::BTreeSet<String>>,
@@ -231,6 +234,7 @@ impl crate::App {
                 video_status: Default::default(),
                 previews,
                 preview_hidden: false,
+                app_note: String::new(),
                 chat_open: false,
                 theater: false,
                 speaking,
@@ -789,6 +793,7 @@ async fn call(
     };
     let mut camera = room_video::Publisher::new(VideoInput::Camera);
     let mut share = room_video::Publisher::new(VideoInput::Window);
+    let mut sound = share_audio::Publisher::default();
     share.local_preview = Some(previews.clone());
     camera.local_preview = Some(previews.clone());
     let mut media_jobs = JoinSet::new();
@@ -826,6 +831,9 @@ async fn call(
                 lk,
                 CameraChoice::default(),
             )
+            .await?;
+        sound
+            .sync(share.live_capture(), lk, key.index, &mode, events, w.room)
             .await?;
         let mut live = std::collections::BTreeSet::new();
         if recovering.is_none()
@@ -886,6 +894,7 @@ async fn call(
             changed=mode.changed()=>{changed.map_err(|_|ENDED)?;false}
             update=camera.next()=>{camera.update(update,lk,key.index,events,w.room,&mode).await?;false}
             update=share.next()=>{share.update(update,lk,key.index,events,w.room,&mode).await?;false}
+            ended=sound.ended()=>{sound.finish(ended,lk,events,w.room).await?;false}
             _=media_jobs.join_next(),if !media_jobs.is_empty()=>false,
             e=w.frame()=>{e?;false}
             _=heartbeat.tick()=>{

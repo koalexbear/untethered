@@ -291,6 +291,7 @@ pub(super) async fn joined(
     ));
     let mut subscriptions = Subscriptions::default();
     let mut share = room_video::Publisher::new(VideoInput::Window);
+    let mut sound = share_audio::Publisher::default();
     let mut camera = room_video::Publisher::new(VideoInput::Camera);
     share.local_preview = Some(views.previews.clone());
     camera.local_preview = Some(views.previews.clone());
@@ -339,9 +340,20 @@ pub(super) async fn joined(
         camera
             .select(requests[VideoInput::Camera as usize], lk, route)
             .await?;
+        sound
+            .sync(
+                share.live_capture(),
+                lk,
+                keys.outbound.index,
+                &mode,
+                events,
+                w.room,
+            )
+            .await?;
         tokio::select! {
             changed=mode.changed()=>{changed.map_err(|_|ENDED)?;}
             update=share.next()=>share.update(update,lk,keys.outbound.index,events,w.room,&mode).await?,
+            ended=sound.ended()=>sound.finish(ended,lk,events,w.room).await?,
             update=camera.next()=>camera.update(update,lk,keys.outbound.index,events,w.room,&mode).await?,
             r=input.join_next()=>return Err(r.and_then(|j|j.ok()).and_then(|v|v.err()).unwrap_or("Microphone stream ended.")),
             job=subscriptions.jobs.join_next(),if !subscriptions.jobs.is_empty()=>match job {

@@ -330,6 +330,57 @@ impl App {
             );
         }
         bar = bar.push(container(controls.wrap()).center_x(Fill));
+        let screen = crate::desktop_call::VideoInput::Window as usize;
+        if call.video_status[screen].live
+            && let Some(window) = mode.video[screen]
+        {
+            let id = call.id;
+            let label = if !call.app_note.is_empty() {
+                call.app_note.as_str()
+            } else {
+                "Window audio is off"
+            };
+            let mut line = row![text(label).size(13)].spacing(8).align_y(Center);
+            if mode.send_app.is_some() {
+                line = line.push(
+                    button(text("Stop app audio").size(13))
+                        .style(nav(false))
+                        .on_press(Msg::ShareApp(id, window, None)),
+                );
+            }
+            if !call.picker {
+                line = line.push(
+                    button(text("Choose app audio").size(13))
+                        .style(nav(false))
+                        .on_press(Msg::AudioDevices),
+                );
+            }
+            bar = bar.push(line);
+            if call.picker {
+                if call.devices.streams.is_empty() {
+                    bar = bar.push(
+                        text("Play sound in the app, then refresh devices.")
+                            .size(13)
+                            .color(MUTED),
+                    );
+                } else {
+                    bar = bar.push(
+                        row![
+                            text("Send sound from").size(14),
+                            pick_list(
+                                call.devices.streams.as_slice(),
+                                mode.send_app.as_ref().map(|(_, s)| s.clone()),
+                                move |s| Msg::ShareApp(id, window, Some(s))
+                            )
+                            .placeholder("Choose a playback stream")
+                            .text_size(14)
+                        ]
+                        .align_y(Center)
+                        .spacing(8),
+                    );
+                }
+            }
+        }
         if call.picker || call.previews.remote_share() {
             let id = call.id;
             bar = bar.push(

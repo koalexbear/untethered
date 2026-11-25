@@ -525,12 +525,17 @@ pub(super) struct Publisher {
     picker: JoinSet<Result<Capture>>,
     frames: JoinSet<Result<()>>,
     published: Option<TrackSid>,
+    capture_lifetime: Option<watch::Receiver<()>>,
 }
 pub(super) enum Update {
     Chosen(Result<Box<Capture>>),
     Ended(&'static str),
 }
 impl Publisher {
+    pub(super) fn live_capture(&self) -> Option<(Uuid, watch::Receiver<()>)> {
+        let alive = self.capture_lifetime.as_ref()?;
+        (alive.has_changed().is_ok()).then_some((self.request?, alive.clone()))
+    }
     pub(super) fn new(input: VideoInput) -> Self {
         Self {
             local_preview: None,
@@ -539,6 +544,7 @@ impl Publisher {
             picker: JoinSet::new(),
             frames: JoinSet::new(),
             published: None,
+            capture_lifetime: None,
         }
     }
     pub(super) async fn select(
@@ -558,6 +564,7 @@ impl Publisher {
         Ok(())
     }
     async fn stop(&mut self, lk: &Room) -> Result<()> {
+        self.capture_lifetime = None;
         self.picker.shutdown().await;
         // On an explicit stop the worker observes the same watch change and
         // closes the portal session itself. Abort on timeout or call teardown;
@@ -640,8 +647,14 @@ impl Publisher {
                                 views,
                                 events: events.clone(),
                             });
-                            self.frames
-                                .spawn(cap.feed(src, mode.clone(), id, self.input, preview));
+                            let (guard, lifetime) = watch::channel(());
+                            self.capture_lifetime = Some(lifetime);
+                            let mode = mode.clone();
+                            let input = self.input;
+                            self.frames.spawn(async move {
+                                let _guard = guard;
+                                cap.feed(src, mode, id, input, preview).await
+                            });
                             Ok(match self.input {
                                 VideoInput::Window => "Sharing the selected window",
                                 VideoInput::Camera => "Camera is on",

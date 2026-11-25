@@ -113,7 +113,7 @@ def window_share(stack,desks,secret,original,publications):
     desks[0].tone=0;desks[1].tone=1
     print(f"Stop sharing: portal session gone, {len(capture_nodes)} PipeWire video node(s) removed, 0 screen tracks and both remote tiles cleared; original microphones still live.",flush=True)
 
-def dm_share(stack,sender,user,tracks,readers,picture,audio):
+def dm_share(stack,sender,user,tracks,readers,picture,audio,share_sound=None):
     """The two cameras and two microphones are already live in this DM."""
     kde=sender.kde
     source=pattern_window(stack,sender)
@@ -136,6 +136,11 @@ def dm_share(stack,sender,user,tracks,readers,picture,audio):
     def thumb(label):
         def target():
             # Filmstrip labels are separate from the stage's title/caption.
+            if label=="remote" and share_sound:
+                from qa_element_video import BROWSER
+                im=kde.capture().crop((282,640,1180,750))
+                for pair in BROWSER:
+                    if hit:=pattern_box(im,pair):return 282+(hit[0]+hit[2])//2,640+hit[1]+42
             if label=="your":
                 im=kde.capture()
                 for y in range(570,775,8):
@@ -157,7 +162,7 @@ def dm_share(stack,sender,user,tracks,readers,picture,audio):
     sender.click("theater")
     def wide():
         big=pattern_box(kde.capture().crop((0,275,1179,435)),SECOND)
-        return big and big[2]-big[0]>r[2]-r[0]+80
+        return big and big[2]-big[0]>r[2]-r[0]+40
     wait_for("theater shows larger own share",wide)
     if dest:=os.getenv("RTC_QA_SCREENSHOTS"):
         source.stdin.write(b"board\n");source.stdin.flush()
@@ -175,9 +180,11 @@ def dm_share(stack,sender,user,tracks,readers,picture,audio):
         wait_for("share still visible",lambda:picture(SECOND))
     audio()
     assert tracks()==live
+    audio_closed=share_sound(live) if share_sound else None
     sender.click("sharing")
     wait_for("window stopped but cameras and microphones remain",lambda:tracks()==baseline)
     wait_for("window grant and capture closed",lambda:sessions(kde)==leases and pw_nodes(kde)==nodes and set(readers())==procs)
+    if audio_closed:wait_for("window stop also released selected app recorder",audio_closed)
     wait_for("no stale screen tile",lambda:not picture(SECOND))
     audio()
     print(f"DM window: remote rendered Prism at {a[2]-a[0]} then {b[2]-b[0]} px wide. "

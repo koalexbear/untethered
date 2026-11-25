@@ -121,6 +121,8 @@ enum Msg {
     #[cfg(target_os = "linux")]
     SetShareSound(uuid::Uuid, bool),
     #[cfg(target_os = "linux")]
+    ShareApp(uuid::Uuid, uuid::Uuid, Option<call_devices::AppStream>),
+    #[cfg(target_os = "linux")]
     RoomPtt(bool),
     #[cfg(target_os = "linux")]
     TalkKey(bool),
@@ -578,6 +580,22 @@ impl App {
         let data = &f["data"];
         match f["command"].as_str().unwrap_or("") {
             #[cfg(target_os = "linux")]
+            "share_audio_status" => {
+                if let Some(c) = &mut self.call
+                    && data["room"] == c.room
+                    && c.audio
+                        .borrow()
+                        .send_app
+                        .as_ref()
+                        .is_some_and(|(id, _)| data["attempt"] == id.to_string())
+                {
+                    c.app_note = rooms::string(&data["label"]);
+                    if data["live"] != true {
+                        c.audio.send_modify(|m| m.send_app = None);
+                    }
+                }
+            }
+            #[cfg(target_os = "linux")]
             "room_video" => {
                 let Some(input) = desktop_call::VideoInput::from_name(data["source"].as_str())
                 else {
@@ -592,7 +610,15 @@ impl App {
                     call.video_status[slot].label = rooms::string(&data["label"]);
                     call.video_status[slot].live = data["live"] == true;
                     if !call.video_status[slot].live {
-                        call.audio.send_modify(|m| m.video[slot] = None);
+                        call.audio.send_modify(|m| {
+                            m.video[slot] = None;
+                            if input == desktop_call::VideoInput::Window {
+                                m.send_app = None;
+                            }
+                        });
+                        if input == desktop_call::VideoInput::Window {
+                            call.app_note.clear();
+                        }
                     }
                 }
             }
@@ -1305,6 +1331,27 @@ impl App {
                 }
             }
             #[cfg(target_os = "linux")]
+            Msg::ShareApp(id, window, choice) => {
+                let slot = desktop_call::VideoInput::Window as usize;
+                if let Some(c) = &mut self.call
+                    && c.id == id
+                    && !c.cancel.is_closed()
+                    && c.video_status[slot].live
+                    && c.audio.borrow().video[slot] == Some(window)
+                    && choice
+                        .as_ref()
+                        .is_none_or(|s| c.picker && c.devices.streams.contains(s))
+                {
+                    c.app_note = if choice.is_some() {
+                        "Starting application audio…".into()
+                    } else {
+                        String::new()
+                    };
+                    c.audio
+                        .send_modify(|m| m.send_app = choice.map(|s| (uuid::Uuid::new_v4(), s)));
+                }
+            }
+            #[cfg(target_os = "linux")]
             Msg::ToggleVideo(input) => {
                 if let Some(call) = &mut self.call
                     && !call.cancel.is_closed()
@@ -1312,6 +1359,9 @@ impl App {
                     let slot = input as usize;
                     let stop = call.audio.borrow().video[slot].is_some();
                     call.audio.send_modify(|m| {
+                        if input == desktop_call::VideoInput::Window {
+                            m.send_app = None;
+                        }
                         m.video[slot] = if stop {
                             None
                         } else {
@@ -1319,6 +1369,9 @@ impl App {
                         }
                     });
                     call.video_status[slot].live = false;
+                    if input == desktop_call::VideoInput::Window {
+                        call.app_note.clear();
+                    }
                     call.video_status[slot].label = if stop {
                         String::new()
                     } else {

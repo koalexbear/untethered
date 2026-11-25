@@ -148,8 +148,14 @@
   GCM audio publication. In a DM, the native speaker reproduced the tab and
   microphone together; unchecking **Play shared audio** removed only the tab.
   **Deafen** silenced both and preserved the listener’s choice. Stopping
-  the tab closed its playback stream without interrupting voice. Outbound
-  Linux window/system audio is a separate milestone.
+  the tab closed its playback stream without interrupting voice.
+- **Outgoing Linux application audio:** With a window already shared,
+  choosing a specific playback stream delivered 730→830 Hz to Element
+  separately from the 410 Hz mic. A second app playing 1030 Hz through
+  the same output was absent at the receiver. Tested with PulseAudio and
+  PipeWire-Pulse. Exiting the selected app removed only its audio track;
+  ending the window share also closed the recorder. Whole-system audio
+  capture is outside this per-stream test.
 - **Three-person Linux voice rooms:** **Join voice** and **Leave voice** use
   the encrypted room's MatrixRTC slot without DM notifications. In the
   [three-account desktop test](experiments/rtc-audio/README.md#verify-three-person-voice-rooms)

@@ -126,6 +126,20 @@ a different participant, changes Prism, reselects **Your screen** and enters
 **Theater**. The recipient continues to see Prism, and fresh audio travels in
 both directions. Stopping the share closes its portal grant and reader,
 while the call keeps its original four camera and microphone publications.
+During the Element run, the native side sends two independent apps through
+one private output sink. Selecting **Prism** must deliver its 730→830 Hz
+signal on an additional GCM screen-share audio track. Element separately
+decodes the 410 Hz microphone and checks for the unselected app’s 1030 Hz
+signal on all inbound audio tracks. The test stops app audio, restarts it,
+exits the selected app, and deliberately selects its replacement. Neither
+source disappearance nor window stop may fall back to recording the sink.
+Check directly with either native audio server:
+
+```sh
+sh experiments/rtc-audio/run_element.sh --element-video --dm-window --incoming-dm
+RTC_QA_AUDIO_SERVER=pipewire-pulse sh experiments/rtc-audio/run_element.sh --element-video --dm-window
+```
+
 Element also shares a changing browser tab with audio back to Untethered.
 The tab plays 1030 Hz independently of the 670 Hz Element microphone. The
 native speaker must reproduce both, then only the microphone when **Play

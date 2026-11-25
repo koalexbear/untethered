@@ -1,6 +1,7 @@
 """Two actual video callers, independent synthetic camera inputs and rendered remote pixels."""
 import io
 import json
+import os
 import re
 import subprocess as sp
 from urllib.parse import urlsplit
@@ -33,9 +34,25 @@ def verify(stack,tmp,root,backend,page,room,alice,bob,secret,incoming,switch_cam
     env=isolated_env(tmp,backend,"wayland")
     sock=tmp/"video-pulse"
     env.update(PULSE_SERVER="unix:"+str(sock),PULSE_SOURCE="Mic0.monitor",PULSE_SINK="Out0")
-    stack.enter_context(child(["pulseaudio","-n","--daemonize=no","--exit-idle-time=-1","--use-pid-file=no",
-        "--load=module-native-protocol-unix socket="+str(sock)+" auth-anonymous=1",
-        *(f"--load=module-null-sink sink_name={k} rate=48000 channels=1" for k in ("Mic0","Out0"))],env))
+    if os.getenv("RTC_QA_AUDIO_SERVER")=="pipewire-pulse":
+        from pathlib import Path
+        d=tmp/"private-audio";d.mkdir()
+        pe=isolated_env(d,backend,"wayland");runtime=Path(pe["XDG_RUNTIME_DIR"])
+        sock=runtime/"pulse/native";env["PULSE_SERVER"]="unix:"+str(sock)
+        pe.update(PIPEWIRE_RUNTIME_DIR=str(runtime),PIPEWIRE_REMOTE="pipewire-0",PULSE_SERVER=env["PULSE_SERVER"],
+                  DBUS_SESSION_BUS_ADDRESS="unix:path="+str(runtime/"bus"))
+        stack.enter_context(child(["dbus-daemon","--session","--nofork","--address="+pe["DBUS_SESSION_BUS_ADDRESS"]],pe))
+        stack.enter_context(child(["pipewire"],pe))
+        wait_for("private audio graph",(runtime/"pipewire-0").is_socket)
+        stack.enter_context(child(["wireplumber","--profile","policy"],pe))
+        stack.enter_context(child(["pipewire-pulse"],pe))
+        wait_for("private pulse compatibility server",sock.is_socket)
+        for k in ("Mic0","Out0"):sp.run(["pactl","load-module","module-null-sink","sink_name="+k,"rate=48000","channels=1"],
+            env=pe,check=True,stdout=sp.DEVNULL)
+    else:
+        stack.enter_context(child(["pulseaudio","-n","--daemonize=no","--exit-idle-time=-1","--use-pid-file=no",
+            "--load=module-native-protocol-unix socket="+str(sock)+" auth-anonymous=1",
+            *(f"--load=module-null-sink sink_name={k} rate=48000 channels=1" for k in ("Mic0","Out0"))],env))
     wait_for("private audio",lambda:sock.is_socket() and "Out0" in sp.run(["pactl","list","short","sinks"],env=env,capture_output=True,text=True).stdout)
     kde=KWin(stack,tmp,root,backend,env=env,screencast=True)
     desk=Desktop(stack,root,env,0,kde,room="media-proof")
@@ -94,8 +111,13 @@ def verify(stack,tmp,root,backend,page,room,alice,bob,secret,incoming,switch_cam
                 start_camera(desk,lambda:cam(alice))
             else:grant_camera(kde,lambda:cam(alice))
             camera_button(w).wait_for()
-            if camera_button(w).get_attribute("aria-checked")=="false":camera_button(w).click(timeout=7000)
-            wait_for("both video sources published",lambda:cam(alice) and cam(bob),15)
+            def cameras_on():
+                if cam(alice) and cam(bob):return True
+                btn=camera_button(w)
+                if btn.is_enabled() and btn.get_attribute("aria-busy")!="true" and btn.get_attribute("aria-checked")=="false":
+                    btn.click(timeout=7000)
+                return False
+            wait_for("both video sources published",cameras_on,20)
             before=tracks()
             assert set(before)=={(u,k) for u in (alice,bob) for k in ("CAMERA","MICROPHONE")}
             assert all(enc=="GCM" and not muted for _,enc,muted in before.values())
@@ -117,8 +139,11 @@ def verify(stack,tmp,root,backend,page,room,alice,bob,secret,incoming,switch_cam
                 verify_switch(stack,desk,browser_box,self_box,fresh_audio,tracks,before,show,NATIVE,alice)
             if share:
                 from qa_window_share import dm_share
+                from qa_app_sound import app_sound
+                w.evaluate("window.qaMultipleAudio=true")
                 share_base=tracks() # A camera restarted after unplug has a new SID.
-                dm_share(stack,desk,alice,tracks,lambda:readers().splitlines(),browser_box,fresh_audio)
+                dm_share(stack,desk,alice,tracks,lambda:readers().splitlines(),browser_box,fresh_audio,
+                         lambda base:app_sound(stack,desk,w,tracks,alice,base))
                 # Use Element's real share button and Chromium's tab capture.
                 # Only the test source is scripted, not the widget or RTC track.
                 tab=page.context.new_page()
@@ -176,7 +201,7 @@ def verify(stack,tmp,root,backend,page,room,alice,bob,secret,incoming,switch_cam
             wait_for("Element's old video cleared in Iced",lambda:all(not native_box(p) for p in BROWSER),12)
             assert readers() and cam(alice)
             def camera_off_ui():
-                labels=[word.lower() for word,_,_ in kde.words((283,70,1178,610))]
+                labels=[word for word,_,_ in desk.words()]
                 return all(word in labels for word in ("no","incoming","video"))
             wait_for("native remote camera-off stage",camera_off_ui,12)
             camera_button(w).click()
