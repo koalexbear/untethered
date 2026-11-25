@@ -48,6 +48,10 @@ smithay-clipboard = "0.7.3"
 ashpd = { version = "0.11.1", default-features = false, features = ["tokio"] }
 libc = "0.2"
 
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+# SDK logs for the opt-in live tests (UNTETHERED_QA_LOG / UNTETHERED_QA_LOG_FILE).
+tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt", "std"] }
+
 [target.'cfg(windows)'.dependencies]
 windows-native-keyring-store = "1"
 

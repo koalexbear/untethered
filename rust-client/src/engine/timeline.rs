@@ -5,12 +5,12 @@
 //! UI keeps a bounded window of it, so this stays cheap at today's sizes.
 use super::{Delivery, Event, Failure, Kind, Message, Reply, TimelineSnapshot};
 use async_channel::Sender;
-use futures_util::StreamExt;
+use futures_util::{FutureExt, StreamExt};
 use matrix_sdk::{
     Client,
     room::edit::EditedContent,
     ruma::{
-        EventId, OwnedRoomId, RoomId,
+        EventId, OwnedEventId, OwnedRoomId, RoomId,
         events::room::message::{
             MessageType, RoomMessageEventContent, RoomMessageEventContentWithoutRelation,
         },
@@ -26,19 +26,21 @@ use matrix_sdk_ui::{
 };
 use std::{
     collections::HashMap,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::{Arc, Mutex as Shared},
+    time::Duration,
 };
 use tokio::sync::{Mutex, Notify};
 
 /// How many events one "Earlier messages" request loads, like gomuks.
 const PAGE: u16 = 50;
 
+/// The Timeline's start-of-room item, once a back-pagination has shown the
+/// events it loaded. The item goes away when the Timeline is cleared.
+type Start = Arc<Shared<Option<String>>>;
+
 struct Open {
     timeline: Arc<Timeline>,
-    start: Arc<AtomicBool>,
+    start: Start,
     refresh: Arc<Notify>,
     forwarder: tokio::task::JoinHandle<()>,
 }
@@ -71,7 +73,7 @@ impl Timelines {
         }
         let joined = self.client.get_room(&id).ok_or(Failure::Unavailable)?;
         let timeline = Arc::new(joined.timeline().await.map_err(|_| Failure::Failed)?);
-        let start = Arc::new(AtomicBool::new(false));
+        let start = Start::default();
         let refresh = Arc::new(Notify::new());
         let forwarder = tokio::spawn(forward(
             room.to_owned(),
@@ -102,10 +104,53 @@ impl Timelines {
             .await
             .map_err(|_| Failure::Unreachable)?;
         if start {
-            open.start.store(true, Ordering::Release);
+            self.settle(room, &open.timeline).await;
+            let marker = open
+                .timeline
+                .items()
+                .await
+                .iter()
+                .find(|i| i.is_timeline_start())
+                .map(|i| i.unique_id().0.clone());
+            *open.start.lock().unwrap() = marker;
         }
         open.refresh.notify_one();
         Ok(())
+    }
+
+    /// `paginate_backwards` returns once the event cache has the events; the
+    /// Timeline adds them on its own task, which can be later (it is when
+    /// they come from the store after a restart). Wait until the oldest ones
+    /// show, so the start is never reported above a hole.
+    async fn settle(&self, room: &str, timeline: &Timeline) {
+        let Some(joined) = RoomId::parse(room)
+            .ok()
+            .and_then(|id| self.client.get_room(&id))
+        else {
+            return;
+        };
+        let Ok((cache, _handles)) = joined.event_cache().await else {
+            return;
+        };
+        // Some of the oldest events may have no item of their own (an edit,
+        // a reaction), so any of a few will do: the Timeline applies one
+        // batch from the event cache at once.
+        let oldest: Vec<OwnedEventId> = match cache.events().await {
+            Ok(events) => events
+                .iter()
+                .filter_map(|e| e.event_id().map(ToOwned::to_owned))
+                .take(10)
+                .collect(),
+            Err(_) => return,
+        };
+        for _ in 0..200 {
+            for id in &oldest {
+                if timeline.item_by_event_id(id).await.is_some() {
+                    return;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
     }
 
     pub async fn send(
@@ -172,18 +217,20 @@ async fn forward(
     room: String,
     me: String,
     timeline: Arc<Timeline>,
-    start: Arc<AtomicBool>,
+    start: Start,
     refresh: Arc<Notify>,
     events: Sender<Event>,
 ) {
     let (mut items, mut stream) = timeline.subscribe().await;
     let mut rows = Rows::default();
     loop {
-        let snapshot = snapshot(&room, &me, &items, &mut rows, start.load(Ordering::Acquire));
+        let marker = start.lock().unwrap().clone();
+        let snapshot = snapshot(&room, &me, &items, &mut rows, marker.as_deref());
         if events.send(Event::Timeline(snapshot)).await.is_err() {
             return;
         }
         tokio::select! {
+            biased;
             diffs = stream.next() => match diffs {
                 Some(diffs) => {
                     for diff in diffs {
@@ -192,7 +239,16 @@ async fn forward(
                 }
                 None => return,
             },
-            _ = refresh.notified() => {}
+            _ = refresh.notified() => {
+                // A pagination that confirmed the start waited for its
+                // events; take everything the Timeline has emitted so far.
+                while let Some(next) = stream.next().now_or_never() {
+                    let Some(diffs) = next else { return };
+                    for diff in diffs {
+                        diff.apply(&mut items);
+                    }
+                }
+            }
         }
     }
 }
@@ -220,11 +276,15 @@ fn snapshot(
     me: &str,
     items: &Vector<Arc<TimelineItem>>,
     rows: &mut Rows,
-    start: bool,
+    start: Option<&str>,
 ) -> TimelineSnapshot {
     TimelineSnapshot {
         room: room.to_owned(),
-        start_reached: start || items.iter().any(|i| i.is_timeline_start()),
+        start_reached: start.is_some_and(|marker| {
+            items
+                .iter()
+                .any(|i| i.is_timeline_start() && i.unique_id().0 == marker)
+        }),
         messages: items
             .iter()
             .filter_map(|item| {

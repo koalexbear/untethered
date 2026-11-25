@@ -31,7 +31,27 @@ fn browser() -> super::Opener {
     })
 }
 
+/// SDK logs to a file when UNTETHERED_QA_LOG names a filter.
+fn logs() {
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| {
+        let (Ok(filter), Some(file)) = (
+            env::var("UNTETHERED_QA_LOG"),
+            env::var_os("UNTETHERED_QA_LOG_FILE"),
+        ) else {
+            return;
+        };
+        let file = std::fs::File::create(file).unwrap();
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::new(filter))
+            .with_writer(std::sync::Mutex::new(file))
+            .with_ansi(false)
+            .try_init();
+    });
+}
+
 fn session_at(dir: &Path) -> (App, Receiver<Event>, Engine) {
+    logs();
     let (gomuks, _) = async_channel::bounded(1);
     let (commands, rx): (Sender<Command>, _) = async_channel::bounded(64);
     let (tx, events) = async_channel::bounded(64);

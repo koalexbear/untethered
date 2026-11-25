@@ -395,6 +395,11 @@ sso:
             print("Synapse holds the report and the private read receipt", flush=True)
         if test.returncode:
             failed.append("matrix_sdk_login_restore_and_encrypted_round_trip")
+        if os.environ.get("UNTETHERED_QA_ONLY") == "round-trip":
+            if failed:
+                raise SystemExit("FAILED: " + ", ".join(failed))
+            print("PASS round trip only", flush=True)
+            return
         flows = {**isolated, "UNTETHERED_KEYRING": "off", "UNTETHERED_QA_PROFILES": str(tmp / "profiles")}
         flows.pop("UNTETHERED_QA_KEYRING", None)
         if subprocess.run(["cargo", "test", "--locked", "--manifest-path", "rust-client/Cargo.toml",
