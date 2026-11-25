@@ -1,7 +1,7 @@
 //! UI side of the matrix-sdk engine: start it, route the supported requests
 //! to typed commands, and apply its events to the same `App` state and
 //! `rooms::Rooms` model the gomuks frames fill.
-use super::{Account, Command, Event, Failure, Recovery, run};
+use super::{Account, Command, Connection, Event, Failure, Recovery, run};
 use crate::{App, Msg, Request, account};
 use iced::{Task, widget::text_editor};
 
@@ -139,16 +139,6 @@ impl App {
         );
     }
 
-    /// Called from `App::open`. A first visit loads history through
-    /// `engine_page`; a return visit only moves the room's subscription.
-    pub(crate) fn engine_focus(&mut self, room: &str) {
-        if let Some(sdk) = &self.sdk
-            && self.loaded.contains(room)
-        {
-            let _ = sdk.try_send(Command::Focus { room: room.into() });
-        }
-    }
-
     /// Enter in the composer while signed in.
     pub(crate) fn engine_compose(&mut self) {
         let room = self.selected.clone();
@@ -212,6 +202,19 @@ impl App {
                 }
             }
             Event::Done { id, result } => self.engine_done(id, result),
+            Event::Connection(connection) => {
+                const OFFLINE: &str = "Offline. Untethered will reconnect automatically.";
+                const RETRYING: &str = "Sync stopped after an error. Retrying…";
+                match connection {
+                    Connection::Offline => self.status = OFFLINE.into(),
+                    Connection::Retrying => self.status = RETRYING.into(),
+                    // Clear only our own notice, not an unrelated message.
+                    Connection::Online if self.status == OFFLINE || self.status == RETRYING => {
+                        self.status.clear()
+                    }
+                    Connection::Online => {}
+                }
+            }
             Event::Status(text) => {
                 if self.connected {
                     self.status = text.into();
@@ -252,6 +255,9 @@ impl App {
                 self.status = match failure {
                     Failure::Unreachable => {
                         "No Matrix homeserver answered at that address. Check it and try again."
+                    }
+                    Failure::NoSlidingSync => {
+                        "This homeserver doesn’t offer Simplified Sliding Sync, which the matrix-sdk engine needs. Start without UNTETHERED_ENGINE to use gomuks."
                     }
                     _ => "Sign-in failed. Check your homeserver, username, and password.",
                 }
@@ -383,6 +389,33 @@ mod tests {
         assert!(app.verification_feedback().contains("as a passphrase"));
         app.engine_event(signed_in(true));
         assert!(app.verified && app.recovery.is_empty());
+    }
+
+    #[test]
+    fn engine_notices_explain_and_clear_only_themselves() {
+        let (mut app, rx) = app();
+        app.engine_event(Event::Account(Account::default()));
+        app.server = "http://127.0.0.1:8008".into();
+        app.username = "me".into();
+        app.password = "secret".into();
+        let _ = app.update(Msg::Login);
+        let Ok(Command::Login { id, .. }) = rx.try_recv() else {
+            panic!("expected a login command")
+        };
+        app.engine_event(Event::Done {
+            id,
+            result: Err(Failure::NoSlidingSync),
+        });
+        assert!(app.status.contains("Simplified Sliding Sync") && !app.logged_in);
+
+        app.engine_event(signed_in(true));
+        app.engine_event(Event::Connection(Connection::Offline));
+        assert!(app.status.starts_with("Offline"));
+        app.engine_event(Event::Connection(Connection::Online));
+        assert!(app.status.is_empty());
+        app.status = "Could not send. Your draft has been kept.".into();
+        app.engine_event(Event::Connection(Connection::Online));
+        assert!(app.status.starts_with("Could not send"));
     }
 
     #[test]

@@ -50,6 +50,32 @@ async fn signal(dir: &Path, name: &str) -> String {
     .unwrap_or_else(|_| panic!("the peer did not write {name}"))
 }
 
+/// Indexes of the seeded "history N" posts, in display order.
+fn history_order(app: &App, room: &str) -> Vec<usize> {
+    app.live.list[room]
+        .posts()
+        .filter_map(|p| p.text().strip_prefix("history ")?.parse().ok())
+        .collect()
+}
+
+async fn paginate_to_start(app: &mut App, rx: &Receiver<Event>, room: &str) {
+    // A page can hold only state events, which have no Post; allow a few.
+    for _ in 0..12 {
+        if app.live.list[room].end {
+            break;
+        }
+        let _ = app.update(Msg::More);
+        wait(app, rx, "back-pagination", |a| {
+            !a.pending.values().any(|p| matches!(p, Request::Page(_)))
+        })
+        .await;
+    }
+    assert!(
+        app.live.list[room].end,
+        "pagination never reached the start of the room"
+    );
+}
+
 fn has(app: &App, room: &str, body: &str) -> bool {
     app.live.list.get(room).is_some_and(|r| {
         r.posts()
@@ -155,20 +181,8 @@ async fn matrix_sdk_login_restore_and_encrypted_round_trip() {
     .await;
     let older = fixture["history"].as_u64().unwrap() as usize;
     let first = app.live.list[room].posts().len();
-    // A page can hold only state events, which have no Post; allow a few.
-    for _ in 0..12 {
-        if app.live.list[room].end {
-            break;
-        }
-        let _ = app.update(Msg::More);
-        wait(&mut app, &rx, "back-pagination", |a| {
-            !a.pending.values().any(|p| matches!(p, Request::Page(_)))
-        })
-        .await;
-    }
-    let r = &app.live.list[room];
-    let loaded = r.posts().len();
-    assert!(r.end, "pagination never reached the start of the room");
+    paginate_to_start(&mut app, &rx, room).await;
+    let loaded = app.live.list[room].posts().len();
     assert!(
         loaded >= older && loaded > first,
         "only {loaded} of {older} earlier posts loaded"
@@ -190,6 +204,11 @@ async fn matrix_sdk_login_restore_and_encrypted_round_trip() {
     println!(
         "matrix-sdk: back-paginated to the room start ({first} then {loaded} posts); {} of {older} earlier messages decrypted from key backup",
         decrypted(&app)
+    );
+    let order = history_order(&app, room);
+    assert!(
+        order.is_sorted(),
+        "history out of order after pagination: {order:?}"
     );
 
     app.editor = text_editor::Content::with_text(&mine);
@@ -235,6 +254,12 @@ async fn matrix_sdk_login_restore_and_encrypted_round_trip() {
         has(a, room, &mine) && has(a, room, &theirs)
     })
     .await;
+    paginate_to_start(&mut app, &rx, room).await;
+    let order = history_order(&app, room);
+    assert!(
+        order.len() == older && order.is_sorted(),
+        "restored history incomplete or out of order: {order:?}"
+    );
     println!("matrix-sdk: restart restored the session and both encrypted messages");
     stop(app, engine).await;
 

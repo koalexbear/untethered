@@ -16,7 +16,6 @@ use matrix_sdk::{
 use matrix_sdk_ui::{
     Timeline,
     eyeball_im::Vector,
-    room_list_service::RoomListService,
     timeline::{
         EventSendState, EventTimelineItem, MsgLikeKind, RoomExt, TimelineDetails, TimelineItem,
         TimelineItemContent,
@@ -33,8 +32,6 @@ use tokio::sync::{Mutex, Notify};
 
 /// How many events one "Earlier messages" request loads, like gomuks.
 const PAGE: u16 = 50;
-/// Rooms whose sliding sync subscription is kept (full timeline_limit).
-const SUBSCRIBED: usize = 8;
 
 struct Open {
     timeline: Arc<Timeline>,
@@ -48,62 +45,25 @@ impl Drop for Open {
     }
 }
 
-#[derive(Default)]
-struct Opened {
-    rooms: HashMap<OwnedRoomId, Arc<Open>>,
-    /// Most recently viewed last. These keep a sliding sync room
-    /// subscription, so their live timelines receive every event.
-    recent: Vec<OwnedRoomId>,
-}
-
 pub struct Timelines {
     client: Client,
-    room_list: Arc<RoomListService>,
     events: Sender<Event>,
-    open: Mutex<Opened>,
+    open: Mutex<HashMap<OwnedRoomId, Arc<Open>>>,
 }
 
 impl Timelines {
-    pub fn new(client: Client, room_list: Arc<RoomListService>, events: Sender<Event>) -> Self {
+    pub fn new(client: Client, events: Sender<Event>) -> Self {
         Self {
             client,
-            room_list,
             events,
             open: Default::default(),
         }
     }
 
-    /// The user switched to `room`; keep it subscribed.
-    pub async fn focus(&self, room: &str) {
-        if let Ok(id) = RoomId::parse(room) {
-            let mut opened = self.open.lock().await;
-            self.touch(&mut opened, id).await;
-        }
-    }
-
-    async fn touch(&self, opened: &mut Opened, id: OwnedRoomId) {
-        if opened.recent.last() == Some(&id) {
-            return;
-        }
-        // Changing the subscriptions restarts the long poll; only do it
-        // when the subscribed set changes, not when it is reordered.
-        let known = opened.recent.contains(&id);
-        opened.recent.retain(|r| *r != id);
-        opened.recent.push(id);
-        if opened.recent.len() > SUBSCRIBED {
-            opened.recent.remove(0);
-        }
-        if !known {
-            let ids: Vec<&RoomId> = opened.recent.iter().map(AsRef::as_ref).collect();
-            self.room_list.set_room_subscriptions(&ids).await;
-        }
-    }
-
     async fn get(&self, room: &str) -> Result<Arc<Open>, Failure> {
         let id = RoomId::parse(room).map_err(|_| Failure::Unavailable)?;
-        let mut opened = self.open.lock().await;
-        self.touch(&mut opened, id.clone()).await;
-        if let Some(existing) = opened.rooms.get(&id) {
+        let mut open = self.open.lock().await;
+        if let Some(existing) = open.get(&id) {
             return Ok(existing.clone());
         }
         let joined = self.client.get_room(&id).ok_or(Failure::Unavailable)?;
@@ -123,7 +83,7 @@ impl Timelines {
             refresh,
             forwarder,
         });
-        opened.rooms.insert(id, entry.clone());
+        open.insert(id, entry.clone());
         Ok(entry)
     }
 

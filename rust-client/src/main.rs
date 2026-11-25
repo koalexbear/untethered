@@ -552,8 +552,6 @@ impl App {
         if self.people {
             self.read_directory(None);
         }
-        #[cfg(not(target_arch = "wasm32"))]
-        self.engine_focus(&id);
         if self.logged_in && self.verified && !id.is_empty() && self.loaded.insert(id.clone()) {
             self.page();
             self.rpc(

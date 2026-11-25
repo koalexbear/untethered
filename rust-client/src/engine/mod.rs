@@ -22,6 +22,8 @@ use std::{
 };
 
 pub const ENV: &str = "UNTETHERED_ENGINE";
+/// Events per room in the sliding sync room list.
+const ROOM_LIST_TIMELINE: u32 = 20;
 
 /// Whether this launch uses matrix-sdk instead of gomuks.
 pub fn selected() -> bool {
@@ -50,8 +52,6 @@ pub enum Command {
     Recover { id: i64, secret: String },
     /// Open the room's timeline if needed, then load older messages.
     Paginate { id: i64, room: String },
-    /// The user switched back to a room whose timeline is open.
-    Focus { room: String },
     Send {
         id: i64,
         room: String,
@@ -69,8 +69,18 @@ pub enum Event {
         id: i64,
         result: Result<(), Failure>,
     },
+    Connection(Connection),
     /// Engine-written text for the status line. Never contains server text.
     Status(&'static str),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Connection {
+    Online,
+    /// SyncService's offline mode is polling `/versions` until the server answers.
+    Offline,
+    /// A sync error stopped the service; it restarts shortly.
+    Retrying,
 }
 
 #[derive(Clone, Default, PartialEq, Eq)]
@@ -176,6 +186,8 @@ pub enum Failure {
     Forbidden,
     /// No homeserver answered at that address.
     Unreachable,
+    /// The homeserver doesn't offer Simplified Sliding Sync (MSC4186).
+    NoSlidingSync,
     /// The key or passphrase didn't unlock secret storage.
     WrongSecret,
     /// The account has no usable secret storage.
@@ -244,6 +256,12 @@ impl Engine {
     async fn go_live(&mut self, client: Client) {
         let sync = match SyncService::builder(client.clone())
             .with_offline_mode()
+            // Every room syncs its latest events, so opened timelines stay
+            // live without per-room subscriptions. Adding a subscription to a
+            // room the list already holds gives it a second gap, and
+            // back-pagination then returns older pages out of order
+            // (0.19.1 and 0.20.0; see docs/matrix-sdk-migration.md).
+            .with_room_list_timeline_limit(ROOM_LIST_TIMELINE)
             .build()
             .await
         {
@@ -260,7 +278,6 @@ impl Engine {
         sync.start().await;
         let timelines = Arc::new(timeline::Timelines::new(
             client.clone(),
-            sync.room_list_service(),
             self.events.clone(),
         ));
         let mut tasks = Tasks::default();
@@ -291,7 +308,13 @@ impl Engine {
                 };
                 match result {
                     Ok(client) => {
+                        // Signed in before the request completes, so the form
+                        // never offers a second sign-in in between.
+                        let now = account(&client, None).await;
                         self.go_live(client).await;
+                        if self.live.is_some() {
+                            self.emit(Event::Account(now)).await;
+                        }
                         self.done(id, Ok(())).await;
                     }
                     Err(failure) => self.done(id, Err(failure)).await,
@@ -323,12 +346,6 @@ impl Engine {
                     let result = timelines.paginate(&room).await;
                     let _ = events.send(Event::Done { id, result }).await;
                 });
-            }
-            Command::Focus { room } => {
-                if let Some(live) = &self.live {
-                    let timelines = live.timelines.clone();
-                    tokio::spawn(async move { timelines.focus(&room).await });
-                }
             }
             Command::Send {
                 id,
@@ -436,13 +453,13 @@ async fn account_updates(client: Client, events: Sender<Event>) {
 async fn sync_status(sync: Arc<SyncService>, events: Sender<Event>) {
     let mut state = sync.state();
     while let Some(now) = state.next().await {
-        let status = match now {
-            SyncState::Offline => "Offline. Untethered will reconnect automatically.",
-            SyncState::Error(_) => "Sync stopped after an error. Retrying…",
-            SyncState::Running => "",
+        let connection = match now {
+            SyncState::Offline => Connection::Offline,
+            SyncState::Error(_) => Connection::Retrying,
+            SyncState::Running => Connection::Online,
             SyncState::Idle | SyncState::Terminated => continue,
         };
-        if events.send(Event::Status(status)).await.is_err() {
+        if events.send(Event::Connection(connection)).await.is_err() {
             return;
         }
         if matches!(now, SyncState::Error(_)) {

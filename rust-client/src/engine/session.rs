@@ -171,6 +171,10 @@ pub async fn login(
             .build()
             .await
             .map_err(|_| Failure::Unreachable)?;
+        // SyncService would otherwise retry forever after signing in.
+        if client.available_sliding_sync_versions().await.is_empty() {
+            return Err(Failure::NoSlidingSync);
+        }
         client
             .matrix_auth()
             .login_username(username, password)
