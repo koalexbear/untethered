@@ -3,6 +3,7 @@ import re
 import sqlite3
 from urllib.parse import quote
 from qa_native_paste import wait_for
+from qa_ui import CHAT_X
 
 
 def check_room_search(tmp,hs,page,room,native,hdr,http,messages,restart,words,locate,click,x,paths):
@@ -29,9 +30,9 @@ def check_room_search(tmp,hs,page,room,native,hdr,http,messages,restart,words,lo
         wait_for("both encrypted rooms indexed on this device",lambda:cached(edit,room)==("* Saffron comet launch",)
                  and cached(decoy,other)==("Saffron comet diversion",) and cached(gap[-1],room)==("Ledger sequence 149",),35)
     restart()
-    def point(ws,w):return next(((xx,y) for word,xx,y in ws if word==w and xx>280),None)
+    def point(ws,w):return next(((xx,y) for word,xx,y in ws if word==w and xx>CHAT_X),None)
     def markers(ws):
-        return [(int(num),y) for word,xx,y in ws if word=="ledger" and xx>280 and 68<y<630
+        return [(int(num),y) for word,xx,y in ws if word=="ledger" and xx>CHAT_X and 68<y<630
                 for num,xxx,yy in ws if re.fullmatch(r"\d{3}",num) and xx<xxx<xx+200 and abs(yy-y)<4]
     locate("cold recent page",lambda ws:point(ws,"149"))
     x("mousemove","--window","WIN","690","400","click","--repeat","2","4")

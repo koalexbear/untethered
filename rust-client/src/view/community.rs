@@ -224,16 +224,23 @@ pub(super) fn view<'a>(app: &'a App, f: &'a Form) -> El<'a> {
         body = body.push(
             column![
                 field_label(if f.kind == Kind::Space {
-                    "INVITE A MATRIX USER (OPTIONAL)"
+                    "ADD A MEMBER (OPTIONAL)"
                 } else {
                     "MATRIX USER ID"
                 }),
-                text_input("@alex:example.org", &f.invite)
-                    .id("setup-invite")
-                    .on_input_maybe(unlocked.then_some(|s| Msg::Setup(Input::Invite(s))))
-                    .size(16)
-                    .padding(10)
-                    .style(input_style),
+                text_input(
+                    if f.kind == Kind::Space {
+                        "Invite a Matrix user (optional)"
+                    } else {
+                        "@alex:example.org"
+                    },
+                    &f.invite,
+                )
+                .id("setup-invite")
+                .on_input_maybe(unlocked.then_some(|s| Msg::Setup(Input::Invite(s))))
+                .size(16)
+                .padding(10)
+                .style(input_style),
                 text("Use the full ID, e.g. @alex:example.org.")
                     .size(12)
                     .color(CHANNEL),

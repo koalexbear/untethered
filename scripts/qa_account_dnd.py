@@ -9,6 +9,7 @@ from urllib.parse import quote
 from qa_native_paste import child,isolated_env,start_display,wait_for
 from qa_replies import screen_words
 from qa_room_alerts import NotificationDesktop
+from qa_ui import CHAT_X
 
 
 def verify_dnd(stack,tmp,hs,backend,hdr,http,me,room,page,peer,words,click_word,send,hide,browser_desk):
@@ -34,7 +35,7 @@ def verify_dnd(stack,tmp,hs,backend,hdr,http,me,room,page,peer,words,click_word,
     def native_words():return screen_words(sp.check_output(["import","-window",win,"png:-"],env=env,timeout=6))
     def locate(label,read=words,*,sidebar=False):
         def find():
-            return next(((x,y) for w,x,y in read() if w==label and (70<x<280 if sidebar else x>280)),None)
+            return next(((x,y) for w,x,y in read() if w==label and (70<x<CHAT_X if sidebar else x>CHAT_X)),None)
         try:return wait_for("visible "+label,find,15)
         except RuntimeError:print("Visible receiver labels:",[w for w,_,_ in read()],flush=True);raise
     def click(x,y):desk.run("xdotool","mousemove","--window",win,str(x),str(y),"click","1")

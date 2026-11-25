@@ -139,7 +139,7 @@ def room_camera(stack,desks,secret,original,publications):
         # "Start camera" stays in the call controls; the incoming tile's
         # caption contains "Camera" and the publisher's display name.
         words=peer.words()
-        return not any(word=="camera" and any(w=="alice" and 280<xx<x and abs(yy-y)<6 for w,xx,yy in words)
+        return not any(word=="camera" and any(w=="alice" and 312<xx<x and abs(yy-y)<6 for w,xx,yy in words)
                        for word,x,y in words) and not area(peer,palettes[1])
     wait_for("camera tiles cleared",lambda:all(tile_gone(p) for p in peers),10)
     desks[0].tone=0;desks[1].tone=1

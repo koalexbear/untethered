@@ -4,10 +4,12 @@ import secrets
 
 import requests
 import yaml
+from qa_native_paste import wait_for
+from qa_ui import CHAT_X
 from synapse._scripts.register_new_matrix_user import request_registration
 
 
-def check_reports(tmp,hs,api,room,page,hdr,http,messages,locate,click,write,enter):
+def check_reports(tmp,hs,api,room,page,hdr,http,messages,locate,click,write,enter,ui):
     queue=hs+"/_synapse/admin/v1/event_reports"
     reporter=http("GET",hs+"/_matrix/client/v3/account/whoami",headers=hdr).json()["user_id"]
     sender=page.evaluate("window.mxMatrixClientPeg.get().getSafeUserId()")
@@ -28,13 +30,14 @@ def check_reports(tmp,hs,api,room,page,hdr,http,messages,locate,click,write,ente
     text="Orchid duplicate"
     first,second=messages([text,text])
     assert first!=second
-    def points(ws,label):return [(xx,y) for w,xx,y in ws if w==label and xx>280]
+    def points(ws,label):return [(xx,y) for w,xx,y in ws if w==label and xx>CHAT_X]
     def select(label,index,count):
         def target(ws):
-            rows=sorted(y for _,y in points(ws,label))
-            if len(rows)!=count:return None
-            return next(((xx,y) for xx,y in points(ws,"report") if abs(y-rows[index])<6),None)
-        click(locate("report on selected "+label,target))
+            rows=sorted(points(ws,label),key=lambda p:p[1])
+            return rows[index] if len(rows)==count else None
+        # Report Message is in the toolbar of the hovered row.
+        row=locate("selected "+label,target)
+        click(wait_for("report on selected "+label,lambda:ui.message(row,"report message"),15))
         locate("report form visible",lambda ws:points(ws,"receives") and points(ws,"cancel"))
     def tap(label):click(locate(label,lambda ws:next(iter(points(ws,label)),None)))
     def confirmed():locate("homeserver accepted report",lambda ws:points(ws,"sent") and not points(ws,"submit"))

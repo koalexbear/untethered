@@ -22,11 +22,29 @@ pub(super) struct Row<'a, Message> {
 struct RowState {
     over_base: bool,
     over_float: bool,
+    /// Where this row last raised its toolbar, in timeline content coordinates.
+    raised: Option<Rectangle>,
 }
 impl RowState {
     fn active(&self) -> bool {
         self.over_base || self.over_float
     }
+    fn lower(&mut self) {
+        if let Some(area) = self.raised.take() {
+            RAISED.with(|r| {
+                if r.get() == Some(area) {
+                    r.set(None);
+                }
+            });
+        }
+    }
+}
+
+thread_local! {
+    /// The toolbar currently raised over the timeline. It overhangs the row
+    /// above, and while one of its tooltips is open the runtime passes the
+    /// pointer through to that row; rows under this area ignore the pointer.
+    static RAISED: std::cell::Cell<Option<Rectangle>> = const { std::cell::Cell::new(None) };
 }
 
 const LIFT: f32 = 16.;
@@ -107,7 +125,7 @@ impl<Message> Widget<Message, Theme, Renderer> for Row<'_, Message> {
         viewport: &Rectangle,
     ) {
         let bounds = layout.bounds();
-        let active = tree.state.downcast_ref::<RowState>().active() || cursor.is_over(bounds);
+        let active = tree.state.downcast_ref::<RowState>().active();
         let mut children = layout.children();
         let (base, layer) = (children.next().unwrap(), children.next().unwrap());
         if active {
@@ -157,11 +175,16 @@ impl<Message> Widget<Message, Theme, Renderer> for Row<'_, Message> {
         let float = layout.children().nth(2).unwrap().bounds();
         let state = tree.state.downcast_mut::<RowState>();
         let was = state.active();
-        state.over_base = cursor.is_over(layout.bounds());
-        // While the toolbar overlay is under the pointer, the runtime hides the
-        // cursor from the base layer; the overlay then tracks it instead.
-        if cursor.position().is_some() && !cursor.is_over(float) {
+        let under_toolbar = RAISED
+            .with(std::cell::Cell::get)
+            .is_some_and(|area| cursor.is_over(area));
+        state.over_base = cursor.is_over(layout.bounds()) && !under_toolbar;
+        // While the toolbar itself is under the pointer, the overlay tracks it.
+        if cursor.position().is_some() && !cursor.is_over(state.raised.unwrap_or(float)) {
             state.over_float = false;
+        }
+        if !state.active() {
+            state.lower();
         }
         if was != state.active() {
             shell.request_redraw();
@@ -236,11 +259,16 @@ impl<Message> Widget<Message, Theme, Renderer> for Row<'_, Message> {
         );
         if !state.active() {
             state.over_float = false;
+            state.lower();
             return base;
         }
         // Keep the toolbar inside the visible timeline near its top edge.
         let top = float_layout.bounds().y + translation.y;
-        let offset = translation + Vector::new(0., (viewport.y - top).max(0.));
+        let drop = Vector::new(0., (viewport.y - top).max(0.));
+        let area = float_layout.bounds() + drop;
+        RAISED.with(|r| r.set(Some(area)));
+        state.raised = Some(area);
+        let offset = translation + drop;
         let float = overlay::Element::new(Box::new(Toolbar {
             content: &mut self.float,
             tree: float_tree,
@@ -350,90 +378,12 @@ impl<Message> overlay::Overlay<Message, Theme, Renderer> for Toolbar<'_, '_, Mes
         _: Layout<'c>,
         renderer: &Renderer,
     ) -> Option<overlay::Element<'c, Message, Theme, Renderer>> {
-        let area = self.layout.bounds() * self.transformation;
-        self.content
-            .as_widget_mut()
-            .overlay(
-                self.tree,
-                self.layout,
-                renderer,
-                &(self.viewport * self.transformation.inverse()),
-                self.transformation.translation(),
-            )
-            .map(|inner| overlay::Element::new(Box::new(Claim { inner, area })))
-    }
-}
-
-/// Wraps the toolbar's nested overlays, such as its tooltips. The runtime asks
-/// only the innermost overlay for the pointer interaction, and a tooltip claims
-/// none, so without this the row under a raised toolbar would react to the
-/// pointer while a tooltip is showing.
-struct Claim<'a, Message> {
-    inner: overlay::Element<'a, Message, Theme, Renderer>,
-    area: Rectangle,
-}
-
-impl<Message> overlay::Overlay<Message, Theme, Renderer> for Claim<'_, Message> {
-    fn layout(&mut self, renderer: &Renderer, bounds: Size) -> layout::Node {
-        self.inner.as_overlay_mut().layout(renderer, bounds)
-    }
-    fn draw(
-        &self,
-        renderer: &mut Renderer,
-        theme: &Theme,
-        style: &renderer::Style,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-    ) {
-        self.inner
-            .as_overlay()
-            .draw(renderer, theme, style, layout, cursor);
-    }
-    fn operate(&mut self, layout: Layout<'_>, renderer: &Renderer, operation: &mut dyn Operation) {
-        self.inner
-            .as_overlay_mut()
-            .operate(layout, renderer, operation);
-    }
-    fn update(
-        &mut self,
-        event: &Event,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        renderer: &Renderer,
-        clipboard: &mut dyn Clipboard,
-        shell: &mut Shell<'_, Message>,
-    ) {
-        self.inner
-            .as_overlay_mut()
-            .update(event, layout, cursor, renderer, clipboard, shell);
-    }
-    fn mouse_interaction(
-        &self,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        renderer: &Renderer,
-    ) -> mouse::Interaction {
-        match self
-            .inner
-            .as_overlay()
-            .mouse_interaction(layout, cursor, renderer)
-        {
-            mouse::Interaction::None if cursor.is_over(self.area) => mouse::Interaction::Idle,
-            other => other,
-        }
-    }
-    fn overlay<'b>(
-        &'b mut self,
-        layout: Layout<'b>,
-        renderer: &Renderer,
-    ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
-        let area = self.area;
-        self.inner
-            .as_overlay_mut()
-            .overlay(layout, renderer)
-            .map(|inner| overlay::Element::new(Box::new(Claim { inner, area })))
-    }
-    fn index(&self) -> f32 {
-        self.inner.as_overlay().index()
+        self.content.as_widget_mut().overlay(
+            self.tree,
+            self.layout,
+            renderer,
+            &(self.viewport * self.transformation.inverse()),
+            self.transformation.translation(),
+        )
     }
 }

@@ -2183,6 +2183,12 @@ fn main() -> iced::Result {
                     }) => {
                         Some(Msg::TalkKey(false))
                     }
+                    // Escape also closes menus and dialogs while a text field has
+                    // focus, as on Discord; the field itself captures the key.
+                    iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                        key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
+                        ..
+                    }) => Some(Msg::Escape),
                     iced::Event::Window(iced::window::Event::Unfocused)=>Some(Msg::WindowFocus(false)),
                     iced::Event::Window(iced::window::Event::Focused)=>Some(Msg::WindowFocus(true)),
                     iced::Event::Window(iced::window::Event::FileDropped(path)) => {
@@ -2203,6 +2209,7 @@ fn main() -> iced::Result {
                         modifiers,
                         ..
                     } => Some(Msg::Tab(modifiers.shift())),
+                    #[cfg(target_arch = "wasm32")]
                     iced::keyboard::Event::KeyPressed {
                         key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
                         ..

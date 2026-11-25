@@ -3,9 +3,10 @@ from urllib.parse import quote
 import requests
 
 from qa_native_paste import wait_for
+from qa_ui import CHAT_X
 
 
-def check_setup(hs,http,admin,member,peer,locate,click,write,restart,paths):
+def check_setup(hs,http,admin,member,peer,locate,click,write,restart,paths,ui):
     api=hs+"/_matrix/client/v3"
     me=http("GET",api+"/account/whoami",headers=admin).json()["user_id"]
     other=peer.evaluate("window.mxMatrixClientPeg.get().getSafeUserId()")
@@ -16,17 +17,21 @@ def check_setup(hs,http,admin,member,peer,locate,click,write,restart,paths):
         return http("GET",api+"/rooms/"+quote(room,safe="")+"/state/"+ty+"/"+quote(key,safe=""),headers=admin).json()
     def point(word,area):
         return locate(word,lambda ws:next(((x,y) for w,x,y in ws if w==word and area[0]<x<area[1]),None))
-    def tap(word,area=(280,1180)):click(point(word,area))
+    def tap(word,area=(CHAT_X,1180)):click(point(word,area))
     def submit():
-        click(locate("Create button",lambda ws:next(((x,y) for w,x,y in ws if w=="create" and x>280
+        click(locate("Create button",lambda ws:next(((x,y) for w,x,y in ws if w=="create" and x>CHAT_X
             and any(v=="cancel" and abs(yy-y)<6 for v,_,yy in ws)),None)))
-    side=(70,280)
+    def menu(label):
+        # Space name → dropdown → Invite People / Create Channel.
+        click(wait_for("space menu "+label,lambda:ui.space_menu(label,click),15))
+    side=(70,CHAT_X)
     def new_id(name,previous):
         added=wait_for("one new "+name,lambda:rooms()-previous)
         assert len(added)==1
         room=added.pop();assert state(room,"m.room.name")=={"name":name}
         return room
-    tap("new",side);point("cancel",(280,1180));write("Hearth")
+    # The green + at the end of the server rail creates a space.
+    click(wait_for("Add a Space",ui.add_space,15));point("cancel",(CHAT_X,1180));write("Hearth")
     tap("invite");write(other)
     submit()
     space=new_id("Hearth",initial)
@@ -35,13 +40,13 @@ def check_setup(hs,http,admin,member,peer,locate,click,write,restart,paths):
     assert state(space,"m.room.member",other)["membership"]=="invite"
     created={space}
     def channel(name,voice):
-        tap("add",side)
-        point("cancel",(280,1180));write(name)
+        menu("create channel")
+        point("cancel",(CHAT_X,1180));write(name)
         if voice:tap("voice")
         submit()
         r=new_id(name,initial|created);created.add(r)
         if not voice:
-            point("exists",(280,1180))
+            point("exists",(CHAT_X,1180))
             before_retry=len(paths)
             assert requests.get(api+"/rooms/"+quote(space,safe="")+"/state/m.space.child/"+quote(r,safe=""),
                                 headers=admin,timeout=6).status_code==404
@@ -74,7 +79,7 @@ def check_setup(hs,http,admin,member,peer,locate,click,write,restart,paths):
     # needing to recreate the space or link the rooms again.
     peer.evaluate("async r=>await window.mxMatrixClientPeg.get().leave(r)",space)
     wait_for("original invitation declined",lambda:state(space,"m.room.member",other)["membership"]=="leave")
-    tap("invite",side);point("cancel",(280,1180));write(other);tap("send")
+    menu("invite people");point("cancel",(CHAT_X,1180));write(other);tap("send")
     wait_for("new invitation from the space form",lambda:state(space,"m.room.member",other)["membership"]=="invite")
     tap("close")
     assert join(space)=={"id":space}
@@ -92,15 +97,15 @@ def check_setup(hs,http,admin,member,peer,locate,click,write,restart,paths):
     eid=peer.evaluate("""async r=>(await window.mxMatrixClientPeg.get().sendTextMessage(r,'Amber arrival')).event_id""",text)
     wire=http("GET",api+"/rooms/"+quote(text,safe="")+"/event/"+quote(eid,safe=""),headers=admin).json()
     assert wire["type"]=="m.room.encrypted" and wire["sender"]==other and wire["content"]["algorithm"]=="m.megolm.v1.aes-sha2"
-    point("amber",(280,1180))
+    point("amber",(CHAT_X,1180))
     restart()
     # All rooms may now initially select Lounge. Select the sole space icon
     # and verify its server-backed list, not names in a local creation draft.
     def selected(ws):
-        if any(w=="hearth" and 70<x<280 and y<48 for w,x,y in ws):return True
+        if any(w=="hearth" and 70<x<CHAT_X and y<48 for w,x,y in ws):return True
         click((38,155));return False
     locate("reopened Hearth",selected)
-    point("lounge",side);tap("workshop",side);point("arrival",(280,1180))
+    point("lounge",side);tap("workshop",side);point("arrival",(CHAT_X,1180))
     assert rooms()==initial|created and sum(p.endswith("/createRoom") for p in paths)==4,paths
     print(f"Joined space {space}; Element joined text and voice with no channel invites. "
           f"Encrypted send {eid} visible in Workshop after restart; member's unlink was denied. Exactly 3 new rooms.",flush=True)

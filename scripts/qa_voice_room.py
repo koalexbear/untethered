@@ -16,6 +16,7 @@ from urllib.parse import quote
 from PIL import Image
 from qa_desktop_dm import sfu_participants
 from qa_native_paste import child, isolated_env, start_display, wait_for
+from qa_ui import CHAT_X, Ui, clean, read
 
 MEMBER = "org.matrix.msc3401.call.member"
 TONES = (410, 670, 1030, 530, 830)
@@ -76,18 +77,41 @@ class Desktop:
     def cmd(self,*args,check=True):
         return sp.run(args,env=self.env,text=True,capture_output=True,timeout=8,check=check).stdout
 
+    def image(self):
+        """A screenshot in the same coordinates as words() and click()."""
+        if self.kde:return self.kde.capture()
+        shot=sp.check_output(["import","-window",self.win,"png:-"],env=self.env,timeout=8)
+        return Image.open(io.BytesIO(shot)).convert("RGB")
+
     def words(self):
         if self.kde:
-            return [(re.sub(r"^\W+|\W+$","",w).lower(),x,y) for w,x,y in self.kde.words((0,28,1180,850))]
-        shot=sp.check_output(["import","-window",self.win,"png:-"],env=self.env,timeout=8)
-        im=Image.open(io.BytesIO(shot)).convert("RGB");im=im.resize((im.width*2,im.height*2))
-        buf=io.BytesIO();im.save(buf,"PNG")
-        t=sp.run(["tesseract","stdin","stdout","--psm","11","tsv"],input=buf.getvalue(),capture_output=True,check=True)
-        return [(re.sub(r"^\W+|\W+$","",s[11]).lower(),(int(s[6])+int(s[8])//2)//2,(int(s[7])+int(s[9])//2)//2)
-                for line in t.stdout.decode().splitlines() if len(s:=line.split("\t"))==12 and s[0]=="5"]
+            return [(clean(w),x,y) for w,x,y in self.kde.words((0,28,1180,850))]
+        return [(clean(w),x,y) for w,x,y in read(self.image())]
+
+    def hover(self,pos):
+        x,y=map(int,pos)
+        if self.kde:self.kde.actions("pointer",[{"type":"pointerMove","x":x,"y":y}])
+        else:self.cmd("xdotool","mousemove","--window",self.win,str(x),str(y))
+
+    @property
+    def ui(self):
+        # KWin windows are 1180×850 frames below a 28 px title bar.
+        if self.kde:return Ui(self.words,self.hover,self.image,width=1180,height=822,origin=(0,28))
+        return Ui(self.words,self.hover,self.image,width=1180,height=760)
+
+    def press(self,x,y):
+        if self.kde:
+            self.kde.actions("pointer",[{"type":"pointerMove","x":x,"y":y},{"type":"pause","duration":380},
+                {"type":"pointerDown","button":0},{"type":"pause","duration":170},{"type":"pointerUp","button":0}])
+        else:self.cmd("xdotool","mousemove","--window",self.win,str(x),str(y),"click","1")
 
     def click(self,label):
         if self.kde:self.kde.command("kdotool","windowactivate",self.win)
+        if label in ("voice","video"):
+            # DM calls start from the phone and camera icons in the channel header.
+            tip="start "+label+" call"
+            self.press(*wait_for(tip,lambda:self.ui.header(tip),20))
+            return
         def locate():
             if label in {"start","stop","share","sharing","hang","devices","mute","deafen","leave","cancel","unmute","undeafen"}:
                 # OCR individual pills; page-wide OCR sometimes joins the icon
@@ -114,10 +138,7 @@ class Desktop:
                         if re.search(r"\b"+label+r"\b",txt):return x,top+18
             return next(((x,y) for word,x,y in self.words() if word==label),None)
         x,y=wait_for(label,locate,12)
-        if self.kde:
-            self.kde.actions("pointer",[{"type":"pointerMove","x":x,"y":y},{"type":"pause","duration":380},
-                {"type":"pointerDown","button":0},{"type":"pause","duration":170},{"type":"pointerUp","button":0}])
-        else:self.cmd("xdotool","mousemove","--window",self.win,str(x),str(y),"click","1")
+        self.press(x,y)
 
     def hears(self,expected):
         windows=list(self.windows)
@@ -127,12 +148,12 @@ class Desktop:
 
 def check_speaking(desks,names):
     def highlights(peer):
-        words=[(word,x,y) for word,x,y in peer.words() if 70<x<280]
+        # A speaking participant's avatar gets a green ring in the voice roster.
+        im=peer.image()
+        words=[(word,x,y) for word,x,y in peer.words() if 70<x<CHAT_X]
         rows={i:y for i,name in enumerate(names) for word,_,y in words if word==name.lower()}
-        badges=[y for word,_,y in words if word=="speaking"]
-        active={i for i,y in rows.items() if any(abs(y-b)<=5 for b in badges)}
-        # Missing rows, extra labels and unattached badges are failures too.
-        return active if len(rows)==len(names) and len(badges)==len(active) else None
+        active={i for i,y in rows.items() if peer.ui.speaking(im,y)}
+        return active if len(rows)==len(names) else None
     def verify(active):
         wait_for("decoded sound matches selected inputs",lambda:all(
             d.hears({TONES[j] for j in active if j!=i}) for i,d in enumerate(desks)),12)
@@ -231,7 +252,7 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
                 inputs,outputs=streams("source-outputs","source"),streams("sink-inputs","sink")
                 return [(inputs.count(sources[f"Mic{i}.monitor"]),outputs.count(sinks[f"Out{i}"])) for i in range(3)]
             def sidebar(peer,n):
-                words={w for w,x,y in peer.words() if x<280 and y<500}
+                words={w for w,x,y in peer.words() if x<CHAT_X and y<500}
                 return all((name.lower() in words)==(i<n) for i,name in enumerate(names))
             original={}
             if ptt:

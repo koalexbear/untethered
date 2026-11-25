@@ -4,9 +4,10 @@ from urllib.parse import unquote,urlsplit
 
 import requests
 from qa_native_paste import wait_for
+from qa_ui import CHAT_X
 
 
-def check_permissions(page,api,room,native,admin,member,http,locate,click,restart,x):
+def check_permissions(page,api,room,native,admin,member,http,locate,click,restart,x,ui):
     mod="@"+native["username"]+":test.invalid"
     peer=page.evaluate("()=>window.mxMatrixClientPeg.get().getSafeUserId()")
     assert peer!=mod
@@ -21,8 +22,11 @@ def check_permissions(page,api,room,native,admin,member,http,locate,click,restar
     base["events"].update({"m.room.encrypted":0,"m.room.message":0,"m.reaction":0,"m.sticker":70,"org.example.audit":80})
     base["org.example.room_policy"]={"label":"Retain this extension","version":3}
     write(base)
-    def point(ws,label):return next(((xx,y) for w,xx,y in ws if w==label and xx>280),None)
+    def point(ws,label):return next(((xx,y) for w,xx,y in ws if w==label and xx>CHAT_X),None)
     def tap(w):click(locate(w,lambda ws:point(ws,w)))
+    def permissions():
+        # The shield icon in the channel header.
+        click(wait_for("Posting Permissions header control",lambda:ui.header("posting permissions"),20))
     def notice(w):locate(w,lambda ws:point(ws,w))
     def timeline():
         return {e["event_id"]:e for e in http("GET",api+"/messages",headers=admin,params={"dir":"b","limit":100}).json()["chunk"]
@@ -33,7 +37,7 @@ def check_permissions(page,api,room,native,admin,member,http,locate,click,restar
         page.locator(f'[data-event-id="{event_id}"]').get_by_text(body,exact=True).wait_for()
         first,second=body.lower().split()
         locate("decrypted "+body,lambda ws:any(any(w==second and x<xx<x+160 and abs(y-yy)<5 for w,xx,yy in ws)
-                                              for word,x,y in ws if word==first and x>280))
+                                              for word,x,y in ws if word==first and x>CHAT_X))
 
     def send(body,status):
         def is_send(response):
@@ -55,7 +59,7 @@ def check_permissions(page,api,room,native,admin,member,http,locate,click,restar
             visible(result["event_id"],body)
         return result
     baseline=send("Baseline lantern",200)["event_id"]
-    tap("permissions")
+    permissions()
     tap("make")
     def read_locked():
         p=state()
@@ -86,7 +90,7 @@ def check_permissions(page,api,room,native,admin,member,http,locate,click,restar
     locked["events"]["m.reaction"]=65
     write(locked)
     restart()
-    tap("permissions");tap("restore")
+    permissions();tap("restore")
     restored=copy.deepcopy(base)
     restored["events"]["org.example.audit"]=85
     restored["events"]["m.reaction"]=65

@@ -1,15 +1,15 @@
 """Private, virtual KWin output for GUI acceptance. Never targets the host session."""
-import io
-import itertools
 import json
 import os
 import re
 import shutil
 import subprocess as sp
+import time
 from pathlib import Path
 
 from PIL import Image
 from qa_native_paste import child, isolated_env, wait_for
+from qa_ui import CHAT_X, map_fixture, read, regions
 
 
 class KWin:
@@ -114,27 +114,19 @@ class KWin:
         return Image.open(path).convert("RGB")
 
     def words(self,rect,psm=11):
-        x,y,x2,y2=rect
-        buf=io.BytesIO();self.capture().crop(rect).resize(((x2-x)*2,(y2-y)*2)).save(buf,"PNG")
-        tsv=sp.run(["tesseract","stdin","stdout","--psm",str(psm),"tsv"],input=buf.getvalue(),capture_output=True,check=True).stdout.decode()
-        rows=[l.split("\t") for l in tsv.splitlines()[1:]]
-        return [(s[11],x+(int(s[6])+int(s[8])//2)//2,y+(int(s[7])+int(s[9])//2)//2)
-                for s in rows if len(s)==12 and s[11].strip()]
+        # The shared reader also keeps white labels on filled buttons.
+        x,y,_,_=rect
+        return [(w,x+wx,y+wy) for w,wx,wy in read(self.capture().crop(rect),psm=psm,dialogs=False)]
 
     def save_button(self,filename):
-        # OCR each button separately: layout OCR treats the grey buttons as
-        # backgrounds and can omit the text entirely. Match the actual label;
-        # clicking a same-named message body would not exercise Save.
-        im=self.capture()
-        def in_button(y):
-            r,g,b=im.getpixel((351,y))
-            return 95<r<190 and max(r,g,b)-min(r,g,b)<22
-        for grey,group in itertools.groupby(range(85,853),key=in_button):
-            ys=list(group)
-            if not grey or not 20<=len(ys)<=36:continue
-            box=(350,ys[0],566,ys[-1]+1)
-            buf=io.BytesIO();im.crop(box).resize((648,len(ys)*3)).save(buf,"PNG")
-            line=sp.run(["tesseract","stdin","stdout","--psm","7"],input=buf.getvalue(),
-                        capture_output=True,check=True).stdout.decode().lower()
-            if "save" in line and filename.lower() in line:
-                return 399,ys[len(ys)//2]
+        """Where to click to save a received attachment: a file card's name, or
+        the Download control that appears over a hovered inline image."""
+        hit=next(((x,y) for t,x,y in self.words((CHAT_X,76,1178,940))
+                  if t.lower().strip(".,:|")==filename.lower()),None)
+        if hit or not filename.lower().endswith(".png"):return hit
+        boxes=regions(self.capture(),(CHAT_X,76,1178,930),map_fixture)
+        if not boxes:return None
+        left,top,right,bottom=max(boxes,key=lambda b:b[3])  # the newest image
+        self.actions("pointer",[{"type":"pointerMove","x":(left+right)//2,"y":(top+bottom)//2}])
+        time.sleep(.5)
+        return right-24,top+24

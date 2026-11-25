@@ -68,9 +68,9 @@ pub(super) fn view<'a>(app: &'a App, post: &Post) -> Option<El<'a>> {
                 label(key),
                 chip.count,
                 if mine {
-                    "click to remove yours"
+                    "Remove your reaction"
                 } else {
-                    "click to add yours"
+                    "Add your reaction"
                 }
             );
             chips = chips.push(with_tip(

@@ -164,7 +164,7 @@ def verify(stack,tmp,root,backend,page,room,alice,bob,secret,incoming,switch_cam
                 shared=tracks()
                 assert all(shared[k][1:]==("GCM",False) for k in (screen,(bob,"SCREEN_SHARE_AUDIO"))) and all(shared[k]==v for k,v in share_base.items())
                 def stage(i):
-                    hit=pattern_box(kde.capture().crop((290,280,1179,470)),colors[i])
+                    hit=pattern_box(kde.capture().crop((320,280,1179,470)),colors[i])
                     return hit and hit[2]-hit[0]>350
                 wait_for("native stage rendered Element's tab",lambda:stage(0),18)
                 paint(1)

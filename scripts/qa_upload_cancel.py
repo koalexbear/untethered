@@ -180,7 +180,7 @@ def test(tmp, hs, port, web, backend, root, seed):
             page=browser.new_page(viewport={"width":1180,"height":760})
             page.goto(web);page.wait_for_function("document.title.includes('Preview')",timeout=35000)
             page.mouse.click(1095,73);page.wait_for_function("document.title.includes('Account')")
-            for y,key in [(333,"server"),(391,"username"),(447,"password")]:
+            for y,key in [(299,"server"),(381,"username"),(464,"password")]:
                 page.mouse.click(510,y);page.keyboard.type(fixture[key],delay=5)
             page.keyboard.press("Enter")
             field=page.get_by_label("Recovery key or passphrase")
@@ -191,19 +191,20 @@ def test(tmp, hs, port, web, backend, root, seed):
                 d.items.add(new File([bytes],'browser.bin'));
                 document.querySelector('canvas').dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:d}));}""",SIZE)
             def card():
-                im=Image.open(io.BytesIO(page.screenshot())).crop((290,515,464,666)).resize((522,453))
+                # The staged card sits inside the composer, above the message field.
+                im=Image.open(io.BytesIO(page.screenshot())).crop((336,535,506,676)).resize((510,423))
                 buf=io.BytesIO();im.save(buf,format="PNG")
                 return subprocess.run(["tesseract","stdin","stdout","--psm","6"],input=buf.getvalue(),capture_output=True,check=True).stdout.decode()
             until("staged browser file",lambda:"Ready" in card())
-            page.mouse.click(1140,698)
+            page.mouse.click(1140,708)  # Send arrow
             def shown():
                 m=re.search(r"Upload\s+([1-9]\d?)\s*%",card(),re.I)
                 return m and m.group(0)
             print("Chromium attachment card:",until("visible upload percentage",shown),flush=True)
-            page.mouse.click(425,546)
+            page.mouse.click(465,560)  # The card's Cancel control
             until("visible cancelled draft",lambda:"Cancelled" in card())
             assert_cancel("Chromium",2)
-            page.mouse.click(1140,698)
+            page.mouse.click(1140,708)  # Retry replaces the send arrow
             assert_retry("Chromium",2)
             until("cleared browser retry card",lambda:"browser.bin" not in card().lower())
             # Independently read the encrypted media object using the descriptor

@@ -39,12 +39,12 @@ def check_video(stack,tmp,root,backend,room,users,secret,sidechat,share=False):
     def box(i,phase,local=False):
         return pattern_box(desks[i].kde.capture().crop((283,82,1179,850)),palettes[i if local else 1-i][phase])
     def dock_box(peer,palette):
-        return pattern_box(peer.kde.capture().crop((72,250,280,795)),palette)
+        return pattern_box(peer.kde.capture().crop((72,250,312,795)),palette)
     def expand(peer):
         def opened():
             ws=peer.words()
-            if any(w=="theater" and x>280 for w,x,y in ws):return True
-            target=next(((x,y) for w,x,y in ws if w in ("open","view") and 72<x<280),None)
+            if any(w=="theater" and x>312 for w,x,y in ws):return True
+            target=next(((x,y) for w,x,y in ws if w in ("open","view") and 72<x<312),None)
             if target:
                 x,y=target
                 peer.kde.command("kdotool","windowactivate",peer.win)
@@ -96,7 +96,7 @@ def check_video(stack,tmp,root,backend,room,users,secret,sidechat,share=False):
     if share:
         from qa_window_share import dm_share
         def screen(pair):
-            return pattern_box(b.kde.capture().crop((283,280,1179,470)),pair)
+            return pattern_box(b.kde.capture().crop((315,280,1179,470)),pair)
         def fresh_voice():
             for d in desks:d.windows.clear()
             wait_for("fresh two-way audio with independent DM share",audio)
@@ -188,7 +188,7 @@ def check_video(stack,tmp,root,backend,room,users,secret,sidechat,share=False):
     dock_control(b,1)
     wait_for("only callee's camera stops",lambda:not readers(b) and (users[1],"CAMERA") not in tracks() and not compact(1),15)
     assert box(1,0) and audio()
-    wait_for("dock remains available with no stale picture",lambda:any(w=="open" and 72<x<280 for w,x,y in a.words()) and not compact(0))
+    wait_for("dock remains available with no stale picture",lambda:any(w=="open" and 72<x<312 for w,x,y in a.words()) and not compact(0))
     dock_control(a,3)
     wait_for("hangup releases both cameras and all SFU tracks",lambda:not tracks() and not readers(a) and not readers(b),20)
     assert title("Sidechat") and not box(0,0) and not box(0,1)

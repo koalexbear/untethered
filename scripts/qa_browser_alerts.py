@@ -13,6 +13,7 @@ from playwright.sync_api import sync_playwright
 from qa_kwin_element import element_server,login_element
 from qa_native_paste import child,isolated_env,start_display,wait_for
 from qa_room_alerts import NotificationDesktop
+from qa_ui import CHAT_X,Ui,read
 
 
 def check_browser_alerts(tmp,hs,web,backend,seed,http,*,dnd=False,reading=False,spaces=False):
@@ -86,15 +87,13 @@ def check_browser_alerts(tmp,hs,web,backend,seed,http,*,dnd=False,reading=False,
 
         def read_words(raw):
             im=Image.open(io.BytesIO(raw)).convert("RGB")
-            buf=io.BytesIO();im.resize((im.width*2,im.height*2)).save(buf,"PNG")
-            raw=sp.check_output(["tesseract","stdin","stdout","--psm","11","tsv"],input=buf.getvalue(),stderr=sp.DEVNULL)
-            return [(w[11].lower().strip(".,:|"),(int(w[6])+int(w[8])//2)//2,(int(w[7])+int(w[9])//2)//2)
-                    for line in raw.decode().splitlines() if len(w:=line.split("\t"))==12 and w[0]=="5"]
+            return [(w.lower().strip(".,:|()"),x,y) for w,x,y in read(im)]
         def words():return read_words(page.screenshot())
+        ui=Ui(words,lambda pos:page.mouse.move(*pos),lambda:Image.open(io.BytesIO(page.screenshot())).convert("RGB"))
         def click_word(label,near=None):
             def find():
                 ws=words()
-                return next(((x,y) for w,x,y in ws if w==label and x>280 and
+                return next(((x,y) for w,x,y in ws if w==label and x>CHAT_X and
                             (not near or any(v==near and abs(yy-y)<6 for v,_,yy in ws))),None)
             try:point=wait_for(label,find,12)
             except RuntimeError:print("Browser UI:",[w for w,_,_ in words()],flush=True);raise
@@ -103,7 +102,8 @@ def check_browser_alerts(tmp,hs,web,backend,seed,http,*,dnd=False,reading=False,
             rules=http("GET",hs+"/_matrix/client/v3/pushrules/",headers=hdr).json()["global"]["room"]
             return any(r["rule_id"]==room and r["enabled"] and r["actions"]==[] for r in rules)
         if not reading:
-            click_word("alerts")
+            # The bell icon in the channel header opens room notification settings.
+            page.mouse.click(*wait_for("Notification Settings header control",lambda:ui.header("notification settings"),20))
             if not spaces:
                 click_word("mute","all")
                 wait_for("Matrix room muted by the browser",muted)
@@ -160,7 +160,7 @@ def check_browser_alerts(tmp,hs,web,backend,seed,http,*,dnd=False,reading=False,
             def space_click(x,y):
                 page.mouse.click(x,y);page.mouse.move(650,440)
             check_spaces(hs,peer,me,hdr,http,room,words,space_click,page.bring_to_front,hide,
-                         restart,lambda r,b,u,n:send(b,u,True,n,r),desk,"Chromium",second_device=second)
+                         restart,lambda r,b,u,n:send(b,u,True,n,r),desk,"Chromium",second_device=second,ui=ui)
             return
         if dnd:
             from qa_account_dnd import verify_dnd

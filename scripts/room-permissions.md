@@ -101,9 +101,9 @@ and gets HTTP **403** if they try to read the moderation queue. The sender
 uses Element; the reporter uses either the native Iced client on Xvfb or a
 fresh Chromium tab running the Rust/WASM client and gomuks worker.
 
-1. Element sends two identical messages. Open **Report** on the first and
+1. Element sends two identical messages. Open **Report Message** from the first one’s hover toolbar and
    cancel after typing a reason: the server still has zero reports.
-2. Open **Report** on the second. Before submitting, Element edits that
+2. Open **Report Message** on the second. Before submitting, Element edits that
    message. Once the new text is visible, submit the open form. The queue
    must contain the **second original event ID**, not the look-alike or edit.
 3. Open a fresh report on the edited text and press Enter twice. The queue

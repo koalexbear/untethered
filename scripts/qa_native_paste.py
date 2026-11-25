@@ -153,7 +153,7 @@ def check_paste(tmp, root, backend, f, headers, platform):
         png=io.BytesIO();original.save(png,format="PNG")
         # Paste normal text first. It must remain the caption of the one eventual event.
         caption="Clipboard screenshot proof"
-        run("xdotool","mousemove","550","697","click","1")
+        run("xdotool","mousemove","550","708","click","1")
         with ExitStack() as owner:
             clip(owner,"text/plain" if platform=="wayland" else "UTF8_STRING",caption.encode())
             run("xdotool","key","--clearmodifiers","ctrl+v")
@@ -166,7 +166,7 @@ def check_paste(tmp, root, backend, f, headers, platform):
             wait_for("native image preview pixels",colored_in_tray)
         assert {e["event_id"] for e in room_events()}==initial_events and media_count()==initial_media
         print(f"{platform}: actual Ctrl+V staged screenshot and preserved text; before Send: 0 uploads, 0 message events.",flush=True)
-        run("xdotool","mousemove","1140","698","click","1")
+        run("xdotool","mousemove","1140","708","click","1")  # Send arrow
         def delivered():
             events=[e for e in room_events() if e["event_id"] not in initial_events]
             assert len(events)<=1

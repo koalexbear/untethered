@@ -3,9 +3,10 @@ from urllib.parse import quote,unquote,urlsplit
 import re
 import requests
 from qa_native_paste import wait_for
+from qa_ui import CHAT_X
 
 
-def check_removal(page,api,room,peer_hs,admin,member,http,locate,click,restart,x,*,kick=False):
+def check_removal(page,api,room,peer_hs,admin,member,http,locate,click,restart,x,ui,*,kick=False):
     hs=api.split("/_matrix/")[0]
     moderator=http("GET",hs+"/_matrix/client/v3/account/whoami",headers=admin).json()["user_id"]
     peer=page.evaluate("()=>window.mxMatrixClientPeg.get().getSafeUserId()")
@@ -29,6 +30,9 @@ def check_removal(page,api,room,peer_hs,admin,member,http,locate,click,restart,x
     wait_for("joined target has room display name",lambda:current().get("displayname")=="Bruno",15)
     def point(ws,word,min_x):return next(((xx,y) for w,xx,y in ws if w==word and xx>min_x),None)
     def tap(word,min_x=910):click(locate(word,lambda ws:point(ws,word,min_x)))
+    def people():
+        # The member list icon in the channel header.
+        click(wait_for("Member List header control",lambda:ui.header("member list"),20))
     def selected(kind):
         locate("selected "+kind,lambda ws:any(abs(y-yy)<6 for w,xx,y in ws if xx>910 and w=="membership"
                                                for v,xxx,yy in ws if xxx>xx and v==kind))
@@ -59,7 +63,7 @@ def check_removal(page,api,room,peer_hs,admin,member,http,locate,click,restart,x
         assert wire.value.status==200 and wire.value.json()["event_id"]==eid
         page.locator(f'[data-event-id="{eid}"]').get_by_text(body,exact=True).wait_for()
         a,b=body.lower().split()
-        locate("Untethered decrypted "+body,lambda ws:any(abs(y-yy)<6 for w,xx,y in ws if w==a and xx>280
+        locate("Untethered decrypted "+body,lambda ws:any(abs(y-yy)<6 for w,xx,y in ws if w==a and xx>CHAT_X
             for v,xxx,yy in ws if v==b and xx<xxx<xx+200))
         # A send is acknowledged by the sender's server before federation
         # necessarily reaches the admin's server; inspect the latter after receipt.
@@ -69,7 +73,7 @@ def check_removal(page,api,room,peer_hs,admin,member,http,locate,click,restart,x
     baseline=send("Arrival beacon")
     denied=requests.post((peer_hs or hs)+"/_matrix/client/v3/rooms/"+quote(room,safe="")+"/"+action,headers=member,json={"user_id":moderator},timeout=10)
     assert denied.status_code==403
-    tap("people",280);tap("bruno");selected("joined")
+    people();tap("bruno");selected("joined")
     reason="Room conduct test"
     tap("reason");x("type","--clearmodifiers",reason)
     if kick:
@@ -120,10 +124,12 @@ def check_removal(page,api,room,peer_hs,admin,member,http,locate,click,restart,x
     assert current()["membership"]=="ban"
     print(f"Public join rule confirmed. Synapse refused the banned Element member's rejoin: HTTP 403 {error['errcode']} ({error['error']}).",flush=True)
     restart()
-    locate("restored pre-ban message",lambda ws:point(ws,"arrival",280)) # Header has finished loading.
-    tap("people",280)
-    # Ban state may not include a display name; select the Banned roster row.
-    tap("banned");selected("banned")
+    locate("restored pre-ban message",lambda ws:point(ws,"arrival",CHAT_X)) # Header has finished loading.
+    people()
+    # Ban state may not include a display name; select the row under the
+    # roster's BANNED heading.
+    click(locate("Banned roster row",lambda ws:(lambda p:p and (p[0],p[1]+32))(point(ws,"banned",910))))
+    selected("banned")
     joins("invite")
     tap("unban");observed("leave");selected("left")
     join(403,"M_FORBIDDEN") # An unban has not silently created an invitation.

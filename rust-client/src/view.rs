@@ -2458,7 +2458,7 @@ impl App {
                     container(
                         row![
                             line_rule(RED),
-                            container(text("NEW").size(10).font(BOLD).color(Color::WHITE))
+                            container(text("NEW").size(12).font(BOLD).color(Color::WHITE))
                                 .padding([1, 5])
                                 .style(|_| surface(RED, 4.))
                         ]

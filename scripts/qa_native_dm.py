@@ -12,6 +12,7 @@ from qa_desktop_dm import sfu_participants
 from qa_native_paste import child,isolated_env,start_display,wait_for
 from qa_rtc_link import outage
 from qa_rtc_turn import counters,interrupt_turn,relay_links
+from qa_ui import CHAT_X
 from qa_voice_room import Desktop,MEMBER
 
 RING="org.matrix.msc4075.rtc.notification"
@@ -52,11 +53,13 @@ def check_native_dm(stack,tmp,hs,name,jwt,root,backend,room,users,headers,secret
                              log=stack.enter_context(logs[i].open("w"))))
 
     a,b=desks
-    def words(d):return {w for w,x,_ in d.words() if x>280}
+    def words(d):return {w for w,x,_ in d.words() if x>CHAT_X}
     def label(d,text):wait_for("on-screen "+text,lambda:text in words(d),12)
     def ready_ui():
         for d in desks:
-            wait_for("idle DM controls",lambda:{"voice"}<= (ws:=words(d)) and not ws&{"hang","accept","decline"},15)
+            # Idle: no call bar or ring, and the header's phone icon is back.
+            wait_for("idle DM controls",lambda:not words(d)&{"hang","accept","decline"}
+                     and d.ui.header("start voice call"),20)
     def audio(kind):
         return [v for v in json.loads(a.cmd("pactl","-f","json","list",kind))
                 if v["properties"].get("application.name")=="Untethered"]
@@ -163,7 +166,7 @@ def check_native_dm(stack,tmp,hs,name,jwt,root,backend,room,users,headers,secret
                     a.tone=3;b.tone=4
                 hears([830],[530])
                 assert publications()==tracks
-                pt=wait_for("DM in left sidebar",lambda:next(((x,y) for w,x,y in a.words() if w=="media-proof" and x<280),None))
+                pt=wait_for("DM in left sidebar",lambda:next(((x,y) for w,x,y in a.words() if w=="media-proof" and x<CHAT_X),None))
                 a.cmd("xdotool","mousemove","--window",a.win,*map(str,pt),"click","1")
                 wait_for("back in DM",lambda:"media-proof" in a.cmd("xdotool","getwindowname",a.win))
                 print("Mute/deafen isolated the expected speaker while browsing Sidechat. Cutting only TURN silenced both; "
