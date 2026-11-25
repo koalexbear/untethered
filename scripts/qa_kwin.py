@@ -13,7 +13,7 @@ from qa_ui import CHAT_X, map_fixture, read, regions
 
 
 class KWin:
-    def __init__(self, stack, tmp, root, backend, *, env=None, screencast=False):
+    def __init__(self, stack, tmp, root, backend, *, env=None, screencast=False, native_log=None):
         self.tmp = tmp
         self.stack = stack
         self.env = env = env if env is not None else isolated_env(tmp, backend, "wayland")
@@ -43,7 +43,9 @@ class KWin:
             stack.enter_context(child(["pipewire"],env,stderr=log("pw")))
             wait_for("private PipeWire",lambda:(runtime/"pipewire-0").is_socket())
             stack.enter_context(child(["wireplumber","--profile","policy"],env,stderr=log("wp")))
-        self.kw = stack.enter_context(child(["kwin_wayland","--virtual","--width","2100","--height","1000",
+        # Screencast fixtures place a 1600x900 pattern window beside the client.
+        width = "3300" if screencast else "2100"
+        self.kw = stack.enter_context(child(["kwin_wayland","--virtual","--width",width,"--height","1000",
                                             "--socket","kwin-proof","--no-lockscreen","--no-global-shortcuts","--no-kactivities"],env))
         def ready():
             assert self.kw.poll() is None, "isolated KWin could not initialize a virtual output"
@@ -61,7 +63,7 @@ class KWin:
         # by name. The tested native client must use OpenPipeWireRemote's FD.
         native_env={**env,"PIPEWIRE_REMOTE":"no-ambient-qa-remote"} if screencast else env
         binary=os.getenv("UNTETHERED_QA_CLIENT") or root/"rust-client/target/debug/untethered-iced"
-        self.native=stack.enter_context(child([*limit,binary],native_env,stderr=log("native")))
+        self.native=stack.enter_context(child([*limit,binary],native_env,stderr=native_log or log("native")))
         print(re.search(r"^KWin version: .+$",info,re.M)[0]+" · active virtual Wayland compositor · private D-Bus",flush=True)
 
     def command(self,*args,check=True):

@@ -174,18 +174,23 @@
   release or focus loss closed her capture stream. Bruno and Clara still
   heard each other in every 100 ms measurement window across transitions.
   A system-wide key for talking from another app remains open.
-- **Linux portal window sharing:** [The three-client window test](experiments/rtc-audio/README.md#verify-portal-window-sharing)
-  uses a private KDE Wayland picker and PipeWire. Cancelling creates no video
-  publication. Selecting a window publishes one GCM screen track; both other
-  desktops rendered its original and changed color pattern while the sharer
+- **Linux portal screen sharing:** [The three-client share test](experiments/rtc-audio/README.md#verify-portal-window-sharing)
+  uses a private KDE Wayland picker, which now lists screens as well as windows,
+  and PipeWire. Cancelling creates no video publication. Selecting a 1600×900
+  animated window publishes one GCM screen track at its own size (1600×928)
+  and 30.0 fps, where it used to be letterboxed to 960×540 at 5 fps. Both receivers decoded 30.0 fps
+  and rendered its original and changed color pattern while the sharer
   browsed another channel. All six audio paths stayed live on the original
   microphone tracks. **Stop sharing** released the portal session and capture
-  nodes, unpublished the video and cleared both remote views. Full-monitor
-  capture and system-audio sharing are still unverified.
+  nodes, unpublished the video and cleared both remote views. Receiving 30 fps
+  takes a full core on the UI thread under software GL (2–4% idle); GPU YUV
+  rendering is the follow-up. A full-monitor share and system-audio sharing
+  are still unverified.
 - **Linux voice-room camera:** [The three-client camera test](experiments/rtc-audio/README.md#verify-voice-room-camera-video)
   uses a real Camera portal with an isolated virtual camera. Both peers
   rendered changing green/magenta → orange/blue frames from a single GCM
-  camera publication. Turning the camera off removed the reader, PipeWire
+  camera publication, sent at 1280×720 (up to 30 fps; the virtual camera
+  supplies 12). Turning the camera off removed the reader, PipeWire
   capture links, SFU video publication and remote tiles; all six audio paths
   remained live on the original tracks. Physical webcams remain unverified.
 - **Linux multi-camera layouts:** In the [grid/focus test](experiments/rtc-audio/README.md#verify-multi-camera-grid-and-focus),
