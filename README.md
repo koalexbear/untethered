@@ -28,11 +28,12 @@ Closing the app shuts down the child. There’s no separate service to start.
 **Experimental matrix-rust-sdk engine:** `UNTETHERED_ENGINE=matrix-sdk` starts
 the desktop client on an in-process matrix-rust-sdk engine instead of gomuks.
 It covers sign-in (password or single sign-on), recovery and emoji
-verification, devices, rooms, spaces, text messages, replies, reactions,
-edits, reports and read receipts so far; attachments and calls still need
-gomuks. It signs in as a new device; verify it with your recovery key or
-another device. See the
-[migration notes](rust-client/docs/matrix-sdk-migration.md).
+verification, devices, rooms, spaces, messages, replies, reactions, edits,
+reports, read receipts, attachments, moderation, room permissions, space and
+channel setup, notification settings, desktop alerts, search and the
+mentions inbox so far; calls and the web client still need gomuks. It signs
+in as a new device; verify it with your recovery key or another device. See
+the [migration notes](rust-client/docs/matrix-sdk-migration.md).
 
 The Linux launcher tries wgpu first and falls back to tiny-skia. To compare
 renderers with the default development profile, close the client between runs

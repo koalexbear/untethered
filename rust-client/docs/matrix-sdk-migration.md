@@ -13,7 +13,7 @@ notifications, moderation, permissions and spaces → call signaling → web
 build → remove gomuks. Throughout, the UI keeps reading
 `rooms::{Rooms, Room, Post}`; that model is the seam.
 
-## Status: steps 1 to 4 are in
+## Status: steps 1 to 5 are in
 
 The native client has a second engine built on `matrix-sdk` and
 `matrix-sdk-ui` **0.20.0**. gomuks stays the default. The wasm32 build doesn't
@@ -309,6 +309,79 @@ get the same file card, inline preview and Save button as on gomuks.
   messages need Retry and Remove controls.
 - **Not sent:** a blurhash, and durations or sizes for audio and video.
 
+## Step 5: rooms, moderation, alerts and search
+
+### Typed requests instead of gomuks-shaped JSON
+
+Steps 3 and 4 reached the engine through `engine_rpc`, which reads the
+parameters of the gomuks RPCs the App already sent. For step 5 the user
+asked not to shape things after gomuks, since it is going away. So these
+features now use typed requests on the new engine:
+
+- **Shared, engine-neutral types** that the feature code works on:
+  - `room_state::RoomState`: the create and power levels documents and the
+    membership list;
+  - `notifications::{RuleKind, RuleChange}`: one push rule change, as the
+    Matrix push rules API makes it;
+  - `engine::Found`: a stored message with its current text;
+  - `engine::Alert`: a message to notify about.
+- **One App method per request** (`fetch_room_state`, `send_membership`,
+  `send_power_levels`, `send_create_room`, `send_space_child`,
+  `send_push_rule`, `send_room_account_data`, and branches in search and
+  the mentions inbox). Each sends a typed engine command, or the gomuks
+  RPC on that engine.
+- **Typed cores for results** (`membership_state`, `posting_checked`,
+  `setup_checked`, `search_found` and so on). gomuks answers are converted
+  at the edge (`RoomState::from_gomuks`), so its JSON stays in its own
+  path, which step 8 deletes.
+- **Matrix's own documents stay JSON** where they must round-trip: the
+  power levels content (so unknown fields and the posting restore record
+  survive), the push rule set, push rule actions and conditions, and the
+  `createRoom` body. That is Matrix's format, not gomuks's. What is gone
+  from these features is gomuks's envelope (rowids, `redacted_by`,
+  `decrypted`, rowid notification lists) and its RPC shapes.
+
+| Feature | Implementation | How it was verified |
+| --- | --- | --- |
+| Room state for permissions and the member directory | A fresh `/state` read (`get_state_events`) becomes a `RoomState`. Room summaries carry the create and power levels documents from the store, so read-only rooms and moderation rights follow sync | The live checks below compare against a fresh read |
+| Moderation | `Room::kick_user`, `ban_user`, `unban_user`, `invite_user_by_id`. As on gomuks, a change is checked against fresh state first and dropped if anything changed | Kicked the gomuks peer and invited them back |
+| Posting permissions | The App's patch of the power levels document, sent as is with `send_state_event_raw` | Made a room read-only for members, then restored it |
+| Community setup | `create_room` from the App's `createRoom` body (restricted join rule, encryption, space parent); the space link with `send_state_event_for_key` | Created a space and an encrypted channel linked into it |
+| Push rules | The `m.push_rules` content at startup and on every change, parsed by the App as on gomuks. Changes through the push rules API (`set_pushrule`, `set_pushrule_enabled`, `delete_pushrule`) | Room modes (quiet, all, default) and Do Not Disturb, each round-tripped through sync |
+| Space alerts | The preference as room account data; the App's underride rules for joined rooms | The new channel got its rule |
+| Desktop alerts | The SDK's notification handler, which evaluates push rules after decryption: messages and stickers from others, not edits | An alert for the gomuks peer's encrypted message |
+| Search | Every stored event of the room (`EventCacheStore::get_room_events`), with edits applied, matched case-insensitively, 32 per page. Coverage counts the stored messages | "history 4" found 11 messages; an edited message is found by its new text under the original event, and not by its old text |
+| Mentions inbox | Stored messages from others whose current `m.mentions` include us, in all rooms | Found the peer's mention |
+
+### Things worth knowing (step 5)
+
+- **Search cost:** each query reads and decrypts every stored event of the
+  room. That's fine for thousands of messages. For large histories, the
+  full-text index in [(b)](#local-search-and-the-mentions-inbox) is still
+  the plan.
+- **What search sees:** like gomuks, only what this device has stored, so
+  older history becomes searchable once it has been loaded.
+- **Alert gaps:** a message that only decrypts after its sync (late keys)
+  raises no alert; gomuks waited for those.
+- **History in the first sync:** the SDK evaluates the recent history in
+  the first sync after signing in like new messages. The engine skips
+  events from more than 2 minutes before the session started. Without
+  that, a new device raised dozens of alerts, and the queued alerts
+  blocked its sync in the live test.
+- **Alerts never block sync:** if the App's event queue is full, the
+  engine drops the alert.
+- **Stale room summaries:** a summary built just before sync delivered our
+  own power levels change used to put the old document back, and the next
+  moderation check then refused to act ("permissions changed"). `Posting`
+  now remembers the power levels events it replaced and ignores a snapshot
+  that offers one: a replaced state event never becomes current again.
+- **Member directory while open:** membership changes from sync reach an
+  open directory as `Event::Member`, as gomuks's sync deltas did.
+- **Room open:** the gomuks path fetched room state on open (names,
+  permissions, call memberships). On this engine, names come from the
+  timeline and permissions from room summaries. Call memberships wait for
+  step 6.
+
 ## (a) gomuks calls and their matrix-sdk equivalents
 
 Status: **Done** = implemented on the new engine; **Available**
@@ -320,10 +393,10 @@ Those marked *(0.20)* are new in 0.20.
 
 | gomuks call | Where the client uses it | matrix-sdk equivalent | Status |
 | --- | --- | --- | --- |
-| `create_room` | Space and channel setup (`community.rs`) | `Client::create_room(create_room::v3::Request)` → `Room`; space edges with `Room::send_state_event(SpaceChildEventContent)` or `SpaceService::add_child_to_space` | Available |
+| `create_room` | Space and channel setup (`community.rs`) | `Client::create_room` from the App's `createRoom` body; space edges with `send_state_event_for_key(SpaceChildEventContent)` | Done |
 | `get_event_context` | Opening a reply's original or a mention beyond loaded history (`replies.rs`) | `Room::event_with_context`; better, a second `Timeline` with `TimelineFocus::Event` that paginates both ways | Done (`event_with_context`) |
 | `get_media_config` | Upload size limit (`account.rs`, `transfers.rs`) | `Client::load_or_fetch_max_upload_size()` (cached) | Done |
-| `get_room_state` | Members and power levels (`main.rs`, `moderation.rs`, `permissions.rs`), call memberships (`desktop_call.rs`, `incoming.rs`), community setup | `Room::members`/`sync_members`, `Room::power_levels`, `get_state_events_static::<T>()` or raw `get_state_events`, and `Room::subscribe_to_state_events` *(0.20)*. `Posting::ingest` and `Room::voice_state` take JSON today and need typed inputs | Available |
+| `get_room_state` | Members and power levels (`main.rs`, `moderation.rs`, `permissions.rs`), call memberships (`desktop_call.rs`, `incoming.rs`), community setup | A fresh `/state` read (`get_state_events`) into `RoomState`; summaries carry the power levels from the store; `Room::subscribe_to_state_events` *(0.20)* for calls | Done except call memberships |
 | `get_rtc_transports` | "Check call server support" (`main.rs`), call setup (`desktop_call.rs`) | gomuks calls the MSC4143 `/rtc/transports` endpoint: `client.send(ruma::api::client::rtc::transports::…::Request)`; the well-known variant is `Client::rtc_foci()` | Available |
 | `get_state` | Own user and device ID (`desktop_call.rs`), refresh after verification (`main.rs`) | `Client::user_id`/`device_id`, `Encryption::get_own_device`, `verification_state()`, `recovery().state()` | Done (as `Event::Account`) |
 | `listen_to_device` | Receiving call encryption keys (`desktop_call.rs`) | `Client::subscribe_to_custom_to_device_messages([types])` *(0.20)*: Olm-decrypted, with the sender's device. In 0.19.1, a to-device event handler | Available |
@@ -332,15 +405,15 @@ Those marked *(0.20)* are new in 0.20.
 | `paginate` | History (`main.rs`) | `Timeline::paginate_backwards(50)` | Done |
 | `report_event` | Report message (`reports.rs`) | `Room::report_content` | Done |
 | `request_openid_token` | LiveKit JWT service auth (`desktop_call.rs`) | `client.send(request_openid_token::v3::Request::new(user_id))` | Available (raw ruma request) |
-| `search_local` | Room search (`search.rs`), mentions inbox (`mentions.rs`) | No equivalent. The `experimental-search` feature (Tantivy, `Room::search_messages`, matrix-sdk-ui `SearchService`) covers part of room search | Gap; see (b) |
+| `search_local` | Room search (`search.rs`), mentions inbox (`mentions.rs`) | No equivalent. The engine scans stored events (`EventCacheStore::get_room_events`); `experimental-search` covers part of room search | Done by scanning; an index is still the plan, see (b) |
 | `send_event` | Edits (`edits.rs`), reactions (`reactions.rs`), call decline (`incoming.rs`), call events (`desktop_call.rs`) | `Timeline::edit`, `Timeline::toggle_reaction`, `Room::send`, `Room::send_raw` | Done for edits and reactions; calls open |
 | `send_message` | Composer and replies (`main.rs`), media captions (`transfers.rs`) | `Timeline::send`, `send_reply`, `send_attachment` (send queue: local echo, retry, wedged-queue handling) | Done for text (Markdown) and replies; media open |
 | `send_to_device` | Sending call encryption keys (`desktop_call/channel.rs`) | `Encryption::encrypt_and_send_raw_to_device` behind the `experimental-send-custom-to-device` feature | Available behind a feature |
-| `set_account_data` | Marked unread (`reading.rs`), space alert preferences (`notifications/spaces.rs`) | `Room::set_unread_flag`, `Room::set_account_data_raw`, `Account::set_account_data_raw` | Done for the unread flag and read sharing; space alerts open |
-| `set_membership` | Kick, ban, unban, invite (`moderation.rs`), joins (`community.rs`) | `Room::kick_user`, `ban_user`, `unban_user`, `invite_user_by_id`, `leave`; `Client::join_room_by_id` | Available |
-| `set_state` | Power levels (`permissions.rs`), space edges (`community.rs`), call membership with delayed leave (`rtc_membership.rs`, `desktop_call.rs`) | `Room::send_state_event`/`send_state_event_raw`; MSC4140 delayed events with `SendRawStateEvent::into_delayed` *(0.20)* | Available |
+| `set_account_data` | Marked unread (`reading.rs`), space alert preferences (`notifications/spaces.rs`) | `Room::set_unread_flag`, `Room::set_account_data_raw`, `Account::set_account_data_raw` | Done |
+| `set_membership` | Kick, ban, unban, invite (`moderation.rs`, `community.rs`) | `Room::kick_user`, `ban_user`, `unban_user`, `invite_user_by_id` | Done |
+| `set_state` | Power levels (`permissions.rs`), space edges (`community.rs`), call membership with delayed leave (`rtc_membership.rs`, `desktop_call.rs`) | `Room::send_state_event_raw`, `send_state_event_for_key`; MSC4140 delayed events with `SendRawStateEvent::into_delayed` *(0.20)* | Done except call membership |
 | `update_delayed_event`¹ | Restart/send/cancel the delayed call leave (`rtc_membership.rs`) | `Client::update_delayed_event(delay_id, action, …)` *(0.20)*; `Client::rtc_livekit_delegate_delayed_leave` *(0.20)* hands it to the homeserver | Available |
-| `update_push_rule` | Room and space alerts, Do Not Disturb (`notifications.rs`, `notifications/spaces.rs`) | `Client::notification_settings()` → `set_room_notification_mode`, `set_push_rule_enabled`, `create_custom_conditional_push_rule`, `delete_user_defined_room_rules`; anything else (the per-room rules space alerts write) with ruma's `push::set_pushrule` through `Client::send` | Available |
+| `update_push_rule` | Room and space alerts, Do Not Disturb (`notifications.rs`, `notifications/spaces.rs`) | The push rules API through `Client::send`: `set_pushrule`, `set_pushrule_enabled`, `delete_pushrule` | Done |
 | `verify` | Verify form | `Recovery::recover(key or passphrase)` | Done |
 
 ¹ Not in the original list; `rtc_membership.rs` calls it. The QA scripts also
@@ -654,7 +727,10 @@ UNTETHERED_BACKEND=/path/to/gomuks uv run --python 3.13 --with matrix-synapse \
 2. **Messaging on the Timeline:** done in step 3 except typing
    notifications. Once gomuks is gone, delete the hand-rolled aggregation in
    `rooms.rs`/`edits.rs`/`reactions.rs`/`replies.rs`/`reading.rs`.
-3. **Media and send queue:** carry `MediaSource` in `media::Media`, send
-   attachments with progress, and add thumbnail/download commands.
-4. Notifications, moderation, permissions and spaces; then calls (above);
-   then the web worker; then delete `backend/` and the gomuks scripts.
+3. **Media and send queue:** done in step 4. Left: Retry and Remove for
+   failed messages, streaming previews and downloads, blurhash.
+4. **Rooms, moderation, alerts and search:** done in step 5. Left: alerts
+   for late-decrypted messages, and a full-text index for search.
+5. Calls (above); then the web build; then delete `backend/` and the gomuks
+   scripts, and move the remaining call sites off `engine_rpc` to typed
+   commands.

@@ -35,6 +35,20 @@ pub struct Inbox {
     pub failed: bool,
     scan: Option<Scan>,
 }
+/// The same excerpt as `Post::quote`.
+#[cfg(not(target_arch = "wasm32"))]
+fn preview(text: &str) -> String {
+    let mut chars = text.trim().chars();
+    let mut excerpt: String = chars
+        .by_ref()
+        .take(72)
+        .map(|c| if c.is_whitespace() { ' ' } else { c })
+        .collect();
+    if chars.next().is_some() {
+        excerpt.push('…');
+    }
+    excerpt
+}
 fn addressed(mentions: &Value, me: &str) -> bool {
     !me.is_empty() && items(&mentions["user_ids"]).any(|id| id.as_str() == Some(me))
 }
@@ -219,6 +233,26 @@ impl App {
         self.request_mentions(Page::Candidates, None);
     }
     fn request_mentions(&mut self, page: Page, next: Option<&str>) {
+        // The matrix-sdk engine answers with every hit at once.
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.sdk.is_some() {
+            let Some(rooms) = self
+                .mentions
+                .as_ref()
+                .and_then(|i| i.scan.as_ref())
+                .map(|s| s.rooms.clone())
+            else {
+                return;
+            };
+            self.command(
+                |id| crate::engine::Command::Mentions { id, rooms },
+                Request::Mentions(page),
+            );
+            if !self.pending.contains_key(&self.seq) {
+                self.mentions_failed();
+            }
+            return;
+        }
         if let Some(s) = self.mentions.as_ref().and_then(|i| i.scan.as_ref()) {
             self.rpc(
                 "search_local",
@@ -234,6 +268,33 @@ impl App {
         if let Some(i) = &mut self.mentions {
             i.scan = None;
             i.failed = true;
+        }
+    }
+    /// Messages mentioning us, from the matrix-sdk engine.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn mentions_found(&mut self, found: Vec<crate::engine::Found>) {
+        let Some(i) = &mut self.mentions else { return };
+        let Some(scan) = i.scan.take() else { return };
+        let joined = &self.live.list;
+        i.hits = found
+            .into_iter()
+            .filter(|f| joined.get(&f.room).is_some_and(|r| !r.space))
+            .map(|f| Hit {
+                preview: preview(&f.body),
+                room: f.room,
+                event: f.event_id,
+                sender: f.sender,
+                time: f.time,
+            })
+            .collect();
+        i.hits.sort_by(|a, b| {
+            b.time
+                .cmp(&a.time)
+                .then(a.room.cmp(&b.room))
+                .then(a.event.cmp(&b.event))
+        });
+        if scan.dirty {
+            self.refresh_mentions();
         }
     }
     pub fn mentions_page(&mut self, page: Page, data: &Value) {

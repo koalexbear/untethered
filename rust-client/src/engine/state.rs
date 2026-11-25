@@ -78,6 +78,43 @@ pub async fn room_state(client: &Client, room: &str) -> Result<RoomState, Failur
     Ok(state)
 }
 
+/// Pass on membership changes as they sync, for an open member directory.
+pub fn member_changes(client: &Client, events: async_channel::Sender<super::Event>) {
+    use matrix_sdk::{
+        Room,
+        ruma::events::room::member::{MembershipState, SyncRoomMemberEvent},
+    };
+    // The handler lives as long as the client, i.e. this session.
+    client.add_event_handler(move |event: SyncRoomMemberEvent, room: Room| {
+        let events = events.clone();
+        async move {
+            let kind = match event.membership() {
+                MembershipState::Join => Kind::Joined,
+                MembershipState::Invite => Kind::Invited,
+                MembershipState::Knock => Kind::Knocking,
+                MembershipState::Ban => Kind::Banned,
+                MembershipState::Leave => Kind::Left,
+                _ => return,
+            };
+            let member = Member {
+                kind,
+                name: event
+                    .as_original()
+                    .and_then(|e| e.content.displayname.clone())
+                    .unwrap_or_default(),
+                event: event.event_id().to_string(),
+            };
+            let _ = events
+                .send(super::Event::Member {
+                    room: room.room_id().to_string(),
+                    user: event.state_key().to_string(),
+                    member,
+                })
+                .await;
+        }
+    });
+}
+
 fn doc(e: &Value, event_id: &str) -> StateDoc {
     StateDoc {
         event_id: event_id.into(),

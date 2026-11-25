@@ -1,7 +1,7 @@
 //! Matrix has no space push-rule scope. Store the user's preference on the
 //! space, then maintain ordinary *underride* rules on joined descendants.
 //! Room, mention and DND rules retain their native Matrix priority.
-use super::Mode;
+use super::{Mode, RuleChange, RuleKind};
 use crate::{
     App, Request, Section,
     rooms::{Rooms, items},
@@ -37,15 +37,22 @@ pub struct Write {
     enable: bool,
 }
 impl Write {
-    fn params(&self) -> Value {
-        let mut p = json!({"kind":"underride","rule_id":rule_id(&self.room),"action":"delete"});
+    /// The underride rule change this write makes.
+    fn change(&self) -> RuleChange {
         if self.enable {
-            p["action"] = "enable".into();
+            RuleChange::Enabled(true)
         } else if self.mode != Mode::Default {
-            p["action"] = "put".into();
-            p["new_content"] = json!({"conditions":conditions(&self.room),"actions":if self.mode==Mode::All{json!(["notify"])}else{json!([])}});
+            RuleChange::Put {
+                actions: if self.mode == Mode::All {
+                    json!(["notify"])
+                } else {
+                    json!([])
+                },
+                conditions: Some(conditions(&self.room)),
+            }
+        } else {
+            RuleChange::Delete
         }
-        p
     }
 }
 #[derive(Default)]
@@ -162,6 +169,14 @@ impl Spaces {
     pub fn failed(&self) -> bool {
         !self.failed.is_empty()
     }
+    /// The space alert rule installed for a room, as the push rules say.
+    #[cfg(test)]
+    pub fn installed(&self, room: &str) -> Option<Mode> {
+        self.installed
+            .get(room)
+            .filter(|r| r.enabled)
+            .map(|r| r.mode)
+    }
 }
 impl App {
     pub fn retry_space_rules(&mut self) {
@@ -189,12 +204,13 @@ impl App {
             return;
         }
         self.alerts.spaces.failed.clear();
-        self.rpc(
-            "set_account_data",
-            json!({"type":PREF,"room_id":space,"content":{"mode":match m{
-            Mode::All=>"all",Mode::Quiet=>"quiet",Mode::Default=>"default"}}}),
-            Request::SpacePref(space),
-        );
+        let content = json!({"mode": match m {
+            Mode::All => "all",
+            Mode::Quiet => "quiet",
+            Mode::Default => "default",
+        }});
+        let target = space.clone();
+        self.send_room_account_data(&target, PREF, content, Request::SpacePref(space));
     }
     pub fn sync_space_rules(&mut self) {
         let s = &mut self.alerts.spaces;
@@ -220,9 +236,11 @@ impl App {
         let Some(write) = s.pending_write() else {
             return;
         };
-        self.rpc(
-            "update_push_rule",
-            write.params(),
+        let rule = rule_id(&write.room);
+        self.send_push_rule(
+            RuleKind::Underride,
+            &rule,
+            write.change(),
             Request::SpaceRule(write.clone()),
         );
         if !self.pending.contains_key(&self.seq) {

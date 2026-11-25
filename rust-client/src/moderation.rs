@@ -270,7 +270,7 @@ impl App {
                     .is_some_and(|m| m.event == c.event && c.action.applies(m.kind))
         });
         if r.posting.id() == prior_power.as_deref() {
-            r.posting = fresh;
+            r.posting.adopt(fresh);
         }
         for id in std::mem::take(&mut self.directory.changed) {
             if let Some(m) = self.directory.users.remove(&id) {

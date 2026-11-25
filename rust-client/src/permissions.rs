@@ -55,6 +55,9 @@ impl StateDoc {
 pub struct Posting {
     create: Option<StateDoc>,
     power: Option<StateDoc>,
+    /// Power levels events this one replaced. A replaced state event never
+    /// becomes current again, so an older snapshot offering one is stale.
+    superseded: Vec<String>,
 }
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Action {
@@ -73,7 +76,48 @@ impl Action {
 }
 impl Posting {
     pub fn new(create: Option<StateDoc>, power: Option<StateDoc>) -> Self {
-        Self { create, power }
+        Self {
+            create,
+            power,
+            superseded: Vec::new(),
+        }
+    }
+    /// Take the documents of a fresher read, remembering what they replace.
+    pub fn adopt(&mut self, fresh: Posting) {
+        let Posting { create, power, .. } = fresh;
+        if let Some(create) = create {
+            self.create = Some(create);
+        }
+        self.replace(power);
+    }
+    /// The documents from a store snapshot, unless they are older than what
+    /// is already known. Only the matrix-sdk engine has a store to read.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn store_snapshot(&mut self, create: Option<StateDoc>, power: Option<StateDoc>) {
+        if create.is_some() {
+            self.create = create;
+        }
+        if power
+            .as_ref()
+            .is_some_and(|p| self.superseded.contains(&p.event_id))
+        {
+            return;
+        }
+        self.replace(power);
+    }
+    fn replace(&mut self, power: Option<StateDoc>) {
+        let old = self.id().map(str::to_owned);
+        if old.as_deref() == power.as_ref().map(|p| p.event_id.as_str()) {
+            return;
+        }
+        if let Some(old) = old {
+            self.superseded.push(old);
+            // Power level changes are rare; a short memory is enough.
+            if self.superseded.len() > 16 {
+                self.superseded.remove(0);
+            }
+        }
+        self.power = power;
     }
     /// A state event from gomuks. `initial` keeps what is already known.
     pub fn ingest(&mut self, room: &str, e: &Value, initial: bool) {
@@ -93,12 +137,12 @@ impl Posting {
     }
     /// Our own power level change, once the homeserver accepted it.
     pub fn accepted(&mut self, event_id: String, sender: String, content: Value) {
-        self.power = Some(StateDoc {
+        self.replace(Some(StateDoc {
             event_id,
             sender,
             content,
             redacted: false,
-        });
+        }));
     }
     pub fn id(&self) -> Option<&str> {
         Some(&self.power.as_ref()?.event_id)
@@ -360,7 +404,7 @@ impl App {
         let fresh = state.posting();
         if r.posting.id() != Some(&c.base) || fresh.id() != Some(&c.base) {
             if r.posting.id() == Some(&c.base) {
-                r.posting = fresh;
+                r.posting.adopt(fresh);
             }
             self.status =
                 "Room permissions changed. Review the current levels before trying again.".into();
@@ -433,6 +477,24 @@ mod tests {
                 .patch("@creator:h", Action::Restrict)
                 .is_none()
         );
+    }
+    #[test]
+    fn an_older_snapshot_never_brings_back_a_replaced_document() {
+        let doc = |id: &str| StateDoc {
+            event_id: id.into(),
+            sender: "@creator:h".into(),
+            content: json!({}),
+            redacted: false,
+        };
+        let mut p = Posting::new(None, Some(doc("$a")));
+        p.accepted("$b".into(), "@creator:h".into(), json!({}));
+        p.store_snapshot(None, Some(doc("$a")));
+        assert_eq!(p.id(), Some("$b"), "the store hasn't synced our change yet");
+        p.store_snapshot(None, Some(doc("$c")));
+        assert_eq!(p.id(), Some("$c"), "a newer change from elsewhere");
+        p.adopt(Posting::new(None, Some(doc("$d"))));
+        p.store_snapshot(None, Some(doc("$c")));
+        assert_eq!(p.id(), Some("$d"));
     }
     #[test]
     fn restore_touches_only_unchanged_locked_fields() {

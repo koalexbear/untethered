@@ -8,11 +8,14 @@ use matrix_sdk::{
     Client, Room,
     deserialized_responses::{RawAnySyncOrStrippedState, SyncOrStrippedState},
     ruma::events::{
-        StateEventType, SyncStateEvent, fully_read::FullyReadEventContent,
-        space::child::SpaceChildEventContent,
+        RoomAccountDataEventType, StateEventType, SyncStateEvent,
+        fully_read::FullyReadEventContent, space::child::SpaceChildEventContent,
     },
 };
 use serde_json::Value;
+
+/// `notifications::spaces::PREF`; that module is Linux and web only.
+const SPACE_ALERTS: &str = "com.untethered.space_alerts.v1";
 use std::{collections::BTreeSet, time::Duration};
 use tokio::sync::broadcast::error::RecvError;
 
@@ -91,6 +94,13 @@ async fn summary(room: &Room) -> RoomSummary {
             .map(|e| e.content.event_id.to_string()),
         create: state_doc(room, StateEventType::RoomCreate).await,
         power: state_doc(room, StateEventType::RoomPowerLevels).await,
+        space_alerts: room
+            .account_data(RoomAccountDataEventType::from(SPACE_ALERTS))
+            .await
+            .ok()
+            .flatten()
+            .and_then(|raw| raw.deserialize_as::<Value>().ok())
+            .map(|e| e["content"].clone()),
         id,
     }
 }

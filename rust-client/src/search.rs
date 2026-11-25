@@ -291,6 +291,32 @@ impl App {
                 s.busy = true;
                 s.failed = false;
             }
+            // The matrix-sdk engine resolves edits itself: no base pages.
+            #[cfg(not(target_arch = "wasm32"))]
+            if self.sdk.is_some() {
+                use crate::engine::Command;
+                let (room, term) = (s.room.clone(), s.term.clone());
+                let request = Request::Search(room.clone(), kind);
+                let target = room.clone();
+                match kind {
+                    Page::Coverage => {
+                        self.command(|id| Command::SearchCoverage { id, room: target }, request)
+                    }
+                    Page::Matches | Page::Bases => self.command(
+                        |id| Command::Search {
+                            id,
+                            room: target,
+                            term,
+                            before: next,
+                        },
+                        request,
+                    ),
+                }
+                if !self.pending.contains_key(&self.seq) {
+                    self.fail_search(&room, kind);
+                }
+                return;
+            }
             let params = s.params(kind, next);
             let room = s.room.clone();
             self.rpc("search_local", params, Request::Search(room.clone(), kind));
@@ -320,6 +346,55 @@ impl App {
         };
         self.search_page(Page::Matches, next);
     }
+    /// A page of matches from the matrix-sdk engine, with current text.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn search_found(
+        &mut self,
+        room: String,
+        found: Vec<crate::engine::Found>,
+        next: Option<String>,
+    ) {
+        let selected = &self.selected;
+        let Some(s) = self
+            .search
+            .as_mut()
+            .filter(|s| s.room == room && *selected == room)
+        else {
+            return;
+        };
+        let term = s.term.to_lowercase();
+        for f in found {
+            if s.hits.iter().any(|h| h.id == f.event_id) {
+                continue;
+            }
+            if let Some(snippet) = excerpt(&f.body, &term) {
+                s.hits.push(Hit {
+                    id: f.event_id,
+                    sender: f.sender,
+                    snippet,
+                    time: f.time,
+                });
+            }
+        }
+        s.next = next;
+        s.hits
+            .sort_by(|a, b| b.time.cmp(&a.time).then(a.id.cmp(&b.id)));
+        s.busy = false;
+    }
+    /// How much of the room's history the matrix-sdk engine has stored.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn search_counted(&mut self, room: String, messages: usize, oldest: Option<i64>) {
+        if let Some(c) = self
+            .search
+            .as_mut()
+            .filter(|s| s.room == room)
+            .and_then(|s| s.coverage.as_mut())
+        {
+            c.messages = messages;
+            c.oldest = oldest;
+            c.done = true;
+        }
+    }
     pub fn search_response(&mut self, room: String, kind: Page, data: &Value) {
         if let Some(s) = &mut self.search
             && s.room == room
@@ -339,6 +414,37 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn engine_matches_become_snippets_once_newest_first() {
+        let (tx, _) = async_channel::bounded(4);
+        let mut app = App::new(tx);
+        app.selected = "!r".into();
+        let mut s = Search::new("!r".into(), Bookmark::default());
+        s.term = "Lunch".into();
+        s.busy = true;
+        app.search = Some(s);
+        let found = |id: &str, time, body: &str| crate::engine::Found {
+            room: "!r".into(),
+            event_id: id.into(),
+            sender: "@a:h".into(),
+            body: body.into(),
+            time,
+        };
+        app.search_found(
+            "!r".into(),
+            vec![
+                found("$old", 1, "lunch at noon"),
+                found("$new", 5, "Lunch\nmoved"),
+            ],
+            Some("cursor".into()),
+        );
+        app.search_found("!r".into(), vec![found("$new", 5, "Lunch moved")], None);
+        let s = app.search.as_ref().unwrap();
+        let hits: Vec<_> = s.hits.iter().map(|h| (h.id.as_str(), h.snippet.as_str())).collect();
+        assert_eq!(hits, [("$new", "Lunch moved"), ("$old", "lunch at noon")]);
+        assert!(!s.busy && s.next.is_none());
+    }
     #[test]
     fn resubmission_invalidates_old_pages_and_quotes_fts_syntax() {
         let (tx, rx) = async_channel::bounded(8);

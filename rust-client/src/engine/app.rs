@@ -312,6 +312,8 @@ impl App {
                 if self.logged_in {
                     self.reconcile();
                 }
+                #[cfg(target_os = "linux")]
+                self.sync_space_rules();
             }
             Event::Timeline(t) => {
                 if let Some(r) = self.live.list.get_mut(&t.room) {
@@ -365,6 +367,36 @@ impl App {
                 }
             }
             Event::RoomState { id, result } => self.engine_room_state(id, result),
+            Event::Member { room, user, member } => {
+                if self.people && self.selected == room {
+                    self.directory.observe(&user, member);
+                }
+            }
+            Event::SearchResults { id, result } => match (self.pending.remove(&id), result) {
+                (Some(Request::Search(room, _)), Ok((found, next))) => {
+                    self.search_found(room, found, next)
+                }
+                (Some(Request::Search(room, kind)), Err(_)) => self.fail_search(&room, kind),
+                _ => {}
+            },
+            Event::SearchCoverage { id, result } => match (self.pending.remove(&id), result) {
+                (Some(Request::Search(room, _)), Ok((messages, oldest))) => {
+                    self.search_counted(room, messages, oldest)
+                }
+                (Some(Request::Search(room, kind)), Err(_)) => self.fail_search(&room, kind),
+                _ => {}
+            },
+            Event::Mentions { id, result } => match (self.pending.remove(&id), result) {
+                (Some(Request::Mentions(_)), Ok(found)) => self.mentions_found(found),
+                (Some(Request::Mentions(_)), Err(_)) => self.mentions_failed(),
+                _ => {}
+            },
+            #[cfg(target_os = "linux")]
+            Event::PushRules(content) => self.engine_push_rules(&content),
+            #[cfg(target_os = "linux")]
+            Event::Notification(notice) => self.engine_notice(notice),
+            #[cfg(not(target_os = "linux"))]
+            Event::PushRules(_) | Event::Notification(_) => {}
             Event::Created { id, result } => self.engine_created(id, result),
             Event::UploadLimit { id, result } => {
                 if matches!(self.pending.remove(&id), Some(Request::MediaConfig))
@@ -507,6 +539,30 @@ impl App {
             (Request::Membership(Flight::Write(c)), Ok(())) => self.membership_written(c),
             (Request::Membership(f), Err(_)) => self.membership_error(f),
             (Request::Setup(Step::Invite), Ok(())) => self.setup_invited(),
+            #[cfg(target_os = "linux")]
+            (Request::Dnd(on, revision), Ok(())) => self.saved_dnd(on, revision),
+            #[cfg(target_os = "linux")]
+            (Request::Dnd(..), Err(_)) => {
+                self.status =
+                    "Could not change Do Not Disturb. Check the connection and try again.".into()
+            }
+            #[cfg(target_os = "linux")]
+            (Request::NotifyRule(change), Ok(())) => self.saved_notifications(change),
+            #[cfg(target_os = "linux")]
+            (Request::NotifyRule(_), Err(_)) => {
+                self.status = "Could not save the room notification setting. Try again.".into()
+            }
+            #[cfg(target_os = "linux")]
+            (Request::SpaceRule(write), result) => {
+                self.finish_space_rule(write, result.is_ok());
+                self.sync_space_rules();
+            }
+            #[cfg(target_os = "linux")]
+            (Request::SpacePref(_), Ok(())) => {}
+            #[cfg(target_os = "linux")]
+            (Request::SpacePref(_), Err(_)) => {
+                self.status = "Could not save space alerts. Try again.".into()
+            }
             (Request::Setup(step), Err(_)) => self.setup_error(step),
             (Request::Download, Ok(())) => self.status = "Attachment saved.".into(),
             (Request::Download, Err(_)) => {

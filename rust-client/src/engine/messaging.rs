@@ -220,17 +220,28 @@ pub async fn share_reads(client: &Client, public: bool) -> Result<(), Failure> {
         .map_err(|e| http(&e))
 }
 
-/// Report the preference now and whenever it syncs.
-pub async fn read_sharing(client: Client, events: Sender<Event>) {
-    let current = client
-        .account()
-        .account_data_raw(GlobalAccountDataEventType::from(READ_SHARING))
+/// Report the read-sharing preference and the push rules now and whenever
+/// they sync.
+pub async fn account_data(client: Client, events: Sender<Event>) {
+    let current = |kind: GlobalAccountDataEventType| {
+        let client = client.clone();
+        async move {
+            client
+                .account()
+                .account_data_raw(kind)
+                .await
+                .ok()
+                .flatten()
+                .and_then(|raw| raw.deserialize_as::<Value>().ok())
+        }
+    };
+    let public = current(GlobalAccountDataEventType::from(READ_SHARING))
         .await
-        .ok()
-        .flatten()
-        .and_then(|raw| raw.deserialize_as::<Value>().ok())
         .is_some_and(|v| v["public"] == true);
-    let _ = events.send(Event::ReadSharing(current)).await;
+    let _ = events.send(Event::ReadSharing(public)).await;
+    if let Some(rules) = current(GlobalAccountDataEventType::PushRules).await {
+        let _ = events.send(Event::PushRules(rules)).await;
+    }
     // The handler lives as long as the client, i.e. this session.
     client.add_event_handler(move |raw: Raw<AnyGlobalAccountDataEvent>| {
         let events = events.clone();
@@ -238,11 +249,12 @@ pub async fn read_sharing(client: Client, events: Sender<Event>) {
             let Ok(value) = raw.deserialize_as::<Value>() else {
                 return;
             };
-            if value["type"] == READ_SHARING {
-                let _ = events
-                    .send(Event::ReadSharing(value["content"]["public"] == true))
-                    .await;
-            }
+            let event = match value["type"].as_str() {
+                Some(READ_SHARING) => Event::ReadSharing(value["content"]["public"] == true),
+                Some("m.push_rules") => Event::PushRules(value["content"].clone()),
+                _ => return,
+            };
+            let _ = events.send(event).await;
         }
     });
 }

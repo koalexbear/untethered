@@ -7,6 +7,7 @@
 
 mod account;
 pub mod account_ui;
+mod alerts;
 pub mod app;
 mod browser;
 mod keyring;
@@ -15,6 +16,7 @@ mod live_test;
 mod media;
 mod messaging;
 mod rooms;
+mod search;
 mod session;
 mod state;
 mod timeline;
@@ -212,6 +214,41 @@ pub enum Command {
         child: String,
         via: Vec<String>,
     },
+    /// Change one of the account's push rules.
+    #[cfg(target_os = "linux")]
+    PushRule {
+        id: i64,
+        kind: crate::notifications::RuleKind,
+        rule_id: String,
+        change: crate::notifications::RuleChange,
+    },
+    /// Replace a room's account data of `kind` (Matrix event type).
+    /// Only the Linux alert settings send it today.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    RoomAccountData {
+        id: i64,
+        room: String,
+        kind: String,
+        content: serde_json::Value,
+    },
+    /// Stored messages of a room containing `term`, newest first, as
+    /// [`Event::SearchResults`]. `before` continues from a page's `next`.
+    Search {
+        id: i64,
+        room: String,
+        term: String,
+        before: Option<String>,
+    },
+    /// How much of a room's history is stored, as [`Event::SearchCoverage`].
+    SearchCoverage {
+        id: i64,
+        room: String,
+    },
+    /// Stored messages mentioning us in these rooms, as [`Event::Mentions`].
+    Mentions {
+        id: i64,
+        rooms: Vec<String>,
+    },
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -272,6 +309,53 @@ pub enum Event {
         id: i64,
         result: Result<String, Failure>,
     },
+    /// A membership change synced.
+    Member {
+        room: String,
+        user: String,
+        member: crate::moderation::Member,
+    },
+    /// The account's push rules (`m.push_rules` content), at startup and
+    /// whenever they change. Alerts are Linux-only in the App today.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    PushRules(serde_json::Value),
+    /// A message the push rules say to notify about.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    Notification(Alert),
+    SearchResults {
+        id: i64,
+        result: Result<(Vec<Found>, Option<String>), Failure>,
+    },
+    SearchCoverage {
+        id: i64,
+        /// (messages, oldest message's time)
+        result: Result<(usize, Option<i64>), Failure>,
+    },
+    Mentions {
+        id: i64,
+        result: Result<Vec<Found>, Failure>,
+    },
+}
+
+/// A stored message found by search or for the mentions inbox, with its
+/// current (edited) text.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Found {
+    pub room: String,
+    pub event_id: String,
+    pub sender: String,
+    pub body: String,
+    pub time: i64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Alert {
+    pub room: String,
+    pub event_id: String,
+    pub sender: String,
+    /// The message text, or an attachment's name or caption.
+    pub body: String,
+    pub sound: bool,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -385,6 +469,9 @@ pub struct RoomSummary {
     /// The documents behind permissions, from the store.
     pub create: Option<crate::permissions::StateDoc>,
     pub power: Option<crate::permissions::StateDoc>,
+    /// The space's alert preference (room account data content).
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    pub space_alerts: Option<serde_json::Value>,
 }
 
 #[derive(Clone)]
@@ -610,7 +697,9 @@ impl Engine {
         let mut tasks = Tasks::default();
         tasks.spawn(account_updates(client.clone(), self.events.clone()));
         tasks.spawn(rooms::updates(client.clone(), self.events.clone()));
-        tasks.spawn(messaging::read_sharing(client.clone(), self.events.clone()));
+        tasks.spawn(messaging::account_data(client.clone(), self.events.clone()));
+        state::member_changes(&client, self.events.clone());
+        alerts::register(&client, self.events.clone()).await;
         tasks.spawn(timeline::resume_after_errors(client.clone()));
         tasks.spawn(sync_status(sync.clone(), self.events.clone()));
         tasks.spawn(session_changes(
@@ -930,6 +1019,67 @@ impl Engine {
             } => {
                 self.created(id, move |client| async move {
                     state::add_to_space(&client, &space, &child, via).await
+                })
+                .await
+            }
+            #[cfg(target_os = "linux")]
+            Command::PushRule {
+                id,
+                kind,
+                rule_id,
+                change,
+            } => {
+                self.job(id, move |client, _, _| async move {
+                    alerts::push_rule(&client, kind, &rule_id, change).await
+                })
+                .await
+            }
+            Command::RoomAccountData {
+                id,
+                room,
+                kind,
+                content,
+            } => {
+                self.job(id, move |client, _, _| async move {
+                    alerts::room_account_data(&client, &room, &kind, content).await
+                })
+                .await
+            }
+            Command::Search {
+                id,
+                room,
+                term,
+                before,
+            } => {
+                let unavailable = Event::SearchResults {
+                    id,
+                    result: Err(Failure::Unavailable),
+                };
+                self.answer(unavailable, move |client| async move {
+                    let result = search::search(&client, &room, &term, before).await;
+                    Event::SearchResults { id, result }
+                })
+                .await
+            }
+            Command::SearchCoverage { id, room } => {
+                let unavailable = Event::SearchCoverage {
+                    id,
+                    result: Err(Failure::Unavailable),
+                };
+                self.answer(unavailable, move |client| async move {
+                    let result = search::coverage(&client, &room).await;
+                    Event::SearchCoverage { id, result }
+                })
+                .await
+            }
+            Command::Mentions { id, rooms } => {
+                let unavailable = Event::Mentions {
+                    id,
+                    result: Err(Failure::Unavailable),
+                };
+                self.answer(unavailable, move |client| async move {
+                    let result = search::mentions(&client, &rooms).await;
+                    Event::Mentions { id, result }
                 })
                 .await
             }

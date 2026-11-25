@@ -297,6 +297,101 @@ async fn attachments(app: &mut App, rx: &Receiver<Event>, room: &str, signals: &
     println!("matrix-sdk: showed and saved the gomuks peer's encrypted image");
 }
 
+/// Room search over stored history, with edits applied, and the mentions
+/// inbox. `edit` is (original text, its event, the edited text).
+async fn search_and_mentions(
+    app: &mut App,
+    rx: &Receiver<Event>,
+    room: &str,
+    mentions_room: &str,
+    edit: (&str, &str, &str),
+    peer: &str,
+) {
+    let _ = app.search_ready(room.into(), crate::search::Bookmark::default());
+    assert!(app.search.is_some(), "search opened");
+    async fn find(app: &mut App, rx: &Receiver<Event>, term: &str) -> Vec<(String, String)> {
+        app.search.as_mut().unwrap().input = term.into();
+        app.submit_search(false);
+        wait(app, rx, "search", |a| {
+            a.search.as_ref().is_some_and(|s| !s.busy)
+        })
+        .await;
+        let s = app.search.as_ref().unwrap();
+        assert!(!s.failed, "search failed");
+        s.hits
+            .iter()
+            .map(|h| (h.id.clone(), h.snippet.clone()))
+            .collect()
+    }
+    let hits = find(app, rx, "history 4").await;
+    assert_eq!(hits.len(), 11, "history 4 and 40-49: {hits:?}");
+    assert!(
+        hits.iter()
+            .all(|(_, snippet)| snippet.contains("history 4"))
+    );
+    // Our edit is found under the original event once its echo is stored;
+    // the original text no longer matches.
+    let (original, id, edited) = edit;
+    let new_word = edited.rsplit(' ').next().unwrap();
+    let mut found = false;
+    for _ in 0..20 {
+        if find(app, rx, new_word)
+            .await
+            .iter()
+            .any(|(hit, _)| hit == id)
+        {
+            found = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    assert!(
+        found,
+        "the edited text is searchable under the original event"
+    );
+    let old_word = original.rsplit(' ').next().unwrap();
+    assert!(
+        find(app, rx, old_word).await.is_empty(),
+        "replaced text is not found"
+    );
+    app.start_coverage();
+    wait(app, rx, "coverage", |a| {
+        a.search
+            .as_ref()
+            .and_then(|s| s.coverage.as_ref())
+            .is_some_and(|c| c.done)
+    })
+    .await;
+    let counted = app
+        .search
+        .as_ref()
+        .unwrap()
+        .coverage
+        .as_ref()
+        .unwrap()
+        .messages;
+    assert!(counted >= 55, "{counted} stored messages");
+    app.clear_search();
+    println!(
+        "matrix-sdk: search found stored history and edited text ({counted} messages searchable)"
+    );
+
+    app.open_mentions();
+    wait(app, rx, "mentions inbox", |a| {
+        !a.pending
+            .values()
+            .any(|p| matches!(p, Request::Mentions(_)))
+            && a.mentions.as_ref().is_some_and(|i| {
+                i.hits
+                    .iter()
+                    .any(|h| h.room == mentions_room && h.sender == peer)
+            })
+    })
+    .await;
+    app.close_mentions();
+    println!("matrix-sdk: the mentions inbox found the peer's mention");
+}
+
 /// An image in an unencrypted room: a plain upload, previewed through the
 /// homeserver's thumbnail.
 async fn plain_attachment(app: &mut App, rx: &Receiver<Event>, room: &str, signals: &Path) {
@@ -569,6 +664,16 @@ async fn matrix_sdk_login_restore_and_encrypted_round_trip() {
         .unwrap();
     assert_eq!(sender, fixture["peer"].as_str().unwrap());
     println!("matrix-sdk: decrypted and rendered the gomuks peer's message");
+    #[cfg(target_os = "linux")]
+    {
+        wait(&mut app, &rx, "an alert for the peer's message", |a| {
+            a.queued_alerts().iter().any(|(_, body)| *body == theirs)
+        })
+        .await;
+        println!(
+            "matrix-sdk: the account's push rules raised an alert for the peer's encrypted message"
+        );
+    }
 
     // Mark the room read at the peer's message, before our own reaction and
     // edit count as reading it.
@@ -624,6 +729,16 @@ async fn matrix_sdk_login_restore_and_encrypted_round_trip() {
     .unwrap();
     signal(&signals, "peer-confirmed").await;
     println!("matrix-sdk: reaction and edit shown here and decrypted by the gomuks peer");
+
+    search_and_mentions(
+        &mut app,
+        &rx,
+        room,
+        unread,
+        (&mine, &mine_id, &edited),
+        fixture["peer"].as_str().unwrap(),
+    )
+    .await;
 
     attachments(&mut app, &rx, room, &signals).await;
     plain_attachment(&mut app, &rx, unread, &signals).await;
@@ -986,6 +1101,30 @@ async fn matrix_sdk_rooms_spaces_and_moderation() {
         "matrix-sdk: kicked the gomuks peer and invited them back, checked against fresh room state"
     );
 
+    // Alerts: each change waits for the push rules to come back from sync.
+    #[cfg(target_os = "linux")]
+    {
+        use crate::notifications::Mode;
+        wait(&mut app, &rx, "push rules", |a| a.alerts.dnd.is_some()).await;
+        for mode in [Mode::Quiet, Mode::All, Mode::Default] {
+            app.set_notifications(room.into(), mode);
+            wait(&mut app, &rx, "room alert mode", |a| {
+                a.alerts.mode(room) == mode && !a.notifications_pending(room)
+            })
+            .await;
+        }
+        for on in [true, false] {
+            app.change_dnd(on);
+            wait(&mut app, &rx, "do not disturb", |a| {
+                a.alerts.dnd == Some(on) && !a.changing_dnd()
+            })
+            .await;
+        }
+        println!(
+            "matrix-sdk: room alert modes and Do Not Disturb round-tripped through push rules"
+        );
+    }
+
     // Community: a space, then an encrypted channel linked into it.
     let _ = app.update(Msg::Setup(Input::Start(None)));
     let _ = app.update(Msg::Setup(Input::Name("SDK made space".into())));
@@ -1017,5 +1156,20 @@ async fn matrix_sdk_rooms_spaces_and_moderation() {
     })
     .await;
     println!("matrix-sdk: created a space and an encrypted channel linked into it");
+
+    // Space alerts: the preference lives on the space, and the App keeps an
+    // underride rule on each joined room in it.
+    #[cfg(target_os = "linux")]
+    {
+        use crate::notifications::Mode;
+        app.section = crate::Section::Space(space.clone());
+        app.set_space_mode(space.clone(), Mode::Quiet);
+        wait(&mut app, &rx, "space alert rule on the channel", |a| {
+            a.live.list[&space].space_alerts == Mode::Quiet
+                && a.alerts.spaces.installed(&channel) == Some(Mode::Quiet)
+        })
+        .await;
+        println!("matrix-sdk: a space alert preference installed its push rule on the channel");
+    }
     stop(app, engine).await;
 }

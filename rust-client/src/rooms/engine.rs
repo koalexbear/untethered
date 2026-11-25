@@ -47,7 +47,19 @@ impl Rooms {
             {
                 room.dm_peer = s.dm_peer;
             }
-            room.posting = crate::permissions::Posting::new(s.create, s.power);
+            room.posting.store_snapshot(s.create, s.power);
+            #[cfg(target_os = "linux")]
+            {
+                let alerts = s
+                    .space_alerts
+                    .as_ref()
+                    .map(crate::notifications::spaces::mode)
+                    .unwrap_or_default();
+                if room.space_alerts != alerts {
+                    room.space_alerts = alerts;
+                    self.hierarchy_revision += 1;
+                }
+            }
             room.read.fully_read = s.fully_read;
             room.read.marked = s.marked_unread;
             room.read.messages = s.unread_messages;

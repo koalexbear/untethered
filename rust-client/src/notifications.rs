@@ -40,6 +40,34 @@ pub struct Change {
     mode: Mode,
     enable_next: bool,
 }
+/// The Matrix push rule kinds the App writes.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RuleKind {
+    Override,
+    Room,
+    Underride,
+}
+impl RuleKind {
+    fn wire(self) -> &'static str {
+        match self {
+            Self::Override => "override",
+            Self::Room => "room",
+            Self::Underride => "underride",
+        }
+    }
+}
+/// A change to one push rule, as the Matrix push rules API makes it.
+#[derive(Clone, PartialEq, Debug)]
+pub enum RuleChange {
+    Enabled(bool),
+    Delete,
+    /// Create or replace the rule with these Matrix actions, and conditions
+    /// for override and underride rules.
+    Put {
+        actions: Value,
+        conditions: Option<Value>,
+    },
+}
 #[derive(Default)]
 pub struct Alerts {
     pub spaces: spaces::Spaces,
@@ -77,8 +105,11 @@ impl Alerts {
             self.rules.clear();
             self.waiting.clear();
         }
-        let Some(rules) = data["account_data"]["m.push_rules"]["content"]["global"].as_object()
-        else {
+        self.ruleset(&data["account_data"]["m.push_rules"]["content"]);
+    }
+    /// The account's push rules: the `m.push_rules` account data content.
+    pub fn ruleset(&mut self, content: &Value) {
+        let Some(rules) = content["global"].as_object() else {
             return;
         };
         self.ready = true;
@@ -277,11 +308,8 @@ impl App {
         {
             return;
         }
-        self.rpc(
-            "update_push_rule",
-            json!({"kind":"override","rule_id":MASTER,"action":if on{"enable"}else{"disable"}}),
-            Request::Dnd(on, self.alerts.dnd_revision),
-        );
+        let request = Request::Dnd(on, self.alerts.dnd_revision);
+        self.send_push_rule(RuleKind::Override, MASTER, RuleChange::Enabled(on), request);
         if on && self.pending.contains_key(&self.seq) {
             self.apply_quiet();
         }
@@ -318,17 +346,24 @@ impl App {
         {
             return;
         }
-        let mut params = json!({"kind":"room","rule_id":room,"action":"delete"});
-        if mode != Mode::Default {
-            params["action"] = "put".into();
-            params["new_content"] =
-                json!({"actions":if mode==Mode::All{json!(["notify"])}else{json!([])}});
-        }
+        let change = match mode {
+            Mode::Default => RuleChange::Delete,
+            Mode::All => RuleChange::Put {
+                actions: json!(["notify"]),
+                conditions: None,
+            },
+            Mode::Quiet => RuleChange::Put {
+                actions: json!([]),
+                conditions: None,
+            },
+        };
         let enable_next =
             mode != Mode::Default && self.alerts.rules.get(&room).is_some_and(|(_, on)| !*on);
-        self.rpc(
-            "update_push_rule",
-            params,
+        let id = room.clone();
+        self.send_push_rule(
+            RuleKind::Room,
+            &id,
+            change,
             Request::NotifyRule(Change {
                 room,
                 mode,
@@ -338,9 +373,11 @@ impl App {
     }
     pub fn saved_notifications(&mut self, change: Change) {
         if change.enable_next {
-            self.rpc(
-                "update_push_rule",
-                json!({"kind":"room","rule_id":change.room,"action":"enable"}),
+            let room = change.room.clone();
+            self.send_push_rule(
+                RuleKind::Room,
+                &room,
+                RuleChange::Enabled(true),
                 Request::NotifyRule(Change {
                     enable_next: false,
                     ..change
@@ -374,17 +411,140 @@ impl App {
             return;
         }
         if let Some(room) = self.live.list.get(id) {
-            let reading = self.quiet_alerts()
-                || self.reading_focused()
-                    && self.selected == id
-                    && !self.account
-                    && self.setup.is_none()
-                    && self.mentions.is_none()
-                    && self.search.is_none()
-                    && self.original.is_none();
+            let reading = self.reading_room(id);
             self.alerts
                 .observe(id, room, &self.matrix_id, delta, late, reading);
         }
+    }
+    /// Alerts are quiet, or the user is reading this room right now.
+    fn reading_room(&self, id: &str) -> bool {
+        self.quiet_alerts()
+            || self.reading_focused()
+                && self.selected == id
+                && !self.account
+                && self.setup.is_none()
+                && self.mentions.is_none()
+                && self.search.is_none()
+                && self.original.is_none()
+    }
+    /// A message the matrix-sdk engine's push rule evaluation says to
+    /// notify about.
+    #[cfg(target_os = "linux")]
+    pub fn engine_notice(&mut self, notice: crate::engine::Alert) {
+        if !self.logged_in
+            || !self.verified
+            || self.closing
+            || notice.sender == self.matrix_id
+            || self.alerts.recent.iter().any(|old| *old == notice.event_id)
+        {
+            return;
+        }
+        let Some(room) = self.live.list.get(&notice.room) else {
+            return;
+        };
+        self.alerts.recent.push_back(notice.event_id.clone());
+        if self.alerts.recent.len() > 512 {
+            self.alerts.recent.pop_front();
+        }
+        if self.reading_room(&notice.room) {
+            return;
+        }
+        let title = format!(
+            "{} · {}",
+            single_line(room.display(&notice.sender), 64),
+            single_line(&room.name, 80)
+        );
+        self.alerts.outgoing.push(Notice {
+            title,
+            body: single_line(&notice.body, 240),
+            sound: notice.sound,
+        });
+    }
+    /// Alerts waiting to be shown, as (title, body).
+    #[cfg(test)]
+    pub fn queued_alerts(&self) -> Vec<(String, String)> {
+        self.alerts
+            .outgoing
+            .iter()
+            .map(|n| (n.title.clone(), n.body.clone()))
+            .collect()
+    }
+    /// The account's push rules arrived or changed (matrix-sdk engine).
+    #[cfg(target_os = "linux")]
+    pub fn engine_push_rules(&mut self, content: &Value) {
+        self.alerts.ruleset(content);
+        // The engine reports the rules after its first sync, with the room
+        // list in place.
+        self.alerts.spaces.initialized = true;
+        if self.alerts.dnd == Some(true) {
+            self.apply_quiet();
+        }
+        self.sync_space_rules();
+    }
+    pub fn send_push_rule(
+        &mut self,
+        kind: RuleKind,
+        rule_id: &str,
+        change: RuleChange,
+        request: Request,
+    ) {
+        #[cfg(target_os = "linux")]
+        if self.sdk.is_some() {
+            let rule_id = rule_id.to_owned();
+            return self.command(
+                |id| crate::engine::Command::PushRule {
+                    id,
+                    kind,
+                    rule_id,
+                    change,
+                },
+                request,
+            );
+        }
+        let mut params = json!({"kind": kind.wire(), "rule_id": rule_id});
+        match change {
+            RuleChange::Enabled(on) => {
+                params["action"] = if on { "enable" } else { "disable" }.into()
+            }
+            RuleChange::Delete => params["action"] = "delete".into(),
+            RuleChange::Put {
+                actions,
+                conditions,
+            } => {
+                params["action"] = "put".into();
+                params["new_content"] = json!({ "actions": actions });
+                if let Some(conditions) = conditions {
+                    params["new_content"]["conditions"] = conditions;
+                }
+            }
+        }
+        self.rpc("update_push_rule", params, request);
+    }
+    pub fn send_room_account_data(
+        &mut self,
+        room: &str,
+        kind: &str,
+        content: Value,
+        request: Request,
+    ) {
+        #[cfg(target_os = "linux")]
+        if self.sdk.is_some() {
+            let (room, kind) = (room.to_owned(), kind.to_owned());
+            return self.command(
+                |id| crate::engine::Command::RoomAccountData {
+                    id,
+                    room,
+                    kind,
+                    content,
+                },
+                request,
+            );
+        }
+        self.rpc(
+            "set_account_data",
+            json!({"type": kind, "room_id": room, "content": content}),
+            request,
+        );
     }
     pub fn send_alerts(&mut self) -> Task<Msg> {
         let notices = std::mem::take(&mut self.alerts.outgoing);
@@ -429,6 +589,48 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn engine_alerts_skip_own_repeated_and_quiet_messages_and_read_typed_rules() {
+        let (tx, _) = async_channel::bounded(4);
+        let mut app = App::new(tx);
+        app.logged_in = true;
+        app.verified = true;
+        app.matrix_id = "@me:h".into();
+        app.live.list.insert(
+            "!r".into(),
+            rooms::Room {
+                name: "general".into(),
+                ..Default::default()
+            },
+        );
+        let alert = |event: &str, sender: &str| crate::engine::Alert {
+            room: "!r".into(),
+            event_id: event.into(),
+            sender: sender.into(),
+            body: "hello\nthere".into(),
+            sound: true,
+        };
+        app.engine_notice(alert("$1", "@bob:h"));
+        app.engine_notice(alert("$1", "@bob:h"));
+        app.engine_notice(alert("$2", "@me:h"));
+        assert_eq!(app.alerts.outgoing.len(), 1, "once, and never our own");
+        let n = &app.alerts.outgoing[0];
+        assert_eq!(n.title, "bob · general");
+        assert_eq!(n.body, "hello there");
+        assert!(n.sound);
+        // The account's rules as Matrix defines them, with DND on.
+        app.engine_push_rules(
+            &json!({"global":{"override":[{"rule_id":MASTER,"default":true,
+            "conditions":[],"actions":[],"enabled":true}],
+            "room":[{"rule_id":"!r","actions":[],"enabled":true}]}}),
+        );
+        assert_eq!(app.alerts.dnd, Some(true));
+        assert!(app.alerts.outgoing.is_empty(), "DND drops what was waiting");
+        assert!(app.alerts.mode("!r") == Mode::Quiet);
+        app.engine_notice(alert("$3", "@bob:h"));
+        assert!(app.alerts.outgoing.is_empty(), "nothing while DND is on");
+    }
     #[test]
     fn dnd_leaves_custom_master_actions_alone_and_does_not_override_newer_sync() {
         let (tx, rx) = async_channel::bounded(2);
