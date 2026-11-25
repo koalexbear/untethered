@@ -1,24 +1,46 @@
-//! Opt-in acceptance test for the matrix-sdk engine. `scripts/qa_matrix_sdk.py`
+//! Opt-in acceptance tests for the matrix-sdk engine. `scripts/qa_matrix_sdk.py`
 //! starts a disposable Synapse, seeds the account and recovery key through
 //! gomuks, and runs a second account in gomuks as the peer.
-use super::{Command, Event, run};
+use super::{Command, Event, Stage, account_ui::Action, run_in, session::profile_root};
 use crate::{App, Msg, Request, rooms};
 use async_channel::{Receiver, Sender};
 use iced::widget::text_editor;
 use serde_json::Value;
-use std::{env, path::Path, time::Duration};
+use std::{
+    env,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
 
-fn session() -> (
-    App,
-    Receiver<Event>,
-    tokio::task::JoinHandle<Result<(), String>>,
-) {
+type Engine = tokio::task::JoinHandle<Result<(), String>>;
+
+/// Follows a sign-in page's redirects like a browser would, so a mock
+/// identity provider can complete single sign-on without a person.
+fn browser() -> super::Opener {
+    Arc::new(|url: url::Url| {
+        tokio::spawn(async move {
+            let client = reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::limited(10))
+                .build()
+                .unwrap();
+            let _ = client.get(url).send().await;
+        });
+    })
+}
+
+fn session_at(dir: &Path) -> (App, Receiver<Event>, Engine) {
     let (gomuks, _) = async_channel::bounded(1);
     let (commands, rx): (Sender<Command>, _) = async_channel::bounded(64);
     let (tx, events) = async_channel::bounded(64);
     let mut app = App::new(gomuks);
     app.sdk = Some(commands);
-    (app, events, tokio::spawn(run(rx, tx)))
+    let dir = dir.to_path_buf();
+    (app, events, tokio::spawn(run_in(dir, browser(), rx, tx)))
+}
+
+fn session() -> (App, Receiver<Event>, Engine) {
+    session_at(&profile_root().unwrap())
 }
 
 async fn wait(app: &mut App, rx: &Receiver<Event>, label: &str, until: impl Fn(&App) -> bool) {
@@ -26,7 +48,10 @@ async fn wait(app: &mut App, rx: &Receiver<Event>, label: &str, until: impl Fn(&
         while !until(app) {
             let event = rx.recv().await.expect("engine exited");
             if let Event::Done { result: Err(f), id } = &event
-                && !matches!(app.pending.get(id), Some(Request::Verify(_)))
+                && app
+                    .pending
+                    .get(id)
+                    .is_some_and(|p| !matches!(p, Request::Verify(_)))
             {
                 panic!("engine request failed during {label}: {f:?}");
             }
@@ -34,7 +59,62 @@ async fn wait(app: &mut App, rx: &Receiver<Event>, label: &str, until: impl Fn(&
         }
     })
     .await
-    .unwrap_or_else(|_| panic!("timed out during {label}; status: {}", app.status));
+    .unwrap_or_else(|_| {
+        panic!(
+            "timed out during {label}; status: {}; note: {}",
+            app.status, app.sdk_ui.note
+        )
+    });
+}
+
+/// Drive two engines at once, for flows between two devices.
+async fn wait2(
+    a: &mut App,
+    ra: &Receiver<Event>,
+    b: &mut App,
+    rb: &Receiver<Event>,
+    label: &str,
+    until: impl Fn(&App, &App) -> bool,
+) {
+    tokio::time::timeout(Duration::from_secs(90), async {
+        while !until(a, b) {
+            tokio::select! {
+                e = ra.recv() => a.engine_event(e.expect("first engine exited")),
+                e = rb.recv() => b.engine_event(e.expect("second engine exited")),
+            }
+        }
+    })
+    .await
+    .unwrap_or_else(|_| {
+        panic!(
+            "timed out during {label}; first: {:?} {}; second: {:?} {}",
+            a.sdk_ui.verification, a.sdk_ui.note, b.sdk_ui.verification, b.sdk_ui.note
+        )
+    });
+}
+
+async fn sign_in(
+    dir: &Path,
+    server: &str,
+    user: &str,
+    password: &str,
+) -> (App, Receiver<Event>, Engine) {
+    let (mut app, rx, engine) = session_at(dir);
+    wait(&mut app, &rx, "startup", |a| a.connected).await;
+    app.server = server.into();
+    app.username = user.into();
+    app.password = password.into();
+    let _ = app.update(Msg::Login);
+    wait(&mut app, &rx, "login", |a| a.logged_in).await;
+    (app, rx, engine)
+}
+
+fn saved_session(dir: &Path) -> Option<Value> {
+    serde_json::from_slice(&std::fs::read(dir.join("matrix-sdk/session.json")).ok()?).ok()
+}
+
+fn stage(app: &App) -> Option<&Stage> {
+    app.sdk_ui.verification.as_ref().map(|v| &v.stage)
 }
 
 async fn signal(dir: &Path, name: &str) -> String {
@@ -131,6 +211,14 @@ async fn matrix_sdk_login_restore_and_encrypted_round_trip() {
     let _ = app.update(Msg::Login);
     wait(&mut app, &rx, "login", |a| a.logged_in).await;
     println!("matrix-sdk: password login as {}", app.matrix_id);
+    let saved = saved_session(&profile_root().unwrap()).expect("session saved");
+    if env::var_os("UNTETHERED_QA_KEYRING").is_some() {
+        assert!(
+            saved["keyring"].is_string() && saved["passphrase"].is_null(),
+            "the store passphrase belongs in the keyring"
+        );
+        println!("matrix-sdk: store passphrase saved in the Secret Service keyring");
+    }
 
     // A failed attempt must report its error and leave the form usable.
     app.recovery = "not a recovery key".into();
@@ -274,4 +362,194 @@ async fn matrix_sdk_login_restore_and_encrypted_round_trip() {
     assert_eq!(refused, Err("This profile is already open.".into()));
     drop(rx);
     stop(held, first).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 6)]
+#[ignore = "run scripts/qa_matrix_sdk.py (disposable Synapse)"]
+async fn matrix_sdk_account_flows() {
+    let fixture: Value =
+        serde_json::from_slice(&std::fs::read(env::var("UNTETHERED_QA_FIXTURE").unwrap()).unwrap())
+            .unwrap();
+    let base = PathBuf::from(env::var_os("UNTETHERED_QA_PROFILES").unwrap());
+    let server = fixture["server"].as_str().unwrap();
+    let (user, pass) = (
+        rooms::string(&fixture["username"]),
+        rooms::string(&fixture["password"]),
+    );
+    let keyring = env::var_os("UNTETHERED_QA_KEYRING").is_some();
+
+    // Emoji verification: a new device (b) verified by a verified one (a).
+    let (mut a, ra, ea) = sign_in(&base.join("a"), server, &user, &pass).await;
+    a.recovery = rooms::string(&fixture["key"]);
+    let _ = a.update(Msg::Verify);
+    wait(&mut a, &ra, "verify the first device", |a| a.verified).await;
+    let (mut b, rb, eb) = sign_in(&base.join("b"), server, &user, &pass).await;
+    wait(&mut b, &rb, "own identity known", |b| b.sdk_ui.identity).await;
+    assert!(!b.verified);
+    let _ = b.update(Msg::Sdk(Action::VerifyWithDevice));
+    wait2(&mut a, &ra, &mut b, &rb, "incoming request", |a, _| {
+        stage(a) == Some(&Stage::Requested)
+    })
+    .await;
+    assert!(a.sdk_ui.verification.as_ref().unwrap().incoming);
+    let _ = a.update(Msg::Sdk(Action::AcceptVerification));
+    wait2(&mut a, &ra, &mut b, &rb, "emoji on both devices", |a, b| {
+        matches!(stage(a), Some(Stage::Emoji(_))) && matches!(stage(b), Some(Stage::Emoji(_)))
+    })
+    .await;
+    let (Some(Stage::Emoji(left)), Some(Stage::Emoji(right))) = (stage(&a), stage(&b)) else {
+        unreachable!()
+    };
+    assert_eq!(left.len(), 7);
+    assert_eq!(left, right, "both devices show the same emoji");
+    let shown: Vec<_> = left.iter().map(|(s, n)| format!("{s} {n}")).collect();
+    println!("matrix-sdk: both devices show {}", shown.join(", "));
+    let _ = a.update(Msg::Sdk(Action::EmojiMatch(true)));
+    let _ = b.update(Msg::Sdk(Action::EmojiMatch(true)));
+    wait2(&mut a, &ra, &mut b, &rb, "verified by emoji", |a, b| {
+        stage(a) == Some(&Stage::Done) && stage(b) == Some(&Stage::Done) && b.verified
+    })
+    .await;
+    println!("matrix-sdk: emoji verification cross-signed the new device");
+
+    // Devices: the new device shows as verified, then is signed out remotely.
+    let b_id = saved_session(&base.join("b")).unwrap()["session"]["device_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let _ = a.update(Msg::Sdk(Action::CloseVerification));
+    let _ = b.update(Msg::Sdk(Action::CloseVerification));
+    for _ in 0..20 {
+        let _ = a.update(Msg::Sdk(Action::RefreshDevices));
+        wait(&mut a, &ra, "device list", |a| a.sdk_ui.jobs.is_empty()).await;
+        let listed = a.sdk_ui.devices.iter().flatten().find(|d| d.id == b_id);
+        if listed.is_some_and(|d| d.verified) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    let devices = a.sdk_ui.devices.clone().unwrap();
+    assert!(devices.iter().any(|d| d.current && d.verified));
+    assert!(
+        devices
+            .iter()
+            .any(|d| d.id == b_id && d.verified && !d.current)
+    );
+    let _ = a.update(Msg::Sdk(Action::AskRemove(Some(b_id.clone()))));
+    let _ = a.update(Msg::Sdk(Action::Password("not the password".into())));
+    let _ = a.update(Msg::Sdk(Action::RemoveDevice));
+    wait(&mut a, &ra, "wrong password", |a| a.sdk_ui.jobs.is_empty()).await;
+    assert!(
+        a.sdk_ui.note.contains("didn’t accept that password"),
+        "{}",
+        a.sdk_ui.note
+    );
+    let _ = a.update(Msg::Sdk(Action::Password(pass.clone())));
+    let _ = a.update(Msg::Sdk(Action::RemoveDevice));
+    wait(&mut a, &ra, "device signed out", |a| {
+        a.sdk_ui.jobs.is_empty()
+    })
+    .await;
+    assert!(a.sdk_ui.note.starts_with("Signed out"), "{}", a.sdk_ui.note);
+    assert!(!a.sdk_ui.devices.iter().flatten().any(|d| d.id == b_id));
+    wait(&mut b, &rb, "removed device notices", |b| {
+        !b.logged_in && !b.status.is_empty()
+    })
+    .await;
+    assert!(b.status.contains("signed this device out"), "{}", b.status);
+    assert!(
+        saved_session(&base.join("b")).is_none(),
+        "local session removed"
+    );
+    println!(
+        "matrix-sdk: device list showed it verified; removing it (password checked) signed it out"
+    );
+    stop(a, ea).await;
+    stop(b, eb).await;
+
+    // Recovery for an account that has no encryption keys yet.
+    let (fresh, fresh_pass) = (
+        rooms::string(&fixture["fresh_username"]),
+        rooms::string(&fixture["fresh_password"]),
+    );
+    let (mut c, rc, ec) = sign_in(&base.join("c"), server, &fresh, &fresh_pass).await;
+    wait(&mut c, &rc, "recovery state known", |c| {
+        c.sdk_ui.recovery != super::Recovery::Unknown
+    })
+    .await;
+    assert!(!c.sdk_ui.identity && !c.verified);
+    let _ = c.update(Msg::Sdk(Action::Password(fresh_pass.clone())));
+    let _ = c.update(Msg::Sdk(Action::SetUpRecovery));
+    wait(&mut c, &rc, "recovery set up", |c| {
+        c.sdk_ui.recovery_key.is_some() && c.verified && c.sdk_ui.jobs.is_empty()
+    })
+    .await;
+    let first = c.sdk_ui.recovery_key.clone().unwrap();
+    assert!(c.sdk_ui.password.is_empty(), "the password isn't kept");
+    let _ = c.update(Msg::Sdk(Action::SavedRecoveryKey));
+    assert!(c.sdk_ui.recovery_key.is_none());
+    println!("matrix-sdk: recovery setup created keys, verified the device and showed a key once");
+    let _ = c.update(Msg::Sdk(Action::ChangeRecoveryKey));
+    wait(&mut c, &rc, "new recovery key", |c| {
+        c.sdk_ui.recovery_key.is_some() && c.sdk_ui.jobs.is_empty()
+    })
+    .await;
+    let second = c.sdk_ui.recovery_key.clone().unwrap();
+    assert_ne!(first, second);
+    let _ = c.update(Msg::Sdk(Action::SavedRecoveryKey));
+
+    // Only the new key verifies another device.
+    let (mut d, rd, ed) = sign_in(&base.join("d"), server, &fresh, &fresh_pass).await;
+    d.recovery = first.clone();
+    let _ = d.update(Msg::Verify);
+    wait(&mut d, &rd, "old key refused", |d| {
+        !d.verifying() && !d.verification_note.is_empty()
+    })
+    .await;
+    assert!(!d.verified);
+    d.recovery = second.clone();
+    let _ = d.update(Msg::Verify);
+    wait(&mut d, &rd, "new key verifies", |d| d.verified).await;
+    println!("matrix-sdk: the changed key verifies a new device and the old one doesn't");
+    if keyring {
+        assert!(saved_session(&base.join("d")).unwrap()["keyring"].is_string());
+    } else {
+        assert!(saved_session(&base.join("d")).unwrap()["passphrase"].is_string());
+    }
+
+    // Sign out removes the session, the stores and the keyring entry.
+    let _ = d.update(Msg::Sdk(Action::AskSignOut(true)));
+    let _ = d.update(Msg::Sdk(Action::SignOut));
+    wait(&mut d, &rd, "signed out", |d| {
+        !d.logged_in && d.sdk_ui.jobs.is_empty()
+    })
+    .await;
+    assert!(saved_session(&base.join("d")).is_none());
+    assert!(!base.join("d/matrix-sdk/store").exists());
+    stop(d, ed).await;
+    let (mut d, rd, ed) = session_at(&base.join("d"));
+    wait(&mut d, &rd, "restart after sign-out", |d| d.connected).await;
+    assert!(!d.logged_in, "nothing to restore after signing out");
+    stop(d, ed).await;
+    println!("matrix-sdk: sign-out removed the session and stores");
+
+    // Reset encryption from a new device that has neither key nor device.
+    let (mut e, re, ee) = sign_in(&base.join("e"), server, &fresh, &fresh_pass).await;
+    wait(&mut e, &re, "identity known", |e| e.sdk_ui.identity).await;
+    let _ = e.update(Msg::Sdk(Action::ShowReset(true)));
+    let _ = e.update(Msg::Sdk(Action::Password(fresh_pass.clone())));
+    let _ = e.update(Msg::Sdk(Action::ResetEncryption));
+    wait(&mut e, &re, "encryption reset", |e| {
+        e.sdk_ui.recovery_key.is_some() && e.verified && e.sdk_ui.jobs.is_empty()
+    })
+    .await;
+    assert_ne!(e.sdk_ui.recovery_key.as_deref(), Some(second.as_str()));
+    println!("matrix-sdk: reset encryption gave a new identity and recovery key");
+    wait(&mut c, &rc, "old device loses its verification", |c| {
+        !c.verified
+    })
+    .await;
+    println!("matrix-sdk: the earlier device reports itself unverified after the reset");
+    stop(e, ee).await;
+    stop(c, ec).await;
 }

@@ -6,13 +6,21 @@ From the checkout:
 
 Starts a disposable loopback Synapse, seeds the account and its recovery key
 through gomuks (like test-media-interop.py), and runs a second account in
-gomuks as the encrypted peer. The Rust side is the ignored test
-`engine::live_test::matrix_sdk_login_restore_and_encrypted_round_trip`, which
-drives the real App through login, recovery, sync, pagination, send and a
-restart on a fresh profile. UNTETHERED_BACKEND selects the gomuks executable.
+gomuks as the encrypted peer. The Rust side is two ignored tests that drive
+the real App:
+- `matrix_sdk_login_restore_and_encrypted_round_trip`: login, recovery, sync,
+  pagination, send and a restart, with the store passphrase in a private
+  GNOME Keyring on a private D-Bus (never your own keyring);
+- `matrix_sdk_account_flows`: emoji verification between two engine
+  instances, the device list and remote sign-out, recovery setup, key change
+  and reset on an account without keys, and sign-out, with the keyring off.
+UNTETHERED_BACKEND selects the gomuks executable. UNTETHERED_QA_SOCKETS picks
+a short directory for the private bus socket (default: the temp directory).
 Pass --keep to leave the profile and homeserver directory for inspection.
 """
+from contextlib import contextmanager
 import argparse
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -125,6 +133,52 @@ class Gomuks:
             self.p.kill()
 
 
+@contextmanager
+def private_keyring(tmp):
+    """A private session bus with an unlocked GNOME Keyring, or None."""
+    if not shutil.which("gnome-keyring-daemon") or not shutil.which("dbus-daemon"):
+        yield None
+        return
+    # Unix socket paths are limited to 108 bytes.
+    sockets = Path(tempfile.mkdtemp(prefix="utq", dir=os.environ.get("UNTETHERED_QA_SOCKETS")))
+    home = tmp / "keyring-home"
+    home.mkdir()
+    bus = f"unix:path={sockets}/bus"
+    env = {**os.environ, "DBUS_SESSION_BUS_ADDRESS": bus, "XDG_RUNTIME_DIR": str(sockets),
+           "HOME": str(home), "XDG_DATA_HOME": str(home / ".local/share")}
+    procs = [subprocess.Popen(["dbus-daemon", "--session", "--nofork", "--nopidfile", "--address=" + bus],
+                              env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)]
+    try:
+        for _ in range(100):
+            if (sockets / "bus").is_socket():
+                break
+            time.sleep(.05)
+        keyring = subprocess.Popen(["gnome-keyring-daemon", "--foreground", "--components=secrets", "--unlock"],
+                                   env=env, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                                   stderr=subprocess.DEVNULL)
+        procs.append(keyring)
+        keyring.stdin.write(b"qa-keyring")
+        keyring.stdin.close()
+        for _ in range(100):
+            owner = subprocess.run(["dbus-send", "--session", "--print-reply", "--dest=org.freedesktop.DBus",
+                                    "/org/freedesktop/DBus", "org.freedesktop.DBus.NameHasOwner",
+                                    "string:org.freedesktop.secrets"], env=env, capture_output=True, text=True)
+            if "true" in owner.stdout:
+                break
+            time.sleep(.1)
+        else:
+            raise RuntimeError("private GNOME Keyring didn't start")
+        yield bus
+    finally:
+        for p in reversed(procs):
+            p.terminate()
+            try:
+                p.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                p.kill()
+        shutil.rmtree(sockets, ignore_errors=True)
+
+
 def register(hs, name):
     pwd = secrets.token_urlsafe(24)
     auth = http("POST", hs + "/_matrix/client/v3/register", json={
@@ -141,6 +195,7 @@ def main():
     tmp = Path(tempfile.mkdtemp(prefix="untethered-sdk-", dir=os.environ.get("TMPDIR")))
     synapse = None
     peers = []
+    stack = contextlib.ExitStack()
     try:
         subprocess.run([sys.executable, "-m", "synapse.app.homeserver", "-c", "hs.yaml", "--generate-config",
                         "-H", SERVER_NAME, "--report-stats", "no"], cwd=tmp, stdout=subprocess.DEVNULL, check=True)
@@ -180,6 +235,8 @@ rc_login: {{address: {{per_second: 1000, burst_count: 1000}}, account: {{per_sec
         # by gomuks; that gomuks device also writes encrypted history.
         alice, alice_pwd, alice_hdr = register(hs, "sdk" + secrets.token_hex(3))
         bob, bob_pwd, bob_hdr = register(hs, "peer" + secrets.token_hex(3))
+        # No cross-signing keys or recovery: for setting recovery up.
+        fresh, fresh_pwd, _ = register(hs, "fresh" + secrets.token_hex(3))
 
         def create(hdr, **body):
             return http("POST", hs + "/_matrix/client/v3/createRoom", headers=hdr, json=body).json()["room_id"]
@@ -227,12 +284,22 @@ rc_login: {{address: {{per_second: 1000, burst_count: 1000}}, account: {{per_sec
         fixture = tmp / "fixture.json"
         fixture.write_text(json.dumps(dict(server=hs, username=alice.split(":")[0][1:], password=alice_pwd, key=key,
                                            room=room, space=space, dm=dm, unread_room=unread, peer=bob,
-                                           history=history)))
+                                           history=history, fresh_username=fresh.split(":")[0][1:],
+                                           fresh_password=fresh_pwd)))
+        bus = stack.enter_context(private_keyring(tmp))
+        isolated = {**os.environ, "UNTETHERED_QA_FIXTURE": str(fixture)}
+        if bus:
+            isolated.update(DBUS_SESSION_BUS_ADDRESS=bus, UNTETHERED_QA_KEYRING="1")
+            print("Private GNOME Keyring on a private session bus", flush=True)
+        else:
+            isolated.update(UNTETHERED_KEYRING="off")
+            isolated.pop("DBUS_SESSION_BUS_ADDRESS", None)
+            print("gnome-keyring-daemon not found; testing the file fallback only", flush=True)
         test = subprocess.Popen(["cargo", "test", "--locked", "--manifest-path", "rust-client/Cargo.toml",
                                  "matrix_sdk_login_restore_and_encrypted_round_trip", "--", "--ignored", "--nocapture"],
-                                cwd=ROOT, env={**os.environ, "UNTETHERED_QA_FIXTURE": str(fixture),
-                                               "UNTETHERED_QA_SIGNALS": str(signals),
+                                cwd=ROOT, env={**isolated, "UNTETHERED_QA_SIGNALS": str(signals),
                                                "UNTETHERED_PROFILE": str(tmp / "native")})
+        failed = []
         while not (signals / "sdk-sent").is_file():
             if test.poll() is not None:
                 raise SystemExit(f"Rust test exited early ({test.returncode})")
@@ -247,14 +314,23 @@ rc_login: {{address: {{per_second: 1000, burst_count: 1000}}, account: {{per_sec
         while test.poll() is None:
             peer.frame(.5)
         if test.returncode:
-            raise SystemExit(f"Rust test failed ({test.returncode})")
+            failed.append("matrix_sdk_login_restore_and_encrypted_round_trip")
+        flows = {**isolated, "UNTETHERED_KEYRING": "off", "UNTETHERED_QA_PROFILES": str(tmp / "profiles")}
+        flows.pop("UNTETHERED_QA_KEYRING", None)
+        if subprocess.run(["cargo", "test", "--locked", "--manifest-path", "rust-client/Cargo.toml",
+                           "matrix_sdk_account_flows", "--", "--ignored", "--nocapture"],
+                          cwd=ROOT, env=flows).returncode:
+            failed.append("matrix_sdk_account_flows")
+        if failed:
+            raise SystemExit("FAILED: " + ", ".join(failed))
         events = http("GET", f"{hs}/_matrix/client/v3/rooms/{quote(room, safe='')}/messages",
                       headers=alice_hdr, params={"dir": "b", "limit": 100}).json()["chunk"]
         assert sum(e["type"] == "m.room.encrypted" for e in events) >= history + 2
         assert all(e["type"] != "m.room.message" for e in events), "plaintext reached the encrypted room"
-        print("PASS matrix-sdk engine: login, recovery, sync, pagination, encrypted send/receive and restart",
-              flush=True)
+        print("PASS matrix-sdk engine: login, recovery, sync, pagination, encrypted send/receive, restart, "
+              "keyring, emoji verification, devices, recovery setup/change/reset and sign-out", flush=True)
     finally:
+        stack.close()
         for p in peers:
             p.close()
         if synapse:

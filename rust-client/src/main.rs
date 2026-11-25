@@ -171,6 +171,8 @@ enum Msg {
     Frame(Value),
     #[cfg(not(target_arch = "wasm32"))]
     Engine(engine::Event),
+    #[cfg(not(target_arch = "wasm32"))]
+    Sdk(engine::account_ui::Action),
     Stopped(String),
     Section(Section),
     Open(String),
@@ -314,6 +316,8 @@ struct App {
     /// Set when UNTETHERED_ENGINE=matrix-sdk replaces gomuks.
     #[cfg(not(target_arch = "wasm32"))]
     sdk: Option<Sender<engine::Command>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    sdk_ui: engine::account_ui::AccountUi,
     outbox: media::Outbox,
     inline: inline::InlineImages,
     batch: Option<transfers::Batch>,
@@ -407,6 +411,8 @@ impl App {
             commands,
             #[cfg(not(target_arch = "wasm32"))]
             sdk: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            sdk_ui: Default::default(),
             outbox: Default::default(),
             inline: Default::default(),
             batch: None,
@@ -1109,6 +1115,8 @@ impl App {
             Msg::ShowInline(key) => self.inline.request(key),
             #[cfg(not(target_arch = "wasm32"))]
             Msg::Engine(event) => self.engine_event(event),
+            #[cfg(not(target_arch = "wasm32"))]
+            Msg::Sdk(action) => return self.sdk_action(action),
             Msg::Frame(f) => {
                 let jumped = f["command"] == "response"
                     && f["request_id"].as_i64().is_some_and(|id| {

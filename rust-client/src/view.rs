@@ -8,6 +8,8 @@ mod mentions;
 mod reaction_bar;
 mod room_people;
 mod room_search;
+#[cfg(not(target_arch = "wasm32"))]
+mod sdk_account;
 use iced::{
     Alignment::Center,
     Border, Color, Element, Fill, Font, Length, Theme, color, font, keyboard,
@@ -631,6 +633,10 @@ impl App {
         )
     }
     pub(super) fn view(&self) -> El<'_> {
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(screen) = self.sdk_screen() {
+            return screen;
+        }
         if self.account || self.logged_in && !self.verified {
             return self.account_view();
         }
@@ -1974,12 +1980,14 @@ impl App {
                             .then_some(Msg::Verify),
                         ),
                     )
-                    .push(text(self.verification_feedback()).size(14))
-                    .push(
+                    .push(text(self.verification_feedback()).size(14));
+                if self.sdk.is_none() {
+                    form = form.push(
                         text("Emoji comparison isn’t available with this version of gomuks.")
                             .size(13)
                             .color(MUTED),
                     );
+                }
             }
         } else {
             form = form
@@ -2041,6 +2049,16 @@ impl App {
                         .size(13).color(MUTED)
                 ].spacing(4));
             }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.sdk.is_some() {
+            form = form.push(if !self.logged_in {
+                self.sdk_login_choices()
+            } else if !self.verified {
+                self.sdk_verify_choices()
+            } else {
+                self.sdk_account_settings()
+            });
         }
         if (!self.logged_in || self.verified) && !self.status.is_empty() {
             form = form.push(text(&self.status).size(14).color(MUTED));

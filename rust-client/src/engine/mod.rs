@@ -5,21 +5,29 @@
 //! `crate::backend` without a JSON boundary. gomuks stays the default engine.
 //! `docs/matrix-sdk-migration.md` tracks what moves over next.
 
+mod account;
+pub mod account_ui;
 pub mod app;
+mod browser;
+mod keyring;
 #[cfg(test)]
 mod live_test;
 mod rooms;
 mod session;
 mod timeline;
+mod verify;
 
 use async_channel::{Receiver, Sender};
 use matrix_sdk::Client;
 use matrix_sdk_ui::sync_service::{State as SyncState, SyncService};
 use std::{
     collections::{BTreeMap, BTreeSet},
+    path::PathBuf,
     sync::Arc,
     time::Duration,
 };
+
+pub use browser::Opener;
 
 pub const ENV: &str = "UNTETHERED_ENGINE";
 /// Events per room in the sliding sync room list.
@@ -49,15 +57,81 @@ pub enum Command {
         password: String,
     },
     /// Unlock secret storage with a recovery key or passphrase.
-    Recover { id: i64, secret: String },
+    Recover {
+        id: i64,
+        secret: String,
+    },
     /// Open the room's timeline if needed, then load older messages.
-    Paginate { id: i64, room: String },
+    Paginate {
+        id: i64,
+        room: String,
+    },
     Send {
         id: i64,
         room: String,
         body: String,
         reply_to: Option<String>,
     },
+    /// Ask this account's other devices to verify this one by comparing emoji.
+    VerifyDevice {
+        id: i64,
+    },
+    /// Accept the incoming verification request.
+    AcceptVerification,
+    /// The emoji on both devices match (true) or don't (false).
+    ConfirmEmoji {
+        matches: bool,
+    },
+    CancelVerification,
+    /// Create cross-signing keys if the account has none, then a key backup
+    /// and secret storage. The new key arrives once as [`Event::RecoveryKey`].
+    SetUpRecovery {
+        id: i64,
+        password: String,
+    },
+    /// Replace the recovery key from a verified device.
+    ChangeRecoveryKey {
+        id: i64,
+    },
+    /// Replace the account's cross-signing identity, key backup and recovery
+    /// key, for when every verified device and the old key are lost.
+    ResetEncryption {
+        id: i64,
+        password: String,
+    },
+    /// List the account's devices as [`Event::Devices`].
+    Devices {
+        id: i64,
+    },
+    DeleteDevice {
+        id: i64,
+        device: String,
+        password: String,
+    },
+    /// Sign out on the homeserver and remove this profile's session and stores.
+    Logout {
+        id: i64,
+    },
+    /// Find out how a homeserver signs users in, as [`Event::LoginOptions`].
+    LoginOptions {
+        id: i64,
+        homeserver: String,
+    },
+    /// Sign in through the system browser.
+    BrowserLogin {
+        id: i64,
+        homeserver: String,
+        method: BrowserMethod,
+    },
+    CancelBrowserLogin,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum BrowserMethod {
+    /// Homeserver single sign-on, optionally with one identity provider.
+    Sso { provider: Option<String> },
+    /// OAuth 2.0 with the homeserver's authentication service (MAS).
+    OAuth,
 }
 
 #[derive(Clone)]
@@ -72,6 +146,60 @@ pub enum Event {
     Connection(Connection),
     /// Engine-written text for the status line. Never contains server text.
     Status(&'static str),
+    /// The current emoji verification, or `None` when there is none.
+    Verification(Option<Verification>),
+    /// A new recovery key. The engine keeps no copy; show it once.
+    RecoveryKey(String),
+    Devices(Vec<DeviceInfo>),
+    LoginOptions(LoginOptions),
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Verification {
+    /// The other device asked; otherwise this device did.
+    pub incoming: bool,
+    /// The other device's display name and ID, once known.
+    pub device: Option<String>,
+    pub stage: Stage,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum Stage {
+    /// Another device asks to verify; accept or decline.
+    Requested,
+    /// Waiting for another device to accept.
+    Waiting,
+    /// Accepted; the devices are exchanging keys.
+    Starting,
+    /// Compare these (symbol, name) pairs with the other device.
+    Emoji(Vec<(String, String)>),
+    /// Confirmed here; waiting for the other device.
+    Confirmed,
+    Done,
+    /// Engine-written reason.
+    Cancelled(&'static str),
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct DeviceInfo {
+    pub id: String,
+    pub name: Option<String>,
+    /// Milliseconds since the epoch, as reported by the homeserver.
+    pub last_seen: Option<i64>,
+    /// Cross-signed by this account.
+    pub verified: bool,
+    /// This device.
+    pub current: bool,
+}
+
+#[derive(Clone, Default, PartialEq, Eq, Debug)]
+pub struct LoginOptions {
+    pub homeserver: String,
+    pub password: bool,
+    /// Identity providers as (id, name); empty with `sso` means "any".
+    pub providers: Vec<(String, String)>,
+    pub sso: bool,
+    pub oauth: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -90,6 +218,9 @@ pub struct Account {
     pub display_name: Option<String>,
     /// This device is cross-signed by its owner.
     pub verified: bool,
+    /// The account has published cross-signing keys, so another device can
+    /// verify this one.
+    pub identity: bool,
     pub recovery: Recovery,
 }
 
@@ -194,18 +325,45 @@ pub enum Failure {
     NoRecovery,
     /// Not signed in, or the room isn't known yet.
     Unavailable,
+    /// The homeserver rejected the account password.
+    WrongPassword,
+    /// The account has no cross-signing identity to verify against.
+    NoIdentity,
+    /// The homeserver wants approval in a browser (OAuth 2.0 accounts).
+    NeedsBrowser,
+    Cancelled,
     Failed,
 }
 
 pub async fn run(commands: Receiver<Command>, events: Sender<Event>) -> Result<(), String> {
+    run_in(
+        session::profile_root()?,
+        browser::system(),
+        commands,
+        events,
+    )
+    .await
+}
+
+/// Run on an explicit profile directory; tests run several engines at once
+/// and replace the system browser.
+pub async fn run_in(
+    root: PathBuf,
+    opener: Opener,
+    commands: Receiver<Command>,
+    events: Sender<Event>,
+) -> Result<(), String> {
     // reqwest 0.13 is built without a crypto provider (see Cargo.toml).
     let _ = rustls::crypto::ring::default_provider().install_default();
-    let profile = session::Profile::open()?;
+    let profile = Arc::new(session::Profile::open(root)?);
     let (notices, internal) = async_channel::unbounded();
     let mut engine = Engine {
         profile,
         events,
         notices,
+        opener,
+        browser: None,
+        browser_id: None,
         live: None,
     };
     match session::restore(&engine.profile).await {
@@ -232,20 +390,35 @@ pub async fn run(commands: Receiver<Command>, events: Sender<Event>) -> Result<(
 /// Background tasks tell the command loop about session-level changes.
 enum Notice {
     TokenRejected,
+    /// A browser sign-in finished; on success the session is saved.
+    SignedIn {
+        id: i64,
+        result: Result<Client, Failure>,
+    },
 }
 
 struct Live {
     client: Client,
     sync: Arc<SyncService>,
     timelines: Arc<timeline::Timelines>,
-    _tasks: Tasks,
+    verifier: Arc<verify::Verifier>,
+    tasks: Tasks,
 }
 
 struct Engine {
-    profile: session::Profile,
+    profile: Arc<session::Profile>,
     events: Sender<Event>,
     notices: Sender<Notice>,
+    opener: Opener,
+    browser: Option<tokio::task::JoinHandle<()>>,
+    browser_id: Option<i64>,
     live: Option<Live>,
+}
+
+enum Key {
+    SetUp(String),
+    Change,
+    Reset(String),
 }
 
 impl Engine {
@@ -280,16 +453,22 @@ impl Engine {
             client.clone(),
             self.events.clone(),
         ));
+        let verifier = verify::Verifier::new(client.clone(), self.events.clone());
         let mut tasks = Tasks::default();
         tasks.spawn(account_updates(client.clone(), self.events.clone()));
         tasks.spawn(rooms::updates(client.clone(), self.events.clone()));
         tasks.spawn(sync_status(sync.clone(), self.events.clone()));
-        tasks.spawn(session_changes(client.clone(), self.notices.clone()));
+        tasks.spawn(session_changes(
+            client.clone(),
+            self.profile.clone(),
+            self.notices.clone(),
+        ));
         self.live = Some(Live {
             client,
             sync,
             timelines,
-            _tasks: tasks,
+            verifier,
+            tasks,
         });
     }
 
@@ -301,7 +480,8 @@ impl Engine {
                 username,
                 password,
             } => {
-                let result = if self.live.is_some() {
+                let browsing = self.browser.as_ref().is_some_and(|t| !t.is_finished());
+                let result = if self.live.is_some() || browsing {
                     Err(Failure::Unavailable)
                 } else {
                     session::login(&self.profile, &homeserver, &username, &password).await
@@ -362,7 +542,167 @@ impl Engine {
                     let _ = events.send(Event::Done { id, result }).await;
                 });
             }
+            Command::VerifyDevice { id } => {
+                let Some(live) = &self.live else {
+                    return self.done(id, Err(Failure::Unavailable)).await;
+                };
+                let (verifier, events) = (live.verifier.clone(), self.events.clone());
+                tokio::spawn(async move {
+                    let result = verifier.request().await;
+                    let _ = events.send(Event::Done { id, result }).await;
+                });
+            }
+            Command::AcceptVerification => {
+                if let Some(live) = &self.live {
+                    let verifier = live.verifier.clone();
+                    tokio::spawn(async move { verifier.accept().await });
+                }
+            }
+            Command::ConfirmEmoji { matches } => {
+                if let Some(live) = &self.live {
+                    let verifier = live.verifier.clone();
+                    tokio::spawn(async move { verifier.confirm(matches).await });
+                }
+            }
+            Command::CancelVerification => {
+                if let Some(live) = &self.live {
+                    let verifier = live.verifier.clone();
+                    tokio::spawn(async move { verifier.cancel().await });
+                }
+            }
+            Command::SetUpRecovery { id, password } => self.new_key(id, Key::SetUp(password)).await,
+            Command::ChangeRecoveryKey { id } => self.new_key(id, Key::Change).await,
+            Command::ResetEncryption { id, password } => {
+                self.new_key(id, Key::Reset(password)).await
+            }
+            Command::Devices { id } => {
+                let Some(live) = &self.live else {
+                    return self.done(id, Err(Failure::Unavailable)).await;
+                };
+                let (client, events) = (live.client.clone(), self.events.clone());
+                tokio::spawn(async move {
+                    let result = match account::devices(&client).await {
+                        Ok(list) => {
+                            let _ = events.send(Event::Devices(list)).await;
+                            Ok(())
+                        }
+                        Err(f) => Err(f),
+                    };
+                    let _ = events.send(Event::Done { id, result }).await;
+                });
+            }
+            Command::DeleteDevice {
+                id,
+                device,
+                password,
+            } => {
+                let Some(live) = &self.live else {
+                    return self.done(id, Err(Failure::Unavailable)).await;
+                };
+                let (client, events) = (live.client.clone(), self.events.clone());
+                tokio::spawn(async move {
+                    let result = account::delete_device(&client, &device, &password).await;
+                    drop(password);
+                    if let Ok(list) = account::devices(&client).await {
+                        let _ = events.send(Event::Devices(list)).await;
+                    }
+                    let _ = events.send(Event::Done { id, result }).await;
+                });
+            }
+            Command::Logout { id } => self.logout(id).await,
+            Command::LoginOptions { id, homeserver } => {
+                let events = self.events.clone();
+                tokio::spawn(async move {
+                    let result = match browser::options(&homeserver).await {
+                        Ok(options) => {
+                            let _ = events.send(Event::LoginOptions(options)).await;
+                            Ok(())
+                        }
+                        Err(f) => Err(f),
+                    };
+                    let _ = events.send(Event::Done { id, result }).await;
+                });
+            }
+            Command::BrowserLogin {
+                id,
+                homeserver,
+                method,
+            } => {
+                if self.live.is_some() || self.browser.as_ref().is_some_and(|t| !t.is_finished()) {
+                    return self.done(id, Err(Failure::Unavailable)).await;
+                }
+                let (profile, opener, notices) = (
+                    self.profile.clone(),
+                    self.opener.clone(),
+                    self.notices.clone(),
+                );
+                self.browser_id = Some(id);
+                self.browser = Some(tokio::spawn(async move {
+                    let result = browser::login(&profile, &homeserver, method, opener).await;
+                    let _ = notices.send(Notice::SignedIn { id, result }).await;
+                }));
+            }
+            Command::CancelBrowserLogin => {
+                if let (Some(task), Some(id)) = (self.browser.take(), self.browser_id.take()) {
+                    task.abort();
+                    let _ = task.await;
+                    session::forget(&self.profile).await;
+                    self.done(id, Err(Failure::Cancelled)).await;
+                }
+            }
         }
+    }
+
+    /// Commands that end with a new recovery key.
+    async fn new_key(&self, id: i64, kind: Key) {
+        let Some(live) = &self.live else {
+            return self.done(id, Err(Failure::Unavailable)).await;
+        };
+        let (client, events) = (live.client.clone(), self.events.clone());
+        tokio::spawn(async move {
+            let result = match kind {
+                Key::SetUp(password) => account::set_up_recovery(&client, &password).await,
+                Key::Change => account::change_recovery_key(&client).await,
+                Key::Reset(password) => account::reset_encryption(&client, &password).await,
+            };
+            let result = match result {
+                Ok(key) => {
+                    let _ = events.send(Event::RecoveryKey(key)).await;
+                    let _ = events
+                        .send(Event::Account(account(&client, None).await))
+                        .await;
+                    Ok(())
+                }
+                Err(f) => Err(f),
+            };
+            let _ = events.send(Event::Done { id, result }).await;
+        });
+    }
+
+    async fn logout(&mut self, id: i64) {
+        let Some(live) = self.live.take() else {
+            return self.done(id, Err(Failure::Unavailable)).await;
+        };
+        let Live {
+            client,
+            sync,
+            tasks,
+            ..
+        } = live;
+        // Our own sign-out must not also report a rejected token.
+        drop(tasks);
+        let _ = tokio::time::timeout(Duration::from_secs(5), sync.stop()).await;
+        let server = tokio::time::timeout(Duration::from_secs(15), client.logout()).await;
+        drop((sync, client));
+        session::forget(&self.profile).await;
+        self.emit(Event::Account(Account::default())).await;
+        if !matches!(server, Ok(Ok(()))) {
+            self.emit(Event::Status(
+                "Signed out on this device. The homeserver couldn’t be reached, so it may still list this device.",
+            ))
+            .await;
+        }
+        self.done(id, Ok(())).await;
     }
 
     async fn done(&self, id: i64, result: Result<(), Failure>) {
@@ -371,11 +711,26 @@ impl Engine {
 
     async fn notice(&mut self, notice: Notice) {
         match notice {
+            Notice::SignedIn { id, result } => {
+                self.browser = None;
+                self.browser_id = None;
+                match result {
+                    Ok(client) => {
+                        let now = account(&client, None).await;
+                        self.go_live(client).await;
+                        if self.live.is_some() {
+                            self.emit(Event::Account(now)).await;
+                        }
+                        self.done(id, Ok(())).await;
+                    }
+                    Err(failure) => self.done(id, Err(failure)).await,
+                }
+            }
             Notice::TokenRejected => {
                 if let Some(live) = self.live.take() {
                     live.sync.stop().await;
                 }
-                session::forget(&self.profile);
+                session::forget(&self.profile).await;
                 self.emit(Event::Account(Account::default())).await;
                 self.emit(Event::Status(
                     "The homeserver signed this device out. Sign in again.",
@@ -386,6 +741,9 @@ impl Engine {
     }
 
     async fn shutdown(&mut self) {
+        if let Some(task) = self.browser.take() {
+            task.abort();
+        }
         if let Some(live) = self.live.take() {
             let _ = tokio::time::timeout(Duration::from_secs(5), live.sync.stop()).await;
         }
@@ -401,6 +759,15 @@ pub(super) async fn account(client: &Client, display_name: Option<String>) -> Ac
         .flatten()
         .is_some_and(|device| device.is_cross_signed_by_owner());
     use matrix_sdk::encryption::recovery::RecoveryState;
+    let identity = match client.user_id() {
+        Some(user) => encryption
+            .get_user_identity(user)
+            .await
+            .ok()
+            .flatten()
+            .is_some(),
+        None => false,
+    };
     Account {
         logged_in: true,
         user_id: client
@@ -409,6 +776,7 @@ pub(super) async fn account(client: &Client, display_name: Option<String>) -> Ac
             .unwrap_or_default(),
         display_name,
         verified,
+        identity,
         recovery: match encryption.recovery().state() {
             RecoveryState::Unknown => Recovery::Unknown,
             RecoveryState::Enabled => Recovery::Enabled,
@@ -425,6 +793,15 @@ async fn account_updates(client: Client, events: Sender<Event>) {
     let mut recovery = client.encryption().recovery().state_stream();
     let mut name = None;
     let mut last = None;
+    // Ask the homeserver once, so a fresh device knows whether the account
+    // already has cross-signing keys before offering to create them.
+    if let Some(user) = client.user_id() {
+        let _ = tokio::time::timeout(
+            Duration::from_secs(10),
+            client.encryption().request_user_identity(user),
+        )
+        .await;
+    }
     loop {
         if name.is_none() {
             name =
@@ -469,12 +846,15 @@ async fn sync_status(sync: Arc<SyncService>, events: Sender<Event>) {
     }
 }
 
-async fn session_changes(client: Client, notices: Sender<Notice>) {
+async fn session_changes(client: Client, profile: Arc<session::Profile>, notices: Sender<Notice>) {
     let mut changes = client.subscribe_to_session_changes();
     while let Ok(change) = changes.recv().await {
-        if let matrix_sdk::SessionChange::UnknownToken(_) = change {
-            let _ = notices.send(Notice::TokenRejected).await;
-            return;
+        match change {
+            matrix_sdk::SessionChange::UnknownToken(_) => {
+                let _ = notices.send(Notice::TokenRejected).await;
+                return;
+            }
+            matrix_sdk::SessionChange::TokensRefreshed => session::save_tokens(&profile, &client),
         }
     }
 }

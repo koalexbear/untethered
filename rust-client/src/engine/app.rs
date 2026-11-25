@@ -64,6 +64,7 @@ impl App {
     pub(crate) fn engine_login(&mut self) {
         if self.logged_in
             || !self.connected
+            || self.sdk_ui.browser
             || self.pending.values().any(|p| matches!(p, Request::Login))
         {
             return;
@@ -220,6 +221,13 @@ impl App {
                     self.status = text.into();
                 }
             }
+            Event::Verification(view) => self.sdk_verification(view),
+            Event::RecoveryKey(key) => {
+                self.sdk_ui.recovery_key = Some(key);
+                self.sdk_ui.key_copied = false;
+            }
+            Event::Devices(list) => self.sdk_ui.devices = Some(list),
+            Event::LoginOptions(options) => self.sdk_login_options(options),
         }
     }
 
@@ -233,6 +241,12 @@ impl App {
             }
         });
         let unavailable = a.logged_in && a.recovery == Recovery::Disabled;
+        let was_verified = self.verified;
+        if !a.logged_in && self.logged_in {
+            self.sdk_ui = Default::default();
+        }
+        self.sdk_ui.identity = a.identity;
+        self.sdk_ui.recovery = a.recovery;
         self.apply_account(account::State {
             logged_in: a.logged_in,
             verified: a.logged_in && a.verified,
@@ -241,12 +255,21 @@ impl App {
             user_id: a.user_id,
         });
         if unavailable && !self.verified {
-            self.verification_note = "Recovery isn’t set up for this account, so a recovery key can’t verify this device. Set up recovery in a trusted Matrix client.".into();
+            self.verification_note = if a.identity {
+                "Recovery isn’t set up for this account. Verify with another device below, or reset encryption."
+            } else {
+                "This account doesn’t have encryption set up yet. Set up recovery below."
+            }
+            .into();
+        }
+        if self.verified && !was_verified {
+            let _ = self.sdk_action(super::account_ui::Action::RefreshDevices);
         }
     }
 
     fn engine_done(&mut self, id: i64, result: Result<(), Failure>) {
         let Some(request) = self.pending.remove(&id) else {
+            self.sdk_done(id, result);
             return;
         };
         match (request, result) {
@@ -338,6 +361,7 @@ mod tests {
             user_id: "@me:example".into(),
             display_name: Some("Me".into()),
             verified,
+            identity: true,
             recovery: Recovery::Enabled,
         })
     }
@@ -422,6 +446,8 @@ mod tests {
     fn rooms_timeline_paging_and_send_round_trip() {
         let (mut app, rx) = app();
         app.engine_event(signed_in(true));
+        // A verified device loads its device list for the account page.
+        assert!(matches!(rx.try_recv(), Ok(Command::Devices { .. })));
         app.engine_event(Event::Rooms(RoomList {
             rooms: vec![RoomSummary {
                 id: "!r:example".into(),
