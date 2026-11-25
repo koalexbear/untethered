@@ -284,6 +284,7 @@ enable_registration: true
 enable_registration_without_verification: true
 trusted_key_servers: []
 federation_domain_whitelist: []
+max_event_delay_duration: 1h
 rc_message: {{per_second: 1000, burst_count: 1000}}
 rc_login: {{address: {{per_second: 1000, burst_count: 1000}}, account: {{per_second: 1000, burst_count: 1000}}, failed_attempts: {{per_second: 1000, burst_count: 1000}}}}
 cas_config:
@@ -370,7 +371,7 @@ sso:
                                            room=room, space=space, dm=dm, unread_room=unread, peer=bob,
                                            history=history, fresh_username=fresh.split(":")[0][1:],
                                            fresh_password=fresh_pwd, sso_user=f"@{SSO_USER}:{SERVER_NAME}",
-                                           old_event=old_event)))
+                                           old_event=old_event, peer_password=bob_pwd)))
         bus = stack.enter_context(private_keyring(tmp))
         isolated = {**os.environ, "UNTETHERED_QA_FIXTURE": str(fixture)}
         if bus:
@@ -380,6 +381,15 @@ sso:
             isolated.update(UNTETHERED_KEYRING="off")
             isolated.pop("DBUS_SESSION_BUS_ADDRESS", None)
             print("gnome-keyring-daemon not found; testing the file fallback only", flush=True)
+        if os.environ.get("UNTETHERED_QA_ONLY") == "call":
+            flows = {**isolated, "UNTETHERED_KEYRING": "off", "UNTETHERED_QA_PROFILES": str(tmp / "profiles")}
+            flows.pop("UNTETHERED_QA_KEYRING", None)
+            if subprocess.run(["cargo", "test", "--locked", "--manifest-path", "rust-client/Cargo.toml",
+                               "matrix_sdk_call_signaling", "--", "--ignored", "--nocapture"],
+                              cwd=ROOT, env=flows).returncode:
+                raise SystemExit("FAILED: matrix_sdk_call_signaling")
+            print("PASS call signaling only", flush=True)
+            return
         test = subprocess.Popen(["cargo", "test", "--locked", "--manifest-path", "rust-client/Cargo.toml",
                                  "matrix_sdk_login_restore_and_encrypted_round_trip", "--", "--ignored", "--nocapture"],
                                 cwd=ROOT, env={**isolated, "UNTETHERED_QA_SIGNALS": str(signals),
@@ -463,10 +473,10 @@ sso:
                            "matrix_sdk_account_flows", "--", "--ignored", "--nocapture"],
                           cwd=ROOT, env=flows).returncode:
             failed.append("matrix_sdk_account_flows")
-        if subprocess.run(["cargo", "test", "--locked", "--manifest-path", "rust-client/Cargo.toml",
-                           "matrix_sdk_rooms_spaces_and_moderation", "--", "--ignored", "--nocapture"],
-                          cwd=ROOT, env=flows).returncode:
-            failed.append("matrix_sdk_rooms_spaces_and_moderation")
+        for name in ("matrix_sdk_rooms_spaces_and_moderation", "matrix_sdk_call_signaling"):
+            if subprocess.run(["cargo", "test", "--locked", "--manifest-path", "rust-client/Cargo.toml",
+                               name, "--", "--ignored", "--nocapture"], cwd=ROOT, env=flows).returncode:
+                failed.append(name)
         if failed:
             raise SystemExit("FAILED: " + ", ".join(failed))
         events = http("GET", f"{hs}/_matrix/client/v3/rooms/{quote(room, safe='')}/messages",

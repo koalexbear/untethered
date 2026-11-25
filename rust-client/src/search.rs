@@ -441,7 +441,11 @@ mod tests {
         );
         app.search_found("!r".into(), vec![found("$new", 5, "Lunch moved")], None);
         let s = app.search.as_ref().unwrap();
-        let hits: Vec<_> = s.hits.iter().map(|h| (h.id.as_str(), h.snippet.as_str())).collect();
+        let hits: Vec<_> = s
+            .hits
+            .iter()
+            .map(|h| (h.id.as_str(), h.snippet.as_str()))
+            .collect();
         assert_eq!(hits, [("$new", "Lunch moved"), ("$old", "lunch at noon")]);
         assert!(!s.busy && s.next.is_none());
     }

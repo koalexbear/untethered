@@ -161,10 +161,6 @@ impl App {
             Request::Search(room, kind) => self.fail_search(&room, kind),
             Request::Setup(step) => self.setup_error(step),
             Request::Report => self.report_result(false),
-            Request::RtcDiscovery => {
-                self.rtc_status =
-                    "MatrixRTC discovery isn’t available with the matrix-sdk engine yet.".into();
-            }
             _ => {
                 self.status = "This isn’t available with the matrix-sdk engine yet.".into();
             }
@@ -367,6 +363,29 @@ impl App {
                 }
             }
             Event::RoomState { id, result } => self.engine_room_state(id, result),
+            Event::RtcTransports { id, result } => {
+                if matches!(self.pending.remove(&id), Some(Request::RtcDiscovery)) {
+                    match result {
+                        Ok(found) => self.rtc_discovered(&found),
+                        Err(_) => {
+                            self.rtc_status =
+                                "MatrixRTC discovery failed or is unsupported on this homeserver."
+                                    .into()
+                        }
+                    }
+                }
+            }
+            #[cfg(target_os = "linux")]
+            Event::CallFrame(frame) => self.frame(frame),
+            #[cfg(target_os = "linux")]
+            Event::CallActivity { room, event } => self.call_activity(&room, &event),
+            #[cfg(target_os = "linux")]
+            Event::CallState { id, result } => {
+                if let Some(Request::RingState(offer)) = self.pending.remove(&id) {
+                    let state = result.map_or(Value::Null, Value::Array);
+                    self.present_ring(offer, &state);
+                }
+            }
             Event::Member { room, user, member } => {
                 if self.people && self.selected == room {
                     self.directory.observe(&user, member);
@@ -564,6 +583,12 @@ impl App {
                 self.status = "Could not save space alerts. Try again.".into()
             }
             (Request::Setup(step), Err(_)) => self.setup_error(step),
+            #[cfg(target_os = "linux")]
+            (Request::DeclineSent, Ok(())) => self.status = "Call declined.".into(),
+            #[cfg(target_os = "linux")]
+            (Request::DeclineSent, Err(_)) => {
+                self.status = "Could not notify the caller that you declined.".into()
+            }
             (Request::Download, Ok(())) => self.status = "Attachment saved.".into(),
             (Request::Download, Err(_)) => {
                 self.status = "Could not save the attachment.".into();
@@ -878,10 +903,17 @@ mod tests {
             "original"
         );
 
-        // Unsupported gomuks RPCs never reach a backend.
+        // Call server discovery is a typed request.
         let _ = app.update(Msg::CheckCalls);
-        assert!(rx.try_recv().is_err());
-        assert!(app.rtc_status.contains("matrix-sdk engine"));
+        let Ok(Command::RtcTransports { id }) = rx.try_recv() else {
+            panic!("expected RTC discovery")
+        };
+        app.engine_event(Event::RtcTransports {
+            id,
+            result: Ok(vec![serde_json::json!({"type":"livekit",
+                "livekit_service_url":"https://rtc.example"})]),
+        });
+        assert_eq!(app.rtc_status, "Found 1 LiveKit call transport(s).");
     }
 
     #[test]

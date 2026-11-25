@@ -937,21 +937,8 @@ impl App {
                     Request::MediaSend(room, id) => self.file_sent(&room, id, data),
                     Request::Download => self.status = "Attachment saved.".into(),
                     Request::RtcDiscovery => {
-                        let n = items(&data["rtc_transports"])
-                            .filter(|v| {
-                                v["type"] == "livekit"
-                                    && v["livekit_service_url"].as_str().is_some_and(|s| {
-                                        url::Url::parse(s).is_ok_and(|u| {
-                                            u.scheme() == "https" && u.host().is_some()
-                                        })
-                                    })
-                            })
-                            .count();
-                        self.rtc_status = if n > 0 {
-                            format!("Found {n} LiveKit call transport(s).")
-                        } else {
-                            "No supported LiveKit transport advertised by this endpoint.".into()
-                        };
+                        let found: Vec<Value> = items(&data["rtc_transports"]).cloned().collect();
+                        self.rtc_discovered(&found)
                     }
                     Request::Context(room, id) => self.show_context(room, id, data),
                     Request::Posting(f) => self.posting_result(f, data),
@@ -1551,6 +1538,14 @@ impl App {
                         .any(|p| matches!(p, Request::RtcDiscovery)) =>
             {
                 self.rtc_status = "Checking MatrixRTC transports…".into();
+                #[cfg(not(target_arch = "wasm32"))]
+                if self.sdk.is_some() {
+                    self.command(
+                        |id| engine::Command::RtcTransports { id },
+                        Request::RtcDiscovery,
+                    );
+                    return Task::none();
+                }
                 self.rpc("get_rtc_transports", json!({}), Request::RtcDiscovery);
             }
             Msg::HoverFiles(v) => self.hover_files = v,
@@ -2117,6 +2112,25 @@ impl App {
         #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
         let task = Task::batch([task, self.send_alerts()]);
         task
+    }
+    /// The MSC4143 transports a homeserver advertises, for "Check call server
+    /// support".
+    fn rtc_discovered(&mut self, transports: &[Value]) {
+        let n = transports
+            .iter()
+            .filter(|v| {
+                v["type"] == "livekit"
+                    && v["livekit_service_url"].as_str().is_some_and(|s| {
+                        url::Url::parse(s)
+                            .is_ok_and(|u| u.scheme() == "https" && u.host().is_some())
+                    })
+            })
+            .count();
+        self.rtc_status = if n > 0 {
+            format!("Found {n} LiveKit call transport(s).")
+        } else {
+            "No supported LiveKit transport advertised by this endpoint.".into()
+        };
     }
     fn title(&self) -> String {
         let page = if self.account || self.logged_in && !self.verified {

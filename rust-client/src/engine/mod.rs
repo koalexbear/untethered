@@ -10,6 +10,8 @@ pub mod account_ui;
 mod alerts;
 pub mod app;
 mod browser;
+#[cfg(target_os = "linux")]
+mod calls;
 mod keyring;
 #[cfg(test)]
 mod live_test;
@@ -249,6 +251,22 @@ pub enum Command {
         id: i64,
         rooms: Vec<String>,
     },
+    /// The homeserver's MatrixRTC transports, as [`Event::RtcTransports`].
+    RtcTransports {
+        id: i64,
+    },
+    /// A room's state for checking an incoming call, as [`Event::CallState`].
+    #[cfg(target_os = "linux")]
+    CallState {
+        id: i64,
+        room: String,
+    },
+    #[cfg(target_os = "linux")]
+    DeclineRing {
+        id: i64,
+        room: String,
+        ring: String,
+    },
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -334,6 +352,28 @@ pub enum Event {
     Mentions {
         id: i64,
         result: Result<Vec<Found>, Failure>,
+    },
+    /// MSC4143 transports as the homeserver describes them.
+    RtcTransports {
+        id: i64,
+        result: Result<Vec<serde_json::Value>, Failure>,
+    },
+    /// A status frame from a running call (`desktop_call`'s own protocol,
+    /// the same on both engines).
+    #[cfg(target_os = "linux")]
+    CallFrame(serde_json::Value),
+    /// A call-related room event, as a (decrypted) Matrix event, for
+    /// incoming calls.
+    #[cfg(target_os = "linux")]
+    CallActivity {
+        room: String,
+        event: serde_json::Value,
+    },
+    /// A room's state as Matrix state events (`Command::CallState`).
+    #[cfg(target_os = "linux")]
+    CallState {
+        id: i64,
+        result: Result<Vec<serde_json::Value>, Failure>,
     },
 }
 
@@ -456,6 +496,11 @@ pub struct RoomSummary {
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     pub dm_peer: Option<String>,
     pub voice: bool,
+    /// A voice room's call member state events from the store, in
+    /// client-server format; empty for other rooms. Only the Linux call UI
+    /// reads them today.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    pub call_members: Vec<serde_json::Value>,
     pub encrypted: bool,
     /// Client-side counts computed by the SDK from read receipts.
     pub unread_messages: u64,
@@ -699,6 +744,8 @@ impl Engine {
         tasks.spawn(rooms::updates(client.clone(), self.events.clone()));
         tasks.spawn(messaging::account_data(client.clone(), self.events.clone()));
         state::member_changes(&client, self.events.clone());
+        #[cfg(target_os = "linux")]
+        calls::watch(&client, self.events.clone());
         alerts::register(&client, self.events.clone()).await;
         tasks.spawn(timeline::resume_after_errors(client.clone()));
         tasks.spawn(sync_status(sync.clone(), self.events.clone()));
@@ -1072,6 +1119,43 @@ impl Engine {
                 })
                 .await
             }
+            Command::RtcTransports { id } => {
+                let unavailable = Event::RtcTransports {
+                    id,
+                    result: Err(Failure::Unavailable),
+                };
+                self.answer(unavailable, move |client| async move {
+                    let result = match client.discover_rtc_transports().await {
+                        Ok(found) => Ok(found
+                            .unwrap_or_default()
+                            .iter()
+                            .filter_map(|t| serde_json::to_value(t).ok())
+                            .collect()),
+                        Err(_) => Err(Failure::Unreachable),
+                    };
+                    Event::RtcTransports { id, result }
+                })
+                .await
+            }
+            #[cfg(target_os = "linux")]
+            Command::CallState { id, room } => {
+                let unavailable = Event::CallState {
+                    id,
+                    result: Err(Failure::Unavailable),
+                };
+                self.answer(unavailable, move |client| async move {
+                    let result = calls::call_state(&client, &room).await;
+                    Event::CallState { id, result }
+                })
+                .await
+            }
+            #[cfg(target_os = "linux")]
+            Command::DeclineRing { id, room, ring } => {
+                self.job(id, move |client, _, _| async move {
+                    calls::decline_ring(&client, &room, &ring).await
+                })
+                .await
+            }
             Command::Mentions { id, rooms } => {
                 let unavailable = Event::Mentions {
                     id,
@@ -1146,7 +1230,41 @@ impl Engine {
             }
             Transfer::Rpc(_) => {}
             #[cfg(target_os = "linux")]
-            Transfer::Voice { .. } => {}
+            Transfer::Voice {
+                room,
+                target,
+                controls,
+            } => {
+                // The call reports in desktop_call's frames; pass them on.
+                let (frames, from_call) = async_channel::unbounded::<serde_json::Value>();
+                let forward = events.clone();
+                tokio::spawn(async move {
+                    while let Ok(frame) = from_call.recv().await {
+                        if forward.send(Event::CallFrame(frame)).await.is_err() {
+                            return;
+                        }
+                    }
+                });
+                tokio::spawn(async move {
+                    let result = match live {
+                        Some(client) => match calls::SdkSignal::new(client, &room) {
+                            Ok(signal) => {
+                                crate::desktop_call::run_with(
+                                    signal, &room, target, controls, &frames,
+                                )
+                                .await
+                            }
+                            Err(why) => Err(why),
+                        },
+                        None => Err("Sign in before calling."),
+                    };
+                    let label = result.unwrap_or_else(|e| e);
+                    let _ = frames
+                        .send(serde_json::json!({"command":"desktop_call","data":{
+                            "room":room,"ended":true,"label":label}}))
+                        .await;
+                });
+            }
         }
     }
 

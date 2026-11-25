@@ -7432,6 +7432,7 @@ dependencies = [
  "libc",
  "livekit",
  "matrix-sdk",
+ "matrix-sdk-crypto",
  "matrix-sdk-ui",
  "mime",
  "pipewire",

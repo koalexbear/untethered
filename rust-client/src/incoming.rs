@@ -317,13 +317,107 @@ impl App {
     fn check_ring(&mut self, i: Offer) {
         let room = i.room.clone();
         self.inbox.checking = Some(i.clone());
-        self.rpc(
-            "get_room_state",
-            json!({"room_id":room,"fetch_members":true,"include_members":true}),
-            Request::RingState(i),
-        );
+        #[cfg(target_os = "linux")]
+        if self.sdk.is_some() {
+            self.command(
+                |id| crate::engine::Command::CallState { id, room },
+                Request::RingState(i),
+            );
+        } else {
+            self.rpc(
+                "get_room_state",
+                json!({"room_id":room,"fetch_members":true,"include_members":true}),
+                Request::RingState(i),
+            );
+        }
         if !matches!(self.pending.get(&self.seq), Some(Request::RingState(_))) {
             self.inbox.checking = None;
+        }
+    }
+    /// A call-related room event from the matrix-sdk engine, as a Matrix
+    /// event: a ring, a decline, a redaction, or a DM's call membership or
+    /// member change. The same decisions as [`Self::ring_events`], without
+    /// gomuks's timeline bookkeeping.
+    pub(super) fn call_activity(&mut self, room: &str, e: &Value) {
+        let at = now();
+        self.inbox.seen.retain(|_, t| *t > at);
+        let Some(peer) = self
+            .live
+            .list
+            .get(room)
+            .filter(|r| r.encrypted)
+            .and_then(|r| r.dm_peer.clone())
+        else {
+            return;
+        };
+        let pending = self
+            .inbox
+            .ringing
+            .as_ref()
+            .map(|(i, _)| i)
+            .or(self.inbox.checking.as_ref())
+            .filter(|i| i.room == room)
+            .cloned();
+        let ty = &e["type"];
+        let c = &e["content"];
+        if e["sender"] == self.matrix_id && !redacted(e) {
+            let mut outcome = None;
+            if ty == DECLINE
+                && c["m.relates_to"]["rel_type"] == "m.reference"
+                && let Some(id) = c["m.relates_to"]["event_id"]
+                    .as_str()
+                    .filter(|s| s.starts_with('$'))
+                && let Some(ts) = e["origin_server_ts"].as_u64()
+                && ts.saturating_add(90_000) > at
+            {
+                // A second device may decrypt the decline *before* the ring.
+                self.inbox
+                    .seen
+                    .insert((room.into(), id.into()), at + 90_000);
+                if pending.as_ref().is_some_and(|i| i.event == id) {
+                    outcome = Some("Call declined on another device.");
+                }
+            } else if pending.is_some() && active_member(e) {
+                outcome = Some("Call answered on another device.");
+            }
+            if let Some(outcome) = outcome {
+                self.clear_ring();
+                self.inbox.handled = Some((room.into(), outcome));
+                return;
+            }
+        }
+        if let Some(i) = &pending
+            && ((ty == EVENT_TYPE
+                && e["sender"] == peer
+                && i.caller_session
+                    .as_ref()
+                    .map_or(!active_member(e), |(key, _)| e["state_key"] == *key)
+                && !i.matches_member(e))
+                || (ty == "m.room.member" && e["state_key"] == peer && c["membership"] != "join")
+                || (ty == "m.room.redaction"
+                    && [c.get("redacts"), e.get("redacts")]
+                        .into_iter()
+                        .flatten()
+                        .any(|id| *id == i.event || *id == i.member)))
+        {
+            self.clear_ring();
+        }
+        if self.call.is_some() || !self.verified || self.closing || e["sender"] != peer {
+            return;
+        }
+        let Some(id) = e["event_id"].as_str() else {
+            return;
+        };
+        let key = (room.to_owned(), id.to_owned());
+        if self.inbox.seen.contains_key(&key)
+            || self.inbox.ringing.is_some()
+            || self.inbox.checking.is_some()
+        {
+            return;
+        }
+        if let Some(i) = Offer::parse(e, room, &peer, &self.matrix_id, at) {
+            self.inbox.seen.insert(key, i.expires);
+            self.check_ring(i);
         }
     }
     pub(super) fn present_ring(&mut self, mut i: Offer, state: &Value) {
@@ -399,6 +493,12 @@ impl App {
                     peer: i.peer.clone(),
                     incoming: Some(i),
                 },
+            );
+        } else if self.sdk.is_some() {
+            let (room, ring) = (i.room.clone(), i.event.clone());
+            self.command(
+                |id| crate::engine::Command::DeclineRing { id, room, ring },
+                Request::DeclineSent,
             );
         } else {
             self.rpc("send_event",json!({"room_id":i.room,"type":DECLINE,"synchronous":true,"content":{

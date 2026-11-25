@@ -13,7 +13,7 @@ notifications, moderation, permissions and spaces → call signaling → web
 build → remove gomuks. Throughout, the UI keeps reading
 `rooms::{Rooms, Room, Post}`; that model is the seam.
 
-## Status: steps 1 to 5 are in
+## Status: steps 1 to 6 are in
 
 The native client has a second engine built on `matrix-sdk` and
 `matrix-sdk-ui` **0.20.0**. gomuks stays the default. The wasm32 build doesn't
@@ -103,14 +103,17 @@ Things worth knowing:
   yet." The mentions, search, report and community setup flows get their
   normal failure handling.
 
-Known differences on the new engine, each owned by a later step:
-- Unread badges don't clear, because no receipts are sent yet.
-- There are no desktop notifications.
-- Reaction and edit controls are hidden.
-- Attachments show as "Attachment · name", and staged files can't be sent.
-- Sends are plain text; gomuks renders Markdown.
-- Calls, moderation, permissions, search and the mentions inbox are
-  unavailable.
+Known differences on the new engine after step 6 (step 1 started with
+many more; the step sections below say what closed them):
+- A message that only decrypts after its sync (late keys) raises no alert
+  and no ring; gomuks waited for those.
+- Search reads every stored event of the room; there is no index yet.
+- A text message that failed to send stays marked "Failed to send"; there
+  is no Retry or Remove yet.
+- OAuth 2.0 / MAS sign-in is untested.
+- No full media call has run on this engine yet; the Element Call
+  fixtures assume gomuks profiles (see [step 6](#step-6-call-signaling-behind-a-seam)).
+- The web build still runs gomuks (step 7).
 
 ## Step 2: account and verification
 
@@ -379,8 +382,104 @@ features now use typed requests on the new engine:
   open directory as `Event::Member`, as gomuks's sync deltas did.
 - **Room open:** the gomuks path fetched room state on open (names,
   permissions, call memberships). On this engine, names come from the
-  timeline and permissions from room summaries. Call memberships wait for
-  step 6.
+  timeline and permissions from room summaries. Voice rooms' call
+  memberships come with the summaries too, since step 6.
+
+## Step 6: call signaling behind a seam
+
+The LiveKit media code in `src/desktop_call/` is unchanged. What moved is
+the Matrix signaling a call needs, which used to be gomuks RPCs and frames
+read straight off its WebSocket.
+
+### The seam
+
+`rtc_membership::CallSignal` is the boundary between the call layer and an
+engine, in the same spirit as step 5's typed requests:
+
+- **Methods for what a call does:** `identity`, `room_state`,
+  `send_event`, `send_to_device`, `openid_token`, `rtc_transports`, plus the
+  `StateSignal` writes a `Membership` needs (`set_state`,
+  `set_delayed_state`, `update_delayed`).
+- **Typed updates instead of frames:** `next(room)` waits for the next
+  `CallUpdate`: `Roster` (call or room membership changed, or we left),
+  `Key(CallKey)` (an Olm-authenticated sender and the key content) or
+  `Decline { sender, refers_to }` (an encrypted, server-confirmed
+  reference). `ready()` hands over updates that arrived while another
+  request was being answered.
+- **Matrix formats where Matrix defines them:** room state crosses as
+  client-server state events (`origin_server_ts`, not gomuks's
+  `timestamp`); membership, ring, decline and key contents stay MatrixRTC
+  JSON.
+- **Errors are sentences for the call status**, never server text.
+
+Two adapters implement it:
+
+- `desktop_call/gomuks.rs` (`GomuksSignal`): gomuks's RPCs, with its
+  frames turned into `CallUpdate`s and its events converted at the edge.
+  `rtc_membership::Signal` (the request-closure seam the Element Call probe
+  uses) still works through a blanket `StateSignal` implementation.
+- `engine/calls.rs` (`SdkSignal`): matrix-sdk 0.20.
+
+`desktop_call::run_with(signal, …)` runs a DM call or a voice room on
+either. On the new engine, the App's existing voice transfer starts it with
+an `SdkSignal`, and the call's frames (status, roster, video) reach the App
+as `Event::CallFrame`, so the call UI is unchanged.
+
+| Need | matrix-sdk 0.20 | How it was verified |
+| --- | --- | --- |
+| Membership with a delayed leave | `send_state_event_raw(…).into_delayed(…)` returns the delay ID; `update_delayed_event` restarts, sends or cancels it. If the leave can't be armed, the membership is removed at once, as before | Live: joined, heartbeat, left |
+| Memberships while in a call | `Room::subscribe_to_state_events` for call member and room member events → `CallUpdate::Roster`; reads use a fresh `/state` | Live, in the same test |
+| Ring | `Room::send_raw` (encrypted in encrypted rooms) | Live: sent in an encrypted room (receiving one goes through `calls::watch`, below) |
+| Decline | A room event handler; only encrypted, server-confirmed `org.matrix.msc4310.rtc.decline` references count, as on gomuks | Live: the peer's encrypted decline of that ring reached the caller |
+| Call keys | `encrypt_and_send_raw_to_device` (feature `experimental-send-custom-to-device`) to the devices the call layer names; received with `subscribe_to_custom_to_device_messages`, only with Olm encryption info, the sender taken from it | Live: the key reached the peer's device |
+| LiveKit authorization | `request_openid_token` | Live: token returned |
+| RTC transports (also "Check call server support") | `Client::discover_rtc_transports` | Live: none on plain Synapse, as expected |
+| Incoming rings | `calls::watch` forwards rings, declines and redactions from any room, and call and room membership changes in DMs, as `Event::CallActivity`. `incoming::call_activity` is the typed core; the ring check and the decline are typed commands (`CallState`, `DeclineRing`) | Unit tests |
+| Voice-room presence | Room summaries carry a voice room's call member events from the store (sliding sync's `required_state` includes them) | Unit test |
+
+### Step 6 verification
+
+- `cargo test` (unit tests, including the gomuks frame and decline
+  parsing that moved into `gomuks.rs`), clippy, the wasm32 check and the
+  Windows cross-build.
+- `scripts/qa_matrix_sdk.py` gained `matrix_sdk_call_signaling`: two SDK
+  clients against Synapse (with `max_event_delay_duration` set) run the
+  rows marked "Live" above. `UNTETHERED_QA_ONLY=call` runs just that test.
+- The gomuks path, through the new adapter, with the Element Call
+  fixtures, each also run on the commit before step 6 for comparison:
+  - `run_element.sh --native-dm` passes end to end (rings, cancel,
+    decline, expiry, calls both ways, a TURN cut and a 6-second outage of
+    the caller) once its reconnect check reads the sidebar dock.
+  - `--voice-room` passes encrypted three-way audio, the memberships and
+    presence, a device leaving, and fresh audio afterwards.
+  - Four checks fail as written because the Discord-style dock moved what
+    they read. Three fail the same way on the previous commit: the DM
+    call's "Reconnecting…" (it's in the dock unless the call stage is
+    open), the speaking rings, and the names in the sidebar of the client
+    that left. The mixer's second row is cut off because the dock shows
+    64 px of its details while the stage is closed. The scripts need
+    updating; that's separate from this migration.
+
+### Things worth knowing (step 6)
+
+- **A media call on the new engine is still to do.** The fixtures start
+  gomuks profiles and read gomuks databases, so they need an engine switch
+  before they can cover it. Do that before making the SDK the default.
+- **Declines read during another request:** gomuks delivers everything on
+  one WebSocket, so frames read while waiting for an RPC answer are queued
+  in the adapter. The first port collected them only in `next()`, and the
+  ringing caller missed a decline that arrived during a state read; `ready()`
+  fixed it.
+- **One `/state` read per heartbeat:** `SdkSignal::room_state` always asks
+  the server (gomuks's `refetch` flag doesn't apply), so a DM call reads the
+  room state every 4 seconds while the lease is checked. The store would
+  be cheaper, but the lease check wants the server's view.
+- **Key recipients:** `CollectStrategy::AllDevices` sends to exactly the
+  devices the call layer picked from call memberships, verified or not,
+  as gomuks did. A device whose keys this client hasn't fetched yet is
+  skipped and gets its key on the next reconcile.
+- **The experimental to-device feature** is on a user-facing path; pin the
+  SDK version and treat each bump as a call regression test.
 
 ## (a) gomuks calls and their matrix-sdk equivalents
 
@@ -396,23 +495,23 @@ Those marked *(0.20)* are new in 0.20.
 | `create_room` | Space and channel setup (`community.rs`) | `Client::create_room` from the App's `createRoom` body; space edges with `send_state_event_for_key(SpaceChildEventContent)` | Done |
 | `get_event_context` | Opening a reply's original or a mention beyond loaded history (`replies.rs`) | `Room::event_with_context`; better, a second `Timeline` with `TimelineFocus::Event` that paginates both ways | Done (`event_with_context`) |
 | `get_media_config` | Upload size limit (`account.rs`, `transfers.rs`) | `Client::load_or_fetch_max_upload_size()` (cached) | Done |
-| `get_room_state` | Members and power levels (`main.rs`, `moderation.rs`, `permissions.rs`), call memberships (`desktop_call.rs`, `incoming.rs`), community setup | A fresh `/state` read (`get_state_events`) into `RoomState`; summaries carry the power levels from the store; `Room::subscribe_to_state_events` *(0.20)* for calls | Done except call memberships |
-| `get_rtc_transports` | "Check call server support" (`main.rs`), call setup (`desktop_call.rs`) | gomuks calls the MSC4143 `/rtc/transports` endpoint: `client.send(ruma::api::client::rtc::transports::…::Request)`; the well-known variant is `Client::rtc_foci()` | Available |
+| `get_room_state` | Members and power levels (`main.rs`, `moderation.rs`, `permissions.rs`), call memberships (`desktop_call.rs`, `incoming.rs`), community setup | A fresh `/state` read (`get_state_events`) into `RoomState`; summaries carry the power levels from the store; `Room::subscribe_to_state_events` *(0.20)* for calls | Done |
+| `get_rtc_transports` | "Check call server support" (`main.rs`), call setup (`desktop_call.rs`) | `Client::discover_rtc_transports` (MSC4143 `/rtc/transports`); the well-known variant is `Client::rtc_foci()` | Done |
 | `get_state` | Own user and device ID (`desktop_call.rs`), refresh after verification (`main.rs`) | `Client::user_id`/`device_id`, `Encryption::get_own_device`, `verification_state()`, `recovery().state()` | Done (as `Event::Account`) |
-| `listen_to_device` | Receiving call encryption keys (`desktop_call.rs`) | `Client::subscribe_to_custom_to_device_messages([types])` *(0.20)*: Olm-decrypted, with the sender's device. In 0.19.1, a to-device event handler | Available |
+| `listen_to_device` | Receiving call encryption keys (`desktop_call.rs`) | `Client::subscribe_to_custom_to_device_messages([types])` *(0.20)*: Olm-decrypted, with the sender's device | Done |
 | `login` | Account form | `matrix_auth().login_username()`; `Client::restore_session` on start | Done |
 | `mark_read` | Read markers and Mark read (`reading.rs`) | `Timeline::send_single_receipt` / `mark_as_read(ReceiptType::Read or ReadPrivate)`, `Room::send_multiple_receipts` for fully-read; per-item receipts in `EventTimelineItem::read_receipts()` | Done (`send_multiple_receipts`) |
 | `paginate` | History (`main.rs`) | `Timeline::paginate_backwards(50)` | Done |
 | `report_event` | Report message (`reports.rs`) | `Room::report_content` | Done |
-| `request_openid_token` | LiveKit JWT service auth (`desktop_call.rs`) | `client.send(request_openid_token::v3::Request::new(user_id))` | Available (raw ruma request) |
+| `request_openid_token` | LiveKit JWT service auth (`desktop_call.rs`) | `client.send(request_openid_token::v3::Request::new(user_id))` | Done |
 | `search_local` | Room search (`search.rs`), mentions inbox (`mentions.rs`) | No equivalent. The engine scans stored events (`EventCacheStore::get_room_events`); `experimental-search` covers part of room search | Done by scanning; an index is still the plan, see (b) |
-| `send_event` | Edits (`edits.rs`), reactions (`reactions.rs`), call decline (`incoming.rs`), call events (`desktop_call.rs`) | `Timeline::edit`, `Timeline::toggle_reaction`, `Room::send`, `Room::send_raw` | Done for edits and reactions; calls open |
+| `send_event` | Edits (`edits.rs`), reactions (`reactions.rs`), call decline (`incoming.rs`), call events (`desktop_call.rs`) | `Timeline::edit`, `Timeline::toggle_reaction`, `Room::send`, `Room::send_raw` | Done |
 | `send_message` | Composer and replies (`main.rs`), media captions (`transfers.rs`) | `Timeline::send`, `send_reply`, `send_attachment` (send queue: local echo, retry, wedged-queue handling) | Done for text (Markdown) and replies; media open |
-| `send_to_device` | Sending call encryption keys (`desktop_call/channel.rs`) | `Encryption::encrypt_and_send_raw_to_device` behind the `experimental-send-custom-to-device` feature | Available behind a feature |
+| `send_to_device` | Sending call encryption keys (`desktop_call/channel.rs`) | `Encryption::encrypt_and_send_raw_to_device` behind the `experimental-send-custom-to-device` feature | Done (behind the feature) |
 | `set_account_data` | Marked unread (`reading.rs`), space alert preferences (`notifications/spaces.rs`) | `Room::set_unread_flag`, `Room::set_account_data_raw`, `Account::set_account_data_raw` | Done |
 | `set_membership` | Kick, ban, unban, invite (`moderation.rs`, `community.rs`) | `Room::kick_user`, `ban_user`, `unban_user`, `invite_user_by_id` | Done |
-| `set_state` | Power levels (`permissions.rs`), space edges (`community.rs`), call membership with delayed leave (`rtc_membership.rs`, `desktop_call.rs`) | `Room::send_state_event_raw`, `send_state_event_for_key`; MSC4140 delayed events with `SendRawStateEvent::into_delayed` *(0.20)* | Done except call membership |
-| `update_delayed_event`¹ | Restart/send/cancel the delayed call leave (`rtc_membership.rs`) | `Client::update_delayed_event(delay_id, action, …)` *(0.20)*; `Client::rtc_livekit_delegate_delayed_leave` *(0.20)* hands it to the homeserver | Available |
+| `set_state` | Power levels (`permissions.rs`), space edges (`community.rs`), call membership with delayed leave (`rtc_membership.rs`, `desktop_call.rs`) | `Room::send_state_event_raw`, `send_state_event_for_key`; MSC4140 delayed events with `SendRawStateEvent::into_delayed` *(0.20)* | Done |
+| `update_delayed_event`¹ | Restart/send/cancel the delayed call leave (`rtc_membership.rs`) | `Client::update_delayed_event(delay_id, action, …)` *(0.20)*; `Client::rtc_livekit_delegate_delayed_leave` *(0.20)* could hand it to the homeserver | Done (`update_delayed_event`) |
 | `update_push_rule` | Room and space alerts, Do Not Disturb (`notifications.rs`, `notifications/spaces.rs`) | The push rules API through `Client::send`: `set_pushrule`, `set_pushrule_enabled`, `delete_pushrule` | Done |
 | `verify` | Verify form | `Recovery::recover(key or passphrase)` | Done |
 
@@ -574,9 +673,10 @@ the main thread, and talk across a serde-derived version of the same
 
 ### Calls
 
-**Keep the LiveKit media stack in `src/desktop_call/` as it is. Port only
-the Matrix signaling, behind the existing `rtc_membership::Signal` seam,
-whose callers already pass in a request closure.**
+**Done in [step 6](#step-6-call-signaling-behind-a-seam):** the LiveKit
+media stack stayed as it is, and the Matrix signaling moved behind
+`rtc_membership::CallSignal`, with a gomuks and a matrix-sdk adapter. The
+table below is the plan it followed.
 
 Most of these need 0.20.0 or later, which the engine uses since step 4.
 
@@ -588,15 +688,13 @@ Most of these need 0.20.0 or later, which the engine uses since step 4.
 | Encrypted per-sender keys (`rtc_keys.rs`) | `send_to_device` / `listen_to_device` | `Encryption::encrypt_and_send_raw_to_device` (feature `experimental-send-custom-to-device`); `Client::subscribe_to_custom_to_device_messages([io.element.call.encryption_keys])` |
 | Memberships and ringing (`incoming.rs`) | `get_room_state`, decrypted `m.rtc.notification`/decline events | `Room::subscribe_to_state_events` for memberships; the Timeline already surfaces `RtcNotification { call_intent, declined_by, active_call_info }` |
 
-`Signal::request(cmd, json)` lets `rtc_membership.rs` move without changes
-by implementing it over the engine at first. Then replace the JSON commands
-with typed methods (`join`, `heartbeat`, `leave`, `send_keys`) and delete the
-string commands with gomuks. Repeat the Element Call interop runs from
+Still open: repeat the Element Call interop runs from
 `scripts/test-media-interop.py` (`--rtc-membership`, `--rtc-audio`,
-`--desktop-dm`) on the new engine before switching the default. The
-to-device feature flag is the one place where an experimental SDK API sits
-on a user-facing path. Pin the SDK version, and treat each bump as a call
-regression test.
+`--desktop-dm`, `--native-dm`, `--voice-room`) on the new engine before
+switching the default. When gomuks goes, delete `GomuksSignal` and the
+`Signal` blanket implementation with it. The to-device feature flag is the
+one place where an experimental SDK API sits on a user-facing path. Pin the
+SDK version, and treat each bump as a call regression test.
 
 ### Account seeding in the QA scripts
 
@@ -731,6 +829,10 @@ UNTETHERED_BACKEND=/path/to/gomuks uv run --python 3.13 --with matrix-synapse \
    failed messages, streaming previews and downloads, blurhash.
 4. **Rooms, moderation, alerts and search:** done in step 5. Left: alerts
    for late-decrypted messages, and a full-text index for search.
-5. Calls (above); then the web build; then delete `backend/` and the gomuks
+5. **Calls:** signaling done in step 6. Left: a media call on the new
+   engine through the Element Call fixtures (they need an engine switch),
+   and rings for late-decrypted events.
+6. **Web build** on the SDK (wasm32, IndexedDB stores).
+7. **Remove gomuks:** delete `backend/`, `GomuksSignal` and the gomuks
    scripts, and move the remaining call sites off `engine_rpc` to typed
    commands.

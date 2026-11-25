@@ -61,6 +61,7 @@ async fn summary(room: &Room) -> RoomSummary {
     let id = room.room_id().to_string();
     let dm = room.is_direct().await.unwrap_or(false);
     let counts = room.unread_notification_counts();
+    let voice = room.is_call();
     RoomSummary {
         name: room
             .cached_display_name()
@@ -78,7 +79,12 @@ async fn summary(room: &Room) -> RoomSummary {
                     .find_map(|t| t.as_user_id().map(ToString::to_string))
             })
             .flatten(),
-        voice: room.is_call(),
+        voice,
+        call_members: if voice {
+            call_members(room).await
+        } else {
+            Vec::new()
+        },
         encrypted: room.encryption_state().is_encrypted(),
         unread_messages: room.num_unread_messages(),
         unread_mentions: room.num_unread_mentions(),
@@ -118,6 +124,22 @@ async fn state_doc(room: &Room, kind: StateEventType) -> Option<StateDoc> {
         content: e["content"].clone(),
         redacted: e["unsigned"]["redacted_because"].is_object(),
     })
+}
+
+/// Who is in a voice room. Simplified Sliding Sync's default `required_state`
+/// includes every `org.matrix.msc3401.call.member` event, so this is a local
+/// read that follows sync; the App decides which memberships are still active.
+async fn call_members(room: &Room) -> Vec<Value> {
+    let Ok(events) = room.get_state_events(StateEventType::CallMember).await else {
+        return Vec::new();
+    };
+    events
+        .into_iter()
+        .filter_map(|raw| match raw {
+            RawAnySyncOrStrippedState::Sync(raw) => raw.deserialize_as::<Value>().ok(),
+            RawAnySyncOrStrippedState::Stripped(_) => None,
+        })
+        .collect()
 }
 
 /// Children with a non-empty `via`; an empty or redacted edge is a removal.

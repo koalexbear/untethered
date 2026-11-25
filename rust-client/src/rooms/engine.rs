@@ -46,6 +46,7 @@ impl Rooms {
             #[cfg(target_os = "linux")]
             {
                 room.dm_peer = s.dm_peer;
+                room.replace_voice_members(&s.call_members);
             }
             room.posting.store_snapshot(s.create, s.power);
             #[cfg(target_os = "linux")]
@@ -269,6 +270,43 @@ mod tests {
         });
         assert_eq!(left, ["!a", "!c"]);
         assert_eq!(rooms.ordered_spaces["!s"], ["!b"]);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn voice_room_members_follow_store_snapshots() {
+        let now = crate::desktop_call::now();
+        let member = |user: &str, device: &str, ts: u64, content: serde_json::Value| {
+            serde_json::json!({"type":untethered_iced::rtc_membership::EVENT_TYPE,
+                "state_key":format!("_{user}_{device}_m.call"),"sender":user,
+                "event_id":format!("${device}"),"origin_server_ts":ts,"content":content})
+        };
+        let joined = |device: &str| {
+            serde_json::json!({"application":"m.call","scope":"m.room","call_id":"",
+                "device_id":device,"focus_active":{"type":"livekit"}})
+        };
+        let voice = |members: Vec<serde_json::Value>| RoomList {
+            rooms: vec![RoomSummary {
+                id: "!v".into(),
+                name: "Lounge".into(),
+                voice: true,
+                call_members: members,
+                ..Default::default()
+            }],
+            children: BTreeMap::new(),
+        };
+        let mut rooms = Rooms::default();
+        // Element Call omits created_ts on a first join: the event's own
+        // timestamp starts the lease. An expired lease and a left member
+        // ({}) don't count.
+        rooms.apply_engine(voice(vec![
+            member("@a:x", "A", now - 1_000, joined("A")),
+            member("@b:x", "B", now - 15_000_000, joined("B")),
+            member("@c:x", "C", now - 1_000, serde_json::json!({})),
+        ]));
+        assert_eq!(rooms.list["!v"].voice_users(), ["@a:x"].into());
+        rooms.apply_engine(voice(vec![member("@a:x", "A", now, serde_json::json!({}))]));
+        assert!(rooms.list["!v"].voice_users().is_empty());
     }
 
     #[test]

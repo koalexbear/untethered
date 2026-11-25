@@ -156,6 +156,14 @@ impl Room {
                 .insert(key.into(), (user.into(), expires));
         }
     }
+    /// All of a voice room's call memberships, as the engine's store holds them.
+    #[cfg(target_os = "linux")]
+    pub fn replace_voice_members(&mut self, events: &[Value]) {
+        self.voice_members.clear();
+        for e in events {
+            self.voice_state(e);
+        }
+    }
     pub fn already_confirmed(&self, e: &Value) -> bool {
         e["rowid"]
             .as_i64()
