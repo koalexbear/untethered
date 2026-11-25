@@ -1,6 +1,8 @@
 use chrono::{DateTime, Local, NaiveDate};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
+#[cfg(not(target_arch = "wasm32"))]
+mod engine;
 pub const VOICE_ROOM: &str = "org.matrix.msc3417.call";
 
 pub fn items(v: &Value) -> impl Iterator<Item = &Value> {

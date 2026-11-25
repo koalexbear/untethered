@@ -1,5 +1,88 @@
-use serde_json::Value;
+use crate::{App, Request, Section, media, rooms::Rooms};
+use iced::widget::text_editor;
+use serde_json::{Value, json};
 use url::{Host, Url};
+
+/// Sign-in and device state as reported by either engine: gomuks's
+/// `client_state` frame or the matrix-sdk engine's `Event::Account`.
+pub struct State {
+    pub logged_in: bool,
+    pub verified: bool,
+    pub recovery_unavailable: bool,
+    pub profile: String,
+    pub user_id: String,
+}
+
+impl App {
+    pub fn apply_account(&mut self, state: State) {
+        let was = self.logged_in;
+        let was_verified = self.verified;
+        self.connected = true;
+        self.logged_in = state.logged_in;
+        self.verified = state.verified;
+        #[cfg(target_os = "linux")]
+        if !self.verified {
+            self.clear_ring();
+        }
+        self.recovery_unavailable = state.recovery_unavailable;
+        if self.verified || !self.logged_in {
+            self.recovery.clear();
+            self.verification_note.clear();
+        }
+        self.profile = state.profile;
+        let user = state.user_id;
+        if self.matrix_id != user || !self.verified || !self.logged_in {
+            self.setup = None;
+            self.pending.retain(|_, p| !matches!(p, Request::Setup(_)));
+            self.close_mentions();
+            self.read_sharing = Default::default();
+            self.pending
+                .retain(|_, p| !matches!(p, Request::ShareReads(..) | Request::ReadState(..)));
+        }
+        self.matrix_id = user;
+        if was != self.logged_in {
+            #[cfg(target_os = "linux")]
+            {
+                self.drop_epoch += 1;
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                self.paste_seq += 1;
+                self.pasting = false;
+            }
+            self.pending.retain(|_, p| matches!(p, Request::Login));
+            self.drafts.clear();
+            self.clear_search();
+            self.reply_drafts.clear();
+            self.reset_directory();
+            self.leave_permission_panel();
+            #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
+            self.alerts.reset();
+            self.editing = None;
+            self.close_original();
+            self.editor = text_editor::Content::new();
+            self.loaded.clear();
+            self.timeline_end = None;
+            self.selected.clear();
+            self.section = Section::All;
+            self.account = !self.logged_in;
+            self.outbox.rooms.clear();
+            self.outbox.skipped.clear();
+            self.inline.reset();
+            self.batch = None;
+            self.rtc_status.clear();
+            self.media_limit = media::MAX_BYTES;
+            if !self.logged_in {
+                self.live = Rooms::default();
+            }
+        }
+        if self.logged_in && self.verified && !was_verified {
+            self.rpc("get_media_config", json!({}), Request::MediaConfig);
+        }
+        self.status.clear();
+        self.reconcile();
+    }
+}
 
 pub fn homeserver(input: &str) -> Option<String> {
     let input = input.trim();

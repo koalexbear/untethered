@@ -16,6 +16,21 @@ pub struct Revision {
     body: String,
     mentions: Value,
 }
+impl Revision {
+    /// A replacement the engine has already applied: matrix-sdk-ui's timeline
+    /// aggregates edits and reports the latest text.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn applied(body: String) -> Self {
+        Self {
+            event_id: String::new(),
+            sender: String::new(),
+            encrypted: false,
+            timestamp: 0,
+            body,
+            mentions: Value::Null,
+        }
+    }
+}
 #[derive(Default)]
 pub struct Replacements(BTreeMap<String, BTreeMap<String, Arc<Revision>>>);
 

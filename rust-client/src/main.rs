@@ -1,4 +1,7 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+// matrix-sdk futures nest deeply enough to exceed the default limit when
+// rustc proves they are Send.
+#![recursion_limit = "256"]
 mod account;
 mod backend;
 #[cfg(target_arch = "wasm32")]
@@ -9,6 +12,8 @@ mod community;
 #[cfg(target_os = "linux")]
 mod desktop_call;
 mod edits;
+#[cfg(not(target_arch = "wasm32"))]
+mod engine;
 #[cfg(not(target_arch = "wasm32"))]
 mod fonts;
 #[cfg(target_os = "linux")]
@@ -164,6 +169,8 @@ enum Msg {
     #[cfg(target_os = "linux")]
     RingExpired(String),
     Frame(Value),
+    #[cfg(not(target_arch = "wasm32"))]
+    Engine(engine::Event),
     Stopped(String),
     Section(Section),
     Open(String),
@@ -304,6 +311,9 @@ struct App {
     #[cfg(not(target_arch = "wasm32"))]
     pasting: bool,
     commands: Sender<backend::Command>,
+    /// Set when UNTETHERED_ENGINE=matrix-sdk replaces gomuks.
+    #[cfg(not(target_arch = "wasm32"))]
+    sdk: Option<Sender<engine::Command>>,
     outbox: media::Outbox,
     inline: inline::InlineImages,
     batch: Option<transfers::Batch>,
@@ -350,6 +360,10 @@ struct App {
 }
 impl App {
     fn boot() -> (Self, Task<Msg>) {
+        #[cfg(not(target_arch = "wasm32"))]
+        if engine::selected() {
+            return Self::boot_engine();
+        }
         let (commands, rx) = async_channel::bounded(64);
         let (tx, events) = async_channel::bounded(64);
         let task = Task::batch([
@@ -391,6 +405,8 @@ impl App {
             #[cfg(not(target_arch = "wasm32"))]
             pasting: false,
             commands,
+            #[cfg(not(target_arch = "wasm32"))]
+            sdk: None,
             outbox: Default::default(),
             inline: Default::default(),
             batch: None,
@@ -461,6 +477,10 @@ impl App {
             .filter_map(|id| rooms.list.get(id).map(|room| (id, room)))
     }
     fn rpc(&mut self, cmd: &str, data: Value, req: Request) {
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.sdk.is_some() {
+            return self.engine_unsupported(req);
+        }
         self.seq += 1;
         if self.connected
             && self
@@ -476,6 +496,10 @@ impl App {
         }
     }
     fn page(&mut self) {
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.sdk.is_some() {
+            return self.engine_page();
+        }
         let id = self.selected.clone();
         if !self.logged_in
             || !self.verified
@@ -528,6 +552,8 @@ impl App {
         if self.people {
             self.read_directory(None);
         }
+        #[cfg(not(target_arch = "wasm32"))]
+        self.engine_focus(&id);
         if self.logged_in && self.verified && !id.is_empty() && self.loaded.insert(id.clone()) {
             self.page();
             self.rpc(
@@ -686,78 +712,18 @@ impl App {
                 self.status = "Opening your browser’s Matrix device…".into();
             }
             "client_state" => {
-                let was = self.logged_in;
-                let was_verified = self.verified;
-                self.connected = true;
-                self.logged_in = data["is_logged_in"] == true;
-                self.verified = data["is_verified"] == true;
-                #[cfg(target_os = "linux")]
-                if !self.verified {
-                    self.clear_ring();
-                }
                 let vs = &data["verification_state"];
-                self.recovery_unavailable = vs["state_checked"] == true && vs["has_ssss"] == false;
-                if self.verified || !self.logged_in {
-                    self.recovery.clear();
-                    self.verification_note.clear();
-                }
-                self.profile = data["displayname"]
-                    .as_str()
-                    .or(data["user_id"].as_str())
-                    .unwrap_or("")
-                    .into();
-                let user = rooms::string(&data["user_id"]);
-                if self.matrix_id != user || !self.verified || !self.logged_in {
-                    self.setup = None;
-                    self.pending.retain(|_, p| !matches!(p, Request::Setup(_)));
-                    self.close_mentions();
-                    self.read_sharing = Default::default();
-                    self.pending.retain(|_, p| {
-                        !matches!(p, Request::ShareReads(..) | Request::ReadState(..))
-                    });
-                }
-                self.matrix_id = user;
-                if was != self.logged_in {
-                    #[cfg(target_os = "linux")]
-                    {
-                        self.drop_epoch += 1;
-                    }
-                    #[cfg(not(target_arch = "wasm32"))]
-                    {
-                        self.paste_seq += 1;
-                        self.pasting = false;
-                    }
-                    self.pending.retain(|_, p| matches!(p, Request::Login));
-                    self.drafts.clear();
-                    self.clear_search();
-                    self.reply_drafts.clear();
-                    self.reset_directory();
-                    self.leave_permission_panel();
-                    #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
-                    self.alerts.reset();
-                    self.editing = None;
-                    self.close_original();
-                    self.editor = text_editor::Content::new();
-                    self.loaded.clear();
-                    self.timeline_end = None;
-                    self.selected.clear();
-                    self.section = Section::All;
-                    self.account = !self.logged_in;
-                    self.outbox.rooms.clear();
-                    self.outbox.skipped.clear();
-                    self.inline.reset();
-                    self.batch = None;
-                    self.rtc_status.clear();
-                    self.media_limit = media::MAX_BYTES;
-                    if !self.logged_in {
-                        self.live = Rooms::default();
-                    }
-                }
-                if self.logged_in && self.verified && !was_verified {
-                    self.rpc("get_media_config", json!({}), Request::MediaConfig);
-                }
-                self.status.clear();
-                self.reconcile();
+                self.apply_account(account::State {
+                    logged_in: data["is_logged_in"] == true,
+                    verified: data["is_verified"] == true,
+                    recovery_unavailable: vs["state_checked"] == true && vs["has_ssss"] == false,
+                    profile: data["displayname"]
+                        .as_str()
+                        .or(data["user_id"].as_str())
+                        .unwrap_or("")
+                        .into(),
+                    user_id: rooms::string(&data["user_id"]),
+                });
             }
             "sync_complete" => {
                 if data["clear_state"] == true {
@@ -1143,6 +1109,8 @@ impl App {
             }
             Msg::InlineReady(epoch, key, img) => self.inline.complete(epoch, key, img),
             Msg::ShowInline(key) => self.inline.request(key),
+            #[cfg(not(target_arch = "wasm32"))]
+            Msg::Engine(event) => self.engine_event(event),
             Msg::Frame(f) => {
                 let jumped = f["command"] == "response"
                     && f["request_id"].as_i64().is_some_and(|id| {
@@ -1188,6 +1156,10 @@ impl App {
                     return Task::none();
                 }
                 self.commands.close();
+                #[cfg(not(target_arch = "wasm32"))]
+                if let Some(sdk) = &self.sdk {
+                    sdk.close();
+                }
                 if self.stopped {
                     return iced::exit();
                 }
@@ -1764,6 +1736,8 @@ impl App {
             Msg::Password(s) => self.password = s,
             #[cfg(not(target_arch = "wasm32"))]
             Msg::Recovery(s) => self.recovery = s,
+            #[cfg(not(target_arch = "wasm32"))]
+            Msg::Login if self.sdk.is_some() => self.engine_login(),
             Msg::Login
                 if !self.logged_in
                     && self.connected
@@ -1782,6 +1756,8 @@ impl App {
                             .into();
                 }
             }
+            #[cfg(not(target_arch = "wasm32"))]
+            Msg::Verify if self.sdk.is_some() => self.engine_verify(),
             #[cfg(not(target_arch = "wasm32"))]
             Msg::Verify => self.submit_verification(),
             #[cfg(target_arch = "wasm32")]
@@ -1911,6 +1887,8 @@ impl App {
                     return operation::focus("composer");
                 }
             }
+            #[cfg(not(target_arch = "wasm32"))]
+            Msg::Send if self.sdk.is_some() && self.logged_in => self.engine_compose(),
             Msg::Send => {
                 if self.logged_in
                     && self.live.list.get(&self.selected).is_some_and(|r| {
