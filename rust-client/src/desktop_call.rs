@@ -146,7 +146,7 @@ pub struct ActiveCall {
     pub previews: Previews,
     pub preview_hidden: bool,
     pub app_note: String,
-    pub chat_open: bool,
+    pub stage_open: bool,
     pub theater: bool,
     pub speaking: watch::Receiver<std::collections::BTreeSet<String>>,
 }
@@ -235,7 +235,7 @@ impl crate::App {
                 previews,
                 preview_hidden: false,
                 app_note: String::new(),
-                chat_open: false,
+                stage_open: false,
                 theater: false,
                 speaking,
             });
@@ -1348,6 +1348,33 @@ fn playback_pcm(samples: &[i16], gain: u8, bytes: &mut Vec<u8>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn call_stage_opens_from_preview_and_collapses_when_browsing() {
+        let (commands, _backend) = async_channel::bounded(8);
+        let mut app = crate::App::new(commands);
+        app.logged_in = true;
+        app.verified = true;
+        app.live.sync(&json!({"rooms": {
+            "!call": {"meta": {"name": "Call"}},
+            "!other": {"meta": {"name": "Other"}}
+        }}));
+        app.open("!call".into());
+        app.start_voice("!call".into(), Target::Channel);
+        let call = app.call.as_ref().unwrap();
+        assert!(!call.stage_open);
+        let id = call.id;
+
+        let _ = app.update(crate::Msg::ReturnToCall(id));
+        assert!(app.call.as_ref().unwrap().stage_open);
+
+        let _ = app.update(crate::Msg::CallLayout(id, true));
+        assert!(!app.call.as_ref().unwrap().stage_open);
+        let _ = app.update(crate::Msg::ReturnToCall(id));
+        let _ = app.update(crate::Msg::Open("!other".into()));
+        let _ = app.update(crate::Msg::Open("!call".into()));
+        assert!(!app.call.as_ref().unwrap().stage_open);
+    }
 
     #[test]
     fn late_decrypted_declines_keep_matching_references_but_ignore_wrong_peer_room_or_relation() {

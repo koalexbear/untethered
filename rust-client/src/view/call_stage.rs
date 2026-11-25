@@ -1,4 +1,4 @@
-use super::{BOLD, El, MUTED, Msg, Room, TEXT, avatar, nav, surface};
+use super::{ACTIVE, BOLD, El, HOVER, MUTED, Msg, RAIL, Room, TEXT, TRAY, avatar, nav, surface};
 use crate::desktop_call::{ActiveCall, Feed, VideoInput};
 use iced::{
     Alignment::Center,
@@ -247,63 +247,90 @@ pub(super) fn view(call: &ActiveCall, room: &Room, me: &str) -> El<'static> {
         .into()
 }
 
-/// Reuse media frames even when the user is reading a different room.
-pub(super) fn compact(call: &ActiveCall, room: &Room, can_return: bool) -> El<'static> {
+/// Keep the call preview above the controls until the user opens the stage.
+pub(super) fn popover(call: &ActiveCall, room: &Room, can_expand: bool) -> El<'static> {
     let (focus, feeds) = call.previews.snapshot();
     let feed = feeds
         .into_iter()
         .filter(|f| !f.user.is_empty() || f.source == VideoInput::Window)
-        .min_by_key(|f| {
-            (
-                Some(&f.sid) != focus.as_ref(),
-                f.source != VideoInput::Window,
-                f.user.clone(),
-                f.sid.clone(),
-            )
+        .min_by(|a, b| {
+            let priority = |f: &Feed| {
+                (
+                    Some(&f.sid) != focus.as_ref(),
+                    f.source != VideoInput::Window,
+                )
+            };
+            priority(a)
+                .cmp(&priority(b))
+                .then_with(|| a.user.cmp(&b.user))
+                .then_with(|| a.sid.cmp(&b.sid))
         });
-    let mut actions = row![
-        button(text("Return to call").size(14).font(BOLD))
-            .style(nav(false))
-            .on_press_maybe(can_return.then_some(Msg::ReturnToCall(call.id)))
-    ]
-    .spacing(6);
-    if feed.is_some() {
-        actions = actions.push(
+    let has_feed = feed.is_some();
+    let hint = text("Open call view").size(12).font(BOLD);
+    let preview: El<'static> = if let Some(feed) = feed.filter(|_| !call.preview_hidden) {
+        column![
+            container(
+                image(feed.frame)
+                    .width(Fill)
+                    .height(Fill)
+                    .content_fit(iced::ContentFit::Contain)
+            )
+            .width(Fill)
+            .height(56)
+            .style(|_| surface(RAIL, 5.)),
+            hint
+        ]
+        .spacing(4)
+        .into()
+    } else {
+        row![
+            avatar(&room.name, 30.),
+            column![
+                text(room.name.clone()).size(13).color(TEXT).height(17),
+                hint.color(MUTED),
+            ]
+            .spacing(2)
+        ]
+        .spacing(8)
+        .align_y(Center)
+        .into()
+    };
+    let preview = button(preview)
+        .padding(7)
+        .width(Fill)
+        .on_press_maybe(can_expand.then_some(Msg::ReturnToCall(call.id)))
+        .style(|_, status| button::Style {
+            background: Some(
+                if status == button::Status::Hovered {
+                    HOVER
+                } else {
+                    TRAY
+                }
+                .into(),
+            ),
+            border: Border {
+                color: ACTIVE,
+                width: 1.,
+                ..Border::default().rounded(10)
+            },
+            text_color: TEXT,
+            ..Default::default()
+        });
+    let mut card = column![preview].spacing(2);
+    if has_feed {
+        card = card.push(
             button(
                 text(if call.preview_hidden {
-                    "Show preview"
+                    "Show video preview"
                 } else {
-                    "Hide preview"
+                    "Hide video preview"
                 })
-                .size(13),
+                .size(11),
             )
+            .padding([2, 6])
             .style(nav(false))
             .on_press(Msg::HideCallPreview(call.id, !call.preview_hidden)),
         );
     }
-    let mut strip = row![].align_y(Center).spacing(10);
-    let mut info = Column::new().spacing(4);
-    if let Some(f) = feed {
-        if !call.preview_hidden {
-            strip = strip.push(
-                image(f.frame)
-                    .width(160)
-                    .height(90)
-                    .content_fit(iced::ContentFit::Contain),
-            );
-            let who = if f.user.is_empty() {
-                "You"
-            } else {
-                room.display(&f.user)
-            };
-            info = info.push(
-                text(format!("{who} · {}", f.source.name()))
-                    .size(13)
-                    .color(MUTED),
-            );
-        }
-    } else if call.video_peer.is_some() && call.label == "Connected" {
-        info = info.push(text("No incoming video").size(13).color(MUTED));
-    }
-    strip.push(info.push(actions.wrap())).wrap().into()
+    card.into()
 }

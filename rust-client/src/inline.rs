@@ -64,7 +64,6 @@ impl App {
         let mut wanted: Vec<_> = images.manual.iter().cloned().collect();
         for key in room
             .posts()
-            .into_iter()
             .rev()
             .take(48)
             .filter_map(|p| p.media.as_ref()?.preview.as_ref())

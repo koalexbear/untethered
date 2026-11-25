@@ -8,7 +8,6 @@ mod mentions;
 mod reaction_bar;
 mod room_people;
 mod room_search;
-use chrono::{DateTime, Local};
 use iced::{
     Alignment::Center,
     Border, Color, Element, Fill, Font, Length, Theme, color, font, keyboard,
@@ -254,82 +253,88 @@ impl App {
             .live
             .list
             .get(&call.room)
-            .map_or("DM", |r| r.name.as_str());
+            .map_or(if call.group { "Voice room" } else { "DM" }, |r| {
+                r.name.as_str()
+            });
         let active = !call.cancel.is_closed();
+        let connected = call.label == "Connected" || call.label.starts_with("In voice ·");
+        let status = if call.label == "Connected" {
+            "Voice connected"
+        } else {
+            &call.label
+        };
         let mic = if mode.deafened {
-            "Mic muted"
+            "Mic muted while deafened"
         } else if mode.muted {
             "Unmute"
         } else {
             "Mute"
         };
-        let controls = row![
-            control(
-                Icon::Mic,
-                mic,
-                mode.muted || mode.deafened,
-                mode.muted || mode.deafened,
-                (active && !mode.deafened).then_some(Msg::ToggleMic)
-            ),
-            control(
-                Icon::Headphones,
-                if mode.deafened { "Undeafen" } else { "Deafen" },
-                mode.deafened,
-                mode.deafened,
-                active.then_some(Msg::ToggleDeafen)
-            ),
-        ]
-        .spacing(8)
-        .align_y(Center);
-        let mut controls = controls;
-        for input in crate::desktop_call::VideoInput::ALL.into_iter().rev() {
+        let mut controls = row![control(
+            Icon::Mic,
+            mic,
+            mode.muted || mode.deafened,
+            mode.muted || mode.deafened,
+            (active && !mode.deafened).then_some(Msg::ToggleMic),
+        )]
+        .spacing(7);
+        for (input, icon) in [
+            (crate::desktop_call::VideoInput::Camera, Icon::Camera),
+            (crate::desktop_call::VideoInput::Window, Icon::Screen),
+        ] {
             let slot = input as usize;
             let requested = mode.video[slot].is_some();
-            let label = input.control(requested, call.video_status[slot].live);
-            let cam = input == crate::desktop_call::VideoInput::Camera;
             controls = controls.push(control(
-                if cam { Icon::Camera } else { Icon::Screen },
-                label,
+                icon,
+                input.control(requested, call.video_status[slot].live),
                 requested,
-                cam && !requested,
+                matches!(icon, Icon::Camera) && !requested,
                 active.then_some(Msg::ToggleVideo(input)),
             ));
         }
-        controls = controls.push(control(
-            Icon::Devices,
-            "Devices",
-            call.picker,
-            false,
-            active.then_some(Msg::AudioDevices),
-        ));
-        if call.group {
-            controls = controls.push(self.ptt_control(active)).push(
-                button(text("Mixer").size(14))
-                    .style(nav(call.mixer))
-                    .on_press_maybe(active.then_some(Msg::ToggleMixer)),
-            );
-        }
-        controls = controls.push(control(
+        controls = controls.push(Space::new().width(Fill)).push(control(
             Icon::Hangup,
             if call.group { "Leave voice" } else { "Hang up" },
             false,
             false,
             active.then_some(Msg::EndCall),
         ));
-        let browsing = call.chat_open
-            || self.selected != call.room
-            || self.mentions.is_some()
-            || self.setup.is_some()
-            || self.account;
-        let mut bar = Column::new().spacing(5);
-        if browsing {
-            bar = bar.push(
-                text(format!("{} · {name}", call.label))
-                    .size(13)
-                    .color(TEXT),
+        let mut options = row![
+            button(text(if mode.deafened { "Undeafen" } else { "Deafen" }).size(12))
+                .padding([3, 5])
+                .style(nav(mode.deafened))
+                .on_press_maybe(active.then_some(Msg::ToggleDeafen)),
+            button(text("Devices").size(12))
+                .padding([3, 5])
+                .style(nav(call.picker))
+                .on_press_maybe(active.then_some(Msg::AudioDevices)),
+        ]
+        .spacing(3);
+        if call.group {
+            options = options.push(
+                button(text("Mixer").size(12))
+                    .padding([3, 5])
+                    .style(nav(call.mixer))
+                    .on_press_maybe(active.then_some(Msg::ToggleMixer)),
             );
         }
-        bar = bar.push(container(controls.wrap()).center_x(Fill));
+        let indicator = container(Space::new())
+            .width(8)
+            .height(8)
+            .style(move |_| surface(if connected { color!(0x57c790) } else { DIM }, 4.));
+        let mut bar = column![
+            row![indicator, text(status).size(13).font(BOLD).color(TEXT)]
+                .spacing(7)
+                .align_y(Center),
+            text(name).size(12).color(MUTED).height(17),
+            controls,
+            options,
+        ]
+        .spacing(5);
+        if call.group {
+            bar = bar.push(self.ptt_control(active));
+        }
+        let mut details = Column::new().spacing(5);
         let screen = crate::desktop_call::VideoInput::Window as usize;
         if call.video_status[screen].live
             && let Some(window) = mode.video[screen]
@@ -340,7 +345,7 @@ impl App {
             } else {
                 "Window audio is off"
             };
-            let mut line = row![text(label).size(13)].spacing(8).align_y(Center);
+            let mut line = column![text(label).size(13)].spacing(4);
             if mode.send_app.is_some() {
                 line = line.push(
                     button(text("Stop app audio").size(13))
@@ -355,35 +360,35 @@ impl App {
                         .on_press(Msg::AudioDevices),
                 );
             }
-            bar = bar.push(line);
+            details = details.push(line);
             if call.picker {
                 if call.devices.streams.is_empty() {
-                    bar = bar.push(
+                    details = details.push(
                         text("Play sound in the app, then refresh devices.")
                             .size(13)
                             .color(MUTED),
                     );
                 } else {
-                    bar = bar.push(
-                        row![
-                            text("Send sound from").size(14),
+                    details = details.push(
+                        column![
+                            text("Send sound from").size(12),
                             pick_list(
                                 call.devices.streams.as_slice(),
                                 mode.send_app.as_ref().map(|(_, s)| s.clone()),
                                 move |s| Msg::ShareApp(id, window, Some(s))
                             )
                             .placeholder("Choose a playback stream")
-                            .text_size(14)
+                            .width(Fill)
+                            .text_size(12)
                         ]
-                        .align_y(Center)
-                        .spacing(8),
+                        .spacing(3),
                     );
                 }
             }
         }
         if call.picker || call.previews.remote_share() {
             let id = call.id;
-            bar = bar.push(
+            details = details.push(
                 iced::widget::checkbox(!mode.share_silent)
                     .label("Play shared audio")
                     .size(16)
@@ -392,13 +397,6 @@ impl App {
                         active.then_some(move |enabled| Msg::SetShareSound(id, enabled)),
                     ),
             );
-        }
-        if self.verified
-            && active
-            && browsing
-            && let Some(room) = self.live.list.get(&call.room)
-        {
-            bar = bar.push(call_stage::compact(call, room, !self.setup_busy()));
         }
         if mode.talk != crate::desktop_call::TalkGate::Open {
             let hint = if mode.deafened {
@@ -410,61 +408,63 @@ impl App {
             } else {
                 "Hold Right Ctrl to talk while Untethered is focused."
             };
-            bar = bar.push(text(hint).size(13));
+            details = details.push(text(hint).size(13));
         }
         for status in &call.video_status {
-            if !status.label.is_empty() && (browsing || !status.live) {
-                bar = bar.push(text(&status.label).size(13));
+            if !status.label.is_empty() {
+                details = details.push(text(&status.label).size(13));
             }
         }
         if call.mic_error {
-            bar =
-                bar.push(text("Microphone unavailable · choose an input under Devices.").size(13));
+            details = details
+                .push(text("Microphone unavailable · choose an input under Devices.").size(13));
         }
         if call.speaker_error {
-            bar = bar.push(text("Speaker unavailable · choose an output under Devices.").size(13));
+            details = details
+                .push(text("Speaker unavailable · choose an output under Devices.").size(13));
         }
         if call.mixer
             && let Some(room) = self.live.list.get(&call.room)
         {
             let id = call.id;
-            let mut rows = Column::new().spacing(4);
+            let mut rows = Column::new().spacing(6);
             let mut peers = room.voice_users();
             peers.remove(self.matrix_id.as_str());
             for &user in &peers {
                 let gain = mode.volume(user);
-                rows = rows.push(
-                    row![
-                        container(tooltip(
-                            text(room.display(user)).size(14),
-                            text(user).size(13),
-                            tooltip::Position::Bottom
-                        ))
-                        .width(Length::FillPortion(1)),
-                        text(format!("{gain}%")).size(13).width(44),
-                        iced::widget::slider(0..=200u8, gain, move |v| Msg::PeerVolume(
-                            id,
-                            user.into(),
-                            v
-                        ))
+                rows = rows
+                    .push(
+                        row![
+                            container(tooltip(
+                                text(room.display(user)).size(14),
+                                text(user).size(13),
+                                tooltip::Position::Bottom
+                            ))
+                            .width(Length::FillPortion(1)),
+                            text(format!("{gain}%")).size(12).width(34),
+                            button(text("Reset").size(12))
+                                .padding([2, 4])
+                                .style(nav(false))
+                                .on_press(Msg::PeerVolume(id, user.into(), 100))
+                        ]
+                        .spacing(3)
+                        .align_y(Center),
+                    )
+                    .push(
+                        iced::widget::slider(0..=200u8, gain, move |v| {
+                            Msg::PeerVolume(id, user.into(), v)
+                        })
                         .default(100u8)
                         .step(5u8)
                         .shift_step(1u8)
-                        .width(Length::FillPortion(2)),
-                        button(text("Reset").size(13))
-                            .padding([2, 8])
-                            .style(nav(false))
-                            .on_press(Msg::PeerVolume(id, user.into(), 100))
-                    ]
-                    .spacing(8)
-                    .align_y(Center),
-                );
+                        .width(Fill),
+                    );
             }
-            bar = bar.push(label("LOCAL PLAYBACK VOLUME"));
+            details = details.push(label("LOCAL PLAYBACK VOLUME"));
             if peers.is_empty() {
-                bar = bar.push(text("No other participants in voice.").size(13));
+                details = details.push(text("No other participants in voice.").size(13));
             } else {
-                bar = bar.push(container(scrollable(rows)).max_height(132).width(Fill));
+                details = details.push(rows);
             }
         }
         if call.picker {
@@ -472,20 +472,19 @@ impl App {
                 ("Microphone", Port::Mic, &mode.mic),
                 ("Speaker", Port::Speaker, &mode.speaker),
             ] {
-                bar = bar.push(
-                    row![
-                        text(label).width(90).size(14),
+                details = details.push(
+                    column![
+                        text(label).size(12).color(MUTED),
                         pick_list(
                             call.devices.list(port),
                             Some(call.devices.selected(port, route)),
                             move |choice| Msg::SelectDevice(port, choice)
                         )
                         .width(Fill)
-                        .text_size(14)
-                        .padding([5, 9])
+                        .text_size(12)
+                        .padding([4, 6])
                     ]
-                    .align_y(Center)
-                    .spacing(8),
+                    .spacing(3),
                 );
             }
             let refresh = button(
@@ -499,14 +498,10 @@ impl App {
             )
             .style(nav(false))
             .on_press_maybe((active && !call.loading).then_some(Msg::RefreshDevices));
-            bar = bar.push(
-                row![refresh, text(call.list_error.unwrap_or("")).size(13)]
-                    .align_y(Center)
-                    .spacing(8),
+            details = details.push(
+                column![refresh].extend(call.list_error.map(|error| text(error).size(13).into())),
             );
-            let mut cams = row![text("Camera").width(90).size(14)]
-                .align_y(Center)
-                .spacing(8);
+            let mut cams = column![text("Camera").size(12).color(MUTED)].spacing(3);
             if !call.cameras.is_empty() {
                 let id = call.id;
                 cams = cams.push(
@@ -534,18 +529,49 @@ impl App {
                 .style(nav(false))
                 .on_press_maybe((active && !call.camera_listing).then_some(Msg::ListCameras)),
             );
-            bar = bar.push(cams);
+            details = details.push(cams);
             if let Some(note) = call.camera_note {
-                bar = bar.push(text(note).size(13));
+                details = details.push(text(note).size(13));
             }
         }
+        let scrollbar = scrollable::Scrollbar::new()
+            .width(5)
+            .scroller_width(5)
+            .spacing(5);
+        bar = bar.push(
+            container(scrollable(details).direction(scrollable::Direction::Vertical(scrollbar)))
+                .width(Fill)
+                .max_height(if call.stage_open { 116 } else { 64 }),
+        );
         Some(
             container(bar)
                 .width(Fill)
-                .padding([10, 12])
-                .style(|_| surface(TRAY, 4.))
+                .padding(9)
+                .style(|_| container::Style {
+                    border: Border {
+                        color: ACTIVE,
+                        width: 1.,
+                        ..Border::default().rounded(10)
+                    },
+                    ..surface(TRAY, 10.)
+                })
                 .into(),
         )
+    }
+    #[cfg(target_os = "linux")]
+    fn call_dock(&self) -> Option<El<'_>> {
+        let call = self.call.as_ref()?;
+        let controls = self.call_bar()?;
+        let preview = self
+            .live
+            .list
+            .get(&call.room)
+            .filter(|_| self.verified && !call.stage_open && !call.cancel.is_closed());
+        let dock = Column::new()
+            .extend(preview.map(|room| call_stage::popover(call, room, !self.setup_busy())))
+            .push(controls)
+            .spacing(6);
+        Some(container(dock).width(Fill).padding(8).into())
     }
     #[cfg(target_os = "linux")]
     fn incoming_banner(&self) -> Option<El<'_>> {
@@ -883,6 +909,8 @@ impl App {
                     ),
             );
         }
+        #[cfg(target_os = "linux")]
+        let sidebar = sidebar.extend(self.call_dock());
         let side =
             container(sidebar.push(container(user).width(Fill).style(|_| surface(TRAY, 0.))))
                 .width(211)
@@ -891,7 +919,7 @@ impl App {
         if self.setup.is_some() || self.mentions.is_some() {
             let panel = Column::new();
             #[cfg(target_os = "linux")]
-            let panel = panel.extend(self.incoming_banner()).extend(self.call_bar());
+            let panel = panel.extend(self.incoming_banner());
             let content = if let Some(f) = &self.setup {
                 community::view(self, f)
             } else {
@@ -911,7 +939,7 @@ impl App {
         let room = store.list.get(&self.selected);
         #[cfg(target_os = "linux")]
         if let Some(c) = &self.call
-            && !c.chat_open
+            && c.stage_open
             && c.room == self.selected
             && let Some(r) = room
         {
@@ -947,18 +975,22 @@ impl App {
             ]
             .align_y(Center)
             .spacing(10);
-            let mut panel = column![container(header).padding([10, 16]).width(Fill)]
+            let panel = column![container(header).padding([10, 16]).width(Fill)]
                 .extend(self.incoming_banner())
                 .push(call_stage::view(c, r, &self.matrix_id));
-            if let Some(bar) = self.call_bar() {
-                panel = panel.push(bar);
-            }
             let panel = container(panel)
                 .style(|_| surface(color!(0x111214), 0.))
                 .width(Fill)
                 .height(Fill);
             return if c.theater {
-                panel.into()
+                let dock = container(
+                    container(self.call_bar().expect("active theater call"))
+                        .width(211)
+                        .padding(8),
+                )
+                .align_y(iced::alignment::Vertical::Bottom)
+                .height(Fill);
+                stack![panel, dock].into()
             } else {
                 row![rail, side, panel].height(Fill).into()
             };
@@ -1205,10 +1237,6 @@ impl App {
         if let Some(b) = self.incoming_banner() {
             chat = chat.push(b);
         }
-        #[cfg(target_os = "linux")]
-        if let Some(bar) = self.call_bar() {
-            chat = chat.push(bar);
-        }
         if !self.status.is_empty() && !self.status.starts_with("Starting") {
             chat = chat.push(
                 container(text(&self.status).size(13).color(color!(0xffc785))).padding([5, 16]),
@@ -1280,14 +1308,21 @@ impl App {
         let mut feed = Column::new().padding([16, 18]).spacing(2);
         let original = self.original.as_ref().filter(|c| c.room == self.selected);
         let history = original.and_then(|c| c.slice.as_ref()).unwrap_or(r);
-        if original.is_none() && self.logged_in && !r.end {
+        let timeline = self.timeline_range(history);
+        if original.is_none() && timeline.start > 0 {
+            feed = feed.push(
+                button(text("Earlier messages").size(12))
+                    .on_press(Msg::TimelineEdge(true))
+                    .style(nav(false)),
+            );
+        } else if original.is_none() && self.logged_in && !r.end {
             feed = feed.push(
                 button(text("Earlier messages").size(12))
                     .on_press_maybe(self.connected.then_some(Msg::More))
                     .style(nav(false)),
             );
         }
-        if original.is_none() && (r.end || !self.logged_in) {
+        if original.is_none() && timeline.start == 0 && (r.end || !self.logged_in) {
             feed = feed
                 .push(
                     container(text(if r.dm { "@" } else { "#" }).font(BOLD).size(30))
@@ -1314,18 +1349,14 @@ impl App {
                     .color(MUTED),
                 );
         }
-        let mut prev: Option<(&str, i64, String)> = None;
-        let sorted = history.posts();
-        let anchor = original.and_then(|c| {
-            sorted
-                .iter()
-                .position(|p| p.event_id.as_ref() == Some(&c.event))
-        });
-        let posts = if let Some(c) = original {
-            let i = anchor.unwrap_or(sorted.len());
-            &sorted[if c.preceding { i.saturating_sub(6) } else { i }..sorted.len().min(i + 13)]
+        let mut prev: Option<(&str, i64, chrono::NaiveDate)> = None;
+        let count = history.posts().len();
+        let anchor = original.and_then(|c| history.position(&c.event));
+        let range = if let Some(c) = original {
+            let i = anchor.unwrap_or(count);
+            (if c.preceding { i.saturating_sub(6) } else { i })..count.min(i + 13)
         } else {
-            &sorted[..]
+            timeline.clone()
         };
         let divider = if original.is_none() && r.unread {
             r.read.divider(r)
@@ -1333,7 +1364,7 @@ impl App {
             None
         };
         let seen = r.read.seen(&self.matrix_id);
-        for &cached in posts {
+        for (index, cached) in range.clone().zip(history.posts_in(range)) {
             let p = if original.is_some() {
                 cached
                     .event_id
@@ -1343,21 +1374,17 @@ impl App {
             } else {
                 cached
             };
-            let stamp = DateTime::from_timestamp_millis(p.time)
-                .unwrap_or_default()
-                .with_timezone(&Local);
-            let day = stamp.format("%B %-d, %Y").to_string();
-            let date_change = prev.as_ref().is_none_or(|(_, _, d)| d != &day);
+            let date_change = prev.is_none_or(|(_, _, day)| day != p.day);
             let group = date_change
-                || prev
-                    .as_ref()
-                    .is_none_or(|(s, t, _)| *s != p.sender || p.time - *t > 300_000);
+                || prev.is_none_or(|(sender, time, _)| {
+                    sender != p.sender || p.time.saturating_sub(time) > 300_000
+                });
             if date_change {
                 feed = feed.push(
                     container(
                         row![
                             rule::horizontal(1),
-                            text(day.clone()).size(11).color(MUTED),
+                            text(&p.day_label).size(11).color(MUTED),
                             rule::horizontal(1)
                         ]
                         .spacing(8)
@@ -1521,9 +1548,7 @@ impl App {
             if group {
                 let info = row![
                     text(name).size(16).font(BOLD).color(TEXT),
-                    text(stamp.format("%H:%M").to_string())
-                        .size(11)
-                        .color(MUTED)
+                    text(&p.clock).size(11).color(MUTED)
                 ]
                 .spacing(9)
                 .align_y(Center);
@@ -1540,7 +1565,7 @@ impl App {
             } else {
                 entry = entry.push(row![Space::new().width(36), message.width(Fill)].spacing(13));
             }
-            prev = Some((&p.sender, p.time, day));
+            prev = Some((p.sender.as_str(), p.time, p.day));
             if let Some(file) = &p.media {
                 if let Some(source) = &file.preview {
                     let preview: El = if let Some(handle) = self.inline.ready(source) {
@@ -1608,19 +1633,37 @@ impl App {
                     );
                 }
             }
-            let entry = container(entry).width(Fill);
-            feed = feed.push(if let Some(id) = &p.event_id {
-                entry.id(iced::widget::Id::from(format!("post-{id}")))
-            } else {
-                entry
-            });
+            let (_, row) = history.key_at(index).expect("timeline index is in range");
+            let id = p
+                .event_id
+                .as_ref()
+                .map_or_else(|| format!("post-row-{row}"), |id| format!("post-{id}"));
+            feed = feed.push(container(entry).width(Fill).id(id));
+        }
+        let has_older = timeline.start > 0;
+        let has_newer = timeline.end < count;
+        if original.is_none() && has_newer {
+            feed = feed.push(
+                button(text("Newer messages").size(12))
+                    .on_press(Msg::TimelineEdge(false))
+                    .style(nav(false)),
+            );
         }
         let feed = scrollable(feed).height(Fill).id(self.timeline_id());
         let feed = if original.is_some() {
             feed
         } else {
-            feed.anchor_bottom().on_scroll(|v| {
-                Msg::ReadingScroll(self.selected.clone(), v.absolute_offset().y > 1.)
+            feed.anchor_bottom().on_scroll(move |v| {
+                let away = has_newer || v.absolute_offset().y > 1.;
+                if v.content_bounds().height > v.bounds().height {
+                    if has_older && v.absolute_offset_reversed().y < 24. {
+                        return Msg::TimelineEdge(true);
+                    }
+                    if has_newer && v.absolute_offset().y < 24. {
+                        return Msg::TimelineEdge(false);
+                    }
+                }
+                Msg::ReadingScroll(self.selected.clone(), away)
             })
         };
         let mut viewport = Column::new();
@@ -1881,8 +1924,8 @@ impl App {
             form = form.push(b);
         }
         #[cfg(target_os = "linux")]
-        if let Some(bar) = self.call_bar() {
-            form = form.push(bar);
+        if let Some(dock) = self.call_dock() {
+            form = form.push(container(dock).max_width(211));
         }
         if !self.logged_in {
             form = form

@@ -1,3 +1,4 @@
+use chrono::{DateTime, Local, NaiveDate};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 pub const VOICE_ROOM: &str = "org.matrix.msc3417.call";
@@ -18,6 +19,9 @@ pub fn short(id: &str) -> &str {
 #[derive(Default)]
 pub struct Rooms {
     pub list: BTreeMap<String, Room>,
+    pub(super) ordered_rooms: Vec<String>,
+    pub(super) ordered_direct: Vec<String>,
+    pub(super) ordered_spaces: BTreeMap<String, Vec<String>>,
     pub children: BTreeMap<String, BTreeSet<String>>,
     pub hierarchy_revision: u64,
 }
@@ -43,6 +47,8 @@ pub struct Room {
     pub cursor: Option<i64>,
     pub members: BTreeMap<String, String>,
     pub history: BTreeMap<i64, Post>,
+    // Keep the timestamp and row-ID ordering used by the timeline.
+    pub(super) order: Vec<(i64, i64)>,
     pub(super) event_rows: BTreeMap<String, i64>,
     pub(super) related: BTreeMap<String, Quote>,
     pub(super) edits: crate::edits::Replacements,
@@ -72,6 +78,9 @@ pub struct Post {
     pub sender: String,
     pub body: String,
     pub time: i64,
+    pub day: NaiveDate,
+    pub day_label: String,
+    pub clock: String,
 }
 impl Post {
     pub fn quote(&self) -> Option<Quote> {
@@ -163,8 +172,11 @@ impl Room {
                 .is_some_and(|ty| !matches!(ty, "m.room.message" | "m.sticker"))
             || edit
         {
-            if let Some(old) = self.history.remove(&row).and_then(|p| p.event_id) {
-                self.event_rows.remove(&old);
+            if let Some(old) = self.history.remove(&row) {
+                self.remove_order(old.time, row);
+                if let Some(id) = old.event_id {
+                    self.event_rows.remove(&id);
+                }
             }
             if edit
                 && let Some(target) = self.edits.ingest(e)
@@ -227,6 +239,10 @@ impl Room {
         if let Some(id) = &event_id {
             self.event_rows.insert(id.clone(), row);
         }
+        let time = e["timestamp"].as_i64().unwrap_or(0);
+        let stamp = DateTime::from_timestamp_millis(time)
+            .unwrap_or_default()
+            .with_timezone(&Local);
         let mut post = Post {
             reactable: confirmed
                 && !redacted
@@ -254,10 +270,26 @@ impl Room {
             },
             sender: string(&e["sender"]),
             body,
-            time: e["timestamp"].as_i64().unwrap_or(0),
+            time,
+            day: stamp.date_naive(),
+            day_label: stamp.format("%B %-d, %Y").to_string(),
+            clock: stamp.format("%H:%M").to_string(),
         };
         self.edits.apply(&mut post);
-        self.history.insert(row, post);
+        let previous = self.history.insert(row, post);
+        if let Some(old_id) = previous.as_ref().and_then(|p| p.event_id.as_ref())
+            && self.history[&row].event_id.as_ref() != Some(old_id)
+        {
+            self.event_rows.remove(old_id);
+        }
+        if previous.as_ref().is_none_or(|p| p.time != time) {
+            if let Some(previous) = previous {
+                self.remove_order(previous.time, row);
+            }
+            let key = (time, row);
+            let index = self.order.partition_point(|p| *p < key);
+            self.order.insert(index, key);
+        }
     }
     pub fn related_events(&mut self, room: &str, data: &Value) {
         let mut quotes = Room::default();
@@ -288,10 +320,33 @@ impl Room {
         self.related_events(room, data);
         self.end = data["has_more"] != true || self.cursor == old;
     }
-    pub fn posts(&self) -> Vec<&Post> {
-        let mut posts: Vec<_> = self.history.iter().collect();
-        posts.sort_by_key(|(row, p)| (p.time, **row));
-        posts.into_iter().map(|(_, p)| p).collect()
+    fn remove_order(&mut self, time: i64, row: i64) {
+        if let Ok(index) = self.order.binary_search(&(time, row)) {
+            self.order.remove(index);
+        }
+    }
+    pub fn posts(&self) -> impl ExactSizeIterator<Item = &Post> + DoubleEndedIterator {
+        self.posts_in(0..self.order.len())
+    }
+    pub fn posts_in(
+        &self,
+        range: std::ops::Range<usize>,
+    ) -> impl ExactSizeIterator<Item = &Post> + DoubleEndedIterator {
+        self.order[range]
+            .iter()
+            .map(|&(_, row)| &self.history[&row])
+    }
+    pub fn position(&self, event: &str) -> Option<usize> {
+        let row = *self.event_rows.get(event)?;
+        self.order
+            .binary_search(&(self.history.get(&row)?.time, row))
+            .ok()
+    }
+    pub fn key_at(&self, index: usize) -> Option<(i64, i64)> {
+        self.order.get(index).copied()
+    }
+    pub fn index_at(&self, key: (i64, i64)) -> usize {
+        self.order.partition_point(|p| *p < key)
     }
     pub fn display<'a>(&'a self, sender: &'a str) -> &'a str {
         self.members
@@ -329,10 +384,41 @@ impl Rooms {
         }
         channels
     }
+    fn sort_rooms(&mut self) {
+        let mut rooms: Vec<_> = self.list.iter().filter(|(_, r)| !r.space).collect();
+        rooms.sort_by_cached_key(|(id, r)| (r.name.to_lowercase(), *id));
+        self.ordered_direct = rooms
+            .iter()
+            .filter(|(_, room)| room.dm)
+            .map(|(id, _)| (*id).clone())
+            .collect();
+        let rank: BTreeMap<_, _> = rooms
+            .iter()
+            .enumerate()
+            .map(|(index, (id, _))| (id.as_str(), index))
+            .collect();
+        self.ordered_spaces = self
+            .children
+            .iter()
+            .map(|(space, _)| {
+                let mut indexes: Vec<_> = self
+                    .channels(space)
+                    .into_keys()
+                    .filter_map(|id| rank.get(id).copied())
+                    .collect();
+                indexes.sort_unstable();
+                let children = indexes.into_iter().map(|i| rooms[i].0.clone()).collect();
+                (space.clone(), children)
+            })
+            .collect();
+        self.ordered_rooms = rooms.into_iter().map(|(id, _)| id.clone()).collect();
+    }
+
     pub fn sync(&mut self, d: &Value) {
         if d["clear_state"] == true {
             *self = Self::default();
         }
+        let mut room_order_changed = false;
         for (space, edges) in pairs(&d["space_edges"]) {
             let next = items(edges)
                 .filter_map(|e| e["child_id"].as_str().map(str::to_owned))
@@ -340,10 +426,12 @@ impl Rooms {
             if self.children.get(space) != Some(&next) {
                 self.children.insert(space.clone(), next);
                 self.hierarchy_revision += 1;
+                room_order_changed = true;
             }
         }
         for (id, delta) in pairs(&d["rooms"]) {
             let new = !self.list.contains_key(id);
+            room_order_changed |= new;
             let room = self.list.entry(id.clone()).or_default();
             let was_space = room.space;
             #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
@@ -358,15 +446,22 @@ impl Rooms {
             room.read.sync(delta, id);
             if meta.is_object() {
                 room.has_metadata = true;
-                room.name = meta["name"]
+                let name = meta["name"]
                     .as_str()
                     .or(meta["canonical_alias"].as_str())
-                    .unwrap_or(id)
-                    .into();
+                    .unwrap_or(id);
+                room_order_changed |= room.name != name;
+                if room.name != name {
+                    room.name = name.into();
+                }
                 room.topic = string(&meta["topic"]);
-                room.space =
+                let space =
                     meta["creation_content"]["type"] == "m.space" || self.children.contains_key(id);
-                room.dm = meta["dm_user_id"].is_string();
+                room_order_changed |= room.space != space;
+                room.space = space;
+                let dm = meta["dm_user_id"].is_string();
+                room_order_changed |= room.dm != dm;
+                room.dm = dm;
                 room.voice = meta["creation_content"]["type"] == VOICE_ROOM;
                 #[cfg(target_os = "linux")]
                 {
@@ -386,6 +481,7 @@ impl Rooms {
             }
             if delta["reset"] == true {
                 room.history.clear();
+                room.order.clear();
                 room.event_rows.clear();
                 room.related.clear();
                 room.edits = Default::default();
@@ -457,8 +553,12 @@ impl Rooms {
         for id in items(&d["left_rooms"]).filter_map(Value::as_str) {
             if self.list.remove(id).is_some() {
                 self.hierarchy_revision += 1;
+                room_order_changed = true;
             }
-            self.children.remove(id);
+            room_order_changed |= self.children.remove(id).is_some();
+        }
+        if room_order_changed {
+            self.sort_rooms();
         }
     }
     pub fn event(&mut self, fallback: &Value, event: &Value) {
@@ -523,6 +623,7 @@ impl Rooms {
             rooms.list.get_mut(room).unwrap().insert(&json!({"rowid":i+1,"type":"m.room.message","sender":sender,"timestamp":now-((8-i) as i64)*60000,"content":{"body":body}}));
         }
         rooms.list.get_mut("!design").unwrap().unread = true;
+        rooms.sort_rooms();
         rooms
     }
 }
@@ -530,6 +631,62 @@ impl Rooms {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn timeline_index_tracks_prepend_replacement_and_reset() {
+        let mut rooms = Rooms::default();
+        let room = rooms.list.entry("!r".into()).or_default();
+        let event = |row, time| {
+            json!({
+                "rowid": row,
+                "event_id": format!("${row}"),
+                "type": "m.room.message",
+                "timestamp": time,
+                "content": {"body": "message"}
+            })
+        };
+        room.insert(&event(3, 200));
+        room.insert(&event(2, 200));
+        room.insert(&event(1, 100));
+        assert_eq!(room.position("$2"), Some(1));
+        assert_eq!(room.key_at(2), Some((200, 3)));
+
+        room.insert(&event(3, 0));
+        assert_eq!(room.position("$3"), Some(0));
+        assert_eq!(
+            room.posts().map(|p| p.time).collect::<Vec<_>>(),
+            [0, 100, 200]
+        );
+
+        room.insert(
+            &json!({"rowid": 3, "type": "m.room.encrypted", "decrypted_type": "m.reaction"}),
+        );
+        assert_eq!(room.position("$3"), None);
+        assert_eq!(room.posts().len(), 2);
+
+        rooms.sync(&json!({"rooms": {"!r": {"reset": true}}}));
+        assert_eq!(rooms.list["!r"].posts().len(), 0);
+    }
+
+    #[test]
+    fn room_order_tracks_metadata_and_departures() {
+        let mut rooms = Rooms::default();
+        rooms.sync(&json!({"rooms": {
+            "!a": {"meta": {"name": "Zulu"}},
+            "!b": {"meta": {"name": "bravo", "dm_user_id": "@person:example"}},
+            "!s": {"meta": {"name": "Space", "creation_content": {"type": "m.space"}}}
+        }}));
+        assert_eq!(rooms.ordered_rooms, ["!b", "!a"]);
+        assert_eq!(rooms.ordered_direct, ["!b"]);
+        rooms.sync(&json!({"space_edges": {"!s": [{"child_id": "!a"}, {"child_id": "!b"}]}}));
+        assert_eq!(rooms.ordered_spaces["!s"], ["!b", "!a"]);
+        rooms.sync(&json!({"rooms": {"!a": {"meta": {"name": "Alpha"}}}}));
+        assert_eq!(rooms.ordered_rooms, ["!a", "!b"]);
+        assert_eq!(rooms.ordered_spaces["!s"], ["!a", "!b"]);
+        rooms.sync(&json!({"left_rooms": ["!a"]}));
+        assert_eq!(rooms.ordered_rooms, ["!b"]);
+        assert_eq!(rooms.ordered_spaces["!s"], ["!b"]);
+    }
+
     #[test]
     fn sync_decrypt_page_and_leave() {
         let mut rooms = Rooms::default();
