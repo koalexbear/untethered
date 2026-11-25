@@ -2,13 +2,13 @@
 //! event, never by display name or by a message in the timeline.
 use crate::{
     App, Request,
-    permissions::Posting,
+    room_state::RoomState,
     rooms::{items, server_confirmed},
 };
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Kind {
     Joined,
     Invited,
@@ -27,13 +27,16 @@ impl Kind {
         }
     }
 }
+#[derive(Clone, Debug, PartialEq)]
 pub struct Member {
     pub kind: Kind,
     pub name: String,
-    event: String,
+    /// The membership event, which a change is checked against.
+    pub event: String,
 }
 impl Member {
-    fn read<'a>(room: &str, e: &'a Value) -> Option<(&'a str, Self)> {
+    /// A confirmed membership event of `room` from gomuks.
+    pub(crate) fn read<'a>(room: &str, e: &'a Value) -> Option<(&'a str, Self)> {
         if e["room_id"] != room || e["type"] != "m.room.member" || !server_confirmed(e) {
             return None;
         }
@@ -58,7 +61,7 @@ impl Member {
         ))
     }
 }
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Action {
     Kick,
     Ban,
@@ -67,7 +70,7 @@ pub enum Action {
 }
 impl Action {
     pub const ALL: [Self; 4] = [Self::Kick, Self::Ban, Self::Unban, Self::Invite];
-    fn wire(self) -> &'static str {
+    pub(crate) fn wire(self) -> &'static str {
         match self {
             Self::Kick => "kick",
             Self::Ban => "ban",
@@ -136,10 +139,14 @@ impl Directory {
                     .as_i64()
                     .is_some_and(|r| r > 0 && delta["state"]["m.room.member"][id] == r)
             {
-                self.changed.insert(id.into());
-                self.users.insert(id.into(), m);
+                self.observe(id, m);
             }
         }
+    }
+    /// A membership transition seen in sync.
+    pub fn observe(&mut self, user: &str, member: Member) {
+        self.changed.insert(user.into());
+        self.users.insert(user.into(), member);
     }
     pub fn choose(&mut self, id: Option<String>) {
         self.selected = id.filter(|u| self.users.contains_key(u));
@@ -174,9 +181,9 @@ impl App {
         };
         let prior_power = r.posting.id().map(str::to_owned);
         self.directory.changed.clear();
-        self.rpc(
-            "get_room_state",
-            json!({"room_id":room,"refetch":true,"include_members":true}),
+        let target = room.clone();
+        self.fetch_room_state(
+            &target,
             Request::Membership(Flight::Read {
                 room,
                 prior_power,
@@ -224,71 +231,88 @@ impl App {
             .into();
         }
     }
+    /// gomuks's answer to a membership read or write.
     pub fn membership_result(&mut self, f: Flight, data: &Value) {
-        if !self.people || self.selected != f.room() {
+        match f {
+            Flight::Read { .. } => {
+                let state = RoomState::from_gomuks(f.room(), data);
+                self.membership_state(f, state);
+            }
+            Flight::Write(c) => self.membership_written(c),
+        }
+    }
+    /// Fresh room state for the directory, and for a change waiting on it.
+    pub fn membership_state(&mut self, f: Flight, state: RoomState) {
+        let Flight::Read {
+            room,
+            prior_power,
+            change,
+        } = f
+        else {
+            return;
+        };
+        if !self.people || self.selected != room {
             return;
         }
-        match f {
-            Flight::Read {
-                room,
-                prior_power,
-                change,
-            } => {
-                let Some(r) = self.live.list.get_mut(&room) else {
-                    return;
-                };
-                let mut fresh = Posting::default();
-                let mut users = BTreeMap::new();
-                for e in items(data) {
-                    fresh.ingest(&room, e, false);
-                    if let Some((id, m)) = Member::read(&room, e) {
-                        users.insert(id.to_owned(), m);
-                    }
-                }
-                let checked = change.as_ref().is_some_and(|c| {
-                    fresh.id() == Some(&c.power)
-                        && fresh.can_moderate(&self.matrix_id, &c.user, c.action)
-                        && users
-                            .get(&self.matrix_id)
-                            .is_some_and(|m| m.kind == Kind::Joined)
-                        && users
-                            .get(&c.user)
-                            .is_some_and(|m| m.event == c.event && c.action.applies(m.kind))
-                });
-                if r.posting.id() == prior_power.as_deref() {
-                    r.posting = fresh;
-                }
-                for id in std::mem::take(&mut self.directory.changed) {
-                    if let Some(m) = self.directory.users.remove(&id) {
-                        users.insert(id, m);
-                    }
-                }
-                self.directory.users = users;
-                if let Some(c) = change {
-                    if !checked || !self.current_member_change(&c) {
-                        self.directory.note="Membership or permissions changed. Review the member before trying again.".into();
-                        return;
-                    }
-                    self.rpc("set_membership",json!({"room_id":room,"user_id":c.user,"action":c.action.wire(),"reason":c.reason}),
-                        Request::Membership(Flight::Write(c)));
-                }
-            }
-            Flight::Write(c) => {
-                if self.directory.selected.as_ref() == Some(&c.user) {
-                    self.directory.reason.clear();
-                    self.directory.note = format!("{} accepted by homeserver.", c.action.label());
-                }
-                // A successful membership RPC returns no event. If sync has
-                // not delivered the transition yet, reload the actual state.
-                if self
-                    .directory
-                    .users
+        let Some(r) = self.live.list.get_mut(&room) else {
+            return;
+        };
+        let fresh = state.posting();
+        let mut users = state.members;
+        let checked = change.as_ref().is_some_and(|c| {
+            fresh.id() == Some(&c.power)
+                && fresh.can_moderate(&self.matrix_id, &c.user, c.action)
+                && users
+                    .get(&self.matrix_id)
+                    .is_some_and(|m| m.kind == Kind::Joined)
+                && users
                     .get(&c.user)
-                    .is_none_or(|m| m.event == c.event)
-                {
-                    self.read_directory(None);
-                }
+                    .is_some_and(|m| m.event == c.event && c.action.applies(m.kind))
+        });
+        if r.posting.id() == prior_power.as_deref() {
+            r.posting = fresh;
+        }
+        for id in std::mem::take(&mut self.directory.changed) {
+            if let Some(m) = self.directory.users.remove(&id) {
+                users.insert(id, m);
             }
+        }
+        self.directory.users = users;
+        if let Some(c) = change {
+            if !checked || !self.current_member_change(&c) {
+                self.directory.note =
+                    "Membership or permissions changed. Review the member before trying again."
+                        .into();
+                return;
+            }
+            let (room, user, reason) = (c.room.clone(), c.user.clone(), c.reason.clone());
+            self.send_membership(
+                &room,
+                &user,
+                c.action,
+                &reason,
+                Request::Membership(Flight::Write(c)),
+            );
+        }
+    }
+    /// The homeserver accepted a membership change.
+    pub fn membership_written(&mut self, c: Change) {
+        if !self.people || self.selected != c.room {
+            return;
+        }
+        if self.directory.selected.as_ref() == Some(&c.user) {
+            self.directory.reason.clear();
+            self.directory.note = format!("{} accepted by homeserver.", c.action.label());
+        }
+        // A successful membership change returns no event. If sync has not
+        // delivered the transition yet, reload the actual state.
+        if self
+            .directory
+            .users
+            .get(&c.user)
+            .is_none_or(|m| m.event == c.event)
+        {
+            self.read_directory(None);
         }
     }
 }
@@ -297,6 +321,7 @@ impl App {
 mod tests {
     use super::*;
     use crate::rooms::Room;
+    use serde_json::json;
     fn membership(user: &str, ev: &str, kind: &str) -> Value {
         json!({"room_id":"!room","event_id":ev,"type":"m.room.member","state_key":user,
             "content":{"membership":kind,"displayname":"Same display name"}})

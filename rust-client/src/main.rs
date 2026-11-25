@@ -34,6 +34,7 @@ mod reactions;
 mod reading;
 mod replies;
 mod reports;
+mod room_state;
 mod rooms;
 mod search;
 mod transfers;

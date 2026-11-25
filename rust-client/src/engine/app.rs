@@ -2,7 +2,14 @@
 //! to typed commands, and apply its events to the same `App` state and
 //! `rooms::Rooms` model the gomuks frames fill.
 use super::{Account, Command, Connection, Event, Failure, Recovery, run};
-use crate::{App, Msg, Request, account, replies::Original, rooms};
+use crate::{
+    App, Msg, Request, account, community::Step, moderation::Flight,
+    permissions::Flight as Flight2, replies::Original, room_state::RoomState, rooms,
+};
+
+/// The gomuks path's message for the same failure.
+const POSTING_FAILED: &str =
+    "Could not change posting permissions. Check your room role and connection.";
 use iced::{Task, widget::text_editor};
 use serde_json::Value;
 
@@ -32,7 +39,7 @@ impl App {
         (app, task)
     }
 
-    fn command(&mut self, make: impl FnOnce(i64) -> Command, request: Request) {
+    pub(crate) fn command(&mut self, make: impl FnOnce(i64) -> Command, request: Request) {
         self.seq += 1;
         if self.connected
             && let Some(sdk) = &self.sdk
@@ -357,6 +364,8 @@ impl App {
                     }
                 }
             }
+            Event::RoomState { id, result } => self.engine_room_state(id, result),
+            Event::Created { id, result } => self.engine_created(id, result),
             Event::UploadLimit { id, result } => {
                 if matches!(self.pending.remove(&id), Some(Request::MediaConfig))
                     && let Ok(limit) = result
@@ -495,6 +504,10 @@ impl App {
                 attachment,
                 "Transfer failed. Retry or remove the attachment.",
             ),
+            (Request::Membership(Flight::Write(c)), Ok(())) => self.membership_written(c),
+            (Request::Membership(f), Err(_)) => self.membership_error(f),
+            (Request::Setup(Step::Invite), Ok(())) => self.setup_invited(),
+            (Request::Setup(step), Err(_)) => self.setup_error(step),
             (Request::Download, Ok(())) => self.status = "Attachment saved.".into(),
             (Request::Download, Err(_)) => {
                 self.status = "Could not save the attachment.".into();
@@ -505,6 +518,38 @@ impl App {
 }
 
 impl App {
+    fn engine_room_state(&mut self, id: i64, result: Result<RoomState, Failure>) {
+        let Some(request) = self.pending.remove(&id) else {
+            return;
+        };
+        match (request, result) {
+            (Request::Membership(f), Ok(state)) => self.membership_state(f, state),
+            (Request::Membership(f), Err(_)) => self.membership_error(f),
+            (Request::Posting(Flight2::Check(c)), Ok(state)) => self.posting_checked(c, state),
+            (Request::Posting(_), Err(_)) => self.status = POSTING_FAILED.into(),
+            (Request::Setup(Step::Check), Ok(state)) => self.setup_checked(state),
+            (Request::Setup(step), Err(_)) => self.setup_error(step),
+            _ => {}
+        }
+    }
+
+    /// Answers with the ID of a new room or event.
+    fn engine_created(&mut self, id: i64, result: Result<String, Failure>) {
+        let Some(request) = self.pending.remove(&id) else {
+            return;
+        };
+        match (request, result) {
+            (Request::Posting(Flight2::Write(c, content)), Ok(event)) => {
+                self.posting_written(c, content, event)
+            }
+            (Request::Posting(_), Err(_)) => self.status = POSTING_FAILED.into(),
+            (Request::Setup(Step::Create), Ok(room)) => self.setup_created(room),
+            (Request::Setup(Step::Link), Ok(event)) => self.setup_linked(&event),
+            (Request::Setup(step), Err(_)) => self.setup_error(step),
+            _ => {}
+        }
+    }
+
     /// Messages around a reply's original, for "View original" when it is
     /// outside the loaded timeline.
     fn engine_context(&mut self, room: String, event: String, messages: Vec<super::Message>) {
@@ -882,5 +927,148 @@ mod tests {
             app.outbox.rooms["!r:example"][0].status_label(),
             "Cancelled · retry"
         );
+    }
+
+    /// Signed in as an admin of one room, with its state answered by `state`.
+    fn admin() -> (App, async_channel::Receiver<Command>) {
+        let (mut app, rx) = app();
+        app.engine_event(signed_in(true));
+        app.engine_event(Event::Rooms(RoomList {
+            rooms: vec![RoomSummary {
+                id: "!r:example".into(),
+                name: "general".into(),
+                ..Default::default()
+            }],
+            children: Default::default(),
+        }));
+        while rx.try_recv().is_ok() {}
+        (app, rx)
+    }
+    fn state(power: &str, bob: &str) -> crate::room_state::RoomState {
+        use crate::{moderation::Member, permissions::StateDoc};
+        let doc = |id: &str, content| StateDoc {
+            event_id: id.into(),
+            sender: "@me:example".into(),
+            content,
+            redacted: false,
+        };
+        let member = |event: &str| Member {
+            kind: crate::moderation::Kind::Joined,
+            name: String::new(),
+            event: event.into(),
+        };
+        crate::room_state::RoomState {
+            create: Some(doc("$create", serde_json::json!({"room_version": "11"}))),
+            power: Some(doc(
+                power,
+                serde_json::json!({"users": {"@me:example": 100}, "kick": 50, "ban": 50}),
+            )),
+            members: [
+                ("@me:example".to_owned(), member("$me")),
+                ("@bob:example".to_owned(), member(bob)),
+            ]
+            .into(),
+        }
+    }
+
+    #[test]
+    fn moderation_rechecks_typed_room_state_before_acting() {
+        let (mut app, rx) = admin();
+        app.people = true;
+        app.read_directory(None);
+        let Ok(Command::RoomState { id, room }) = rx.try_recv() else {
+            panic!("expected a room state read")
+        };
+        assert_eq!(room, "!r:example");
+        app.engine_event(Event::RoomState {
+            id,
+            result: Ok(state("$pl", "$bob")),
+        });
+        assert_eq!(app.directory.users.len(), 2);
+        app.directory.choose(Some("@bob:example".into()));
+        let change = app
+            .member_change(crate::moderation::Action::Kick)
+            .expect("an admin may kick bob");
+        app.moderate(change);
+        let Ok(Command::RoomState { id, .. }) = rx.try_recv() else {
+            panic!("expected a fresh read before acting")
+        };
+        app.engine_event(Event::RoomState {
+            id,
+            result: Ok(state("$pl", "$bob")),
+        });
+        let Ok(Command::Moderate {
+            id, user, action, ..
+        }) = rx.try_recv()
+        else {
+            panic!("expected the kick")
+        };
+        assert_eq!(user, "@bob:example");
+        assert_eq!(action, crate::moderation::Action::Kick);
+        app.engine_event(Event::Done { id, result: Ok(()) });
+        assert_eq!(app.directory.note, "Kick accepted by homeserver.");
+        // Until sync delivers the kick, bob's member event is unchanged, so
+        // the directory reads the state again.
+        let Ok(Command::RoomState { id, .. }) = rx.try_recv() else {
+            panic!("expected a re-read")
+        };
+        app.engine_event(Event::RoomState {
+            id,
+            result: Ok(state("$pl", "$bob")),
+        });
+
+        // A change that went stale in the meantime isn't sent.
+        app.directory.choose(Some("@bob:example".into()));
+        let change = app.member_change(crate::moderation::Action::Ban).unwrap();
+        app.moderate(change);
+        let Ok(Command::RoomState { id, .. }) = rx.try_recv() else {
+            panic!("expected a fresh read")
+        };
+        app.engine_event(Event::RoomState {
+            id,
+            result: Ok(state("$pl", "$bob-rejoined")),
+        });
+        assert!(rx.try_recv().is_err(), "a stale change is not sent");
+        assert!(
+            app.directory
+                .note
+                .starts_with("Membership or permissions changed")
+        );
+    }
+
+    #[test]
+    fn posting_changes_write_the_patched_document_and_keep_its_event() {
+        let (mut app, rx) = admin();
+        app.permission_panel = true;
+        let summary = state("$pl", "$bob");
+        app.live.list.get_mut("!r:example").unwrap().posting = summary.posting();
+        app.change_posting(crate::permissions::Change {
+            room: "!r:example".into(),
+            base: "$pl".into(),
+            action: crate::permissions::Action::Restrict,
+        });
+        let Ok(Command::RoomState { id, .. }) = rx.try_recv() else {
+            panic!("expected a fresh read")
+        };
+        app.engine_event(Event::RoomState {
+            id,
+            result: Ok(state("$pl", "$bob")),
+        });
+        let Ok(Command::SetPowerLevels { id, room, content }) = rx.try_recv() else {
+            panic!("expected the power levels write")
+        };
+        assert_eq!(room, "!r:example");
+        assert_eq!(content["events_default"], 50);
+        assert_eq!(
+            content["users"]["@me:example"], 100,
+            "unrelated fields stay"
+        );
+        app.engine_event(Event::Created {
+            id,
+            result: Ok("$locked".into()),
+        });
+        let posting = &app.live.list["!r:example"].posting;
+        assert_eq!(posting.id(), Some("$locked"));
+        assert_eq!(posting.can_post("@bob:example", false), Some(false));
     }
 }

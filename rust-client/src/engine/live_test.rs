@@ -905,3 +905,117 @@ async fn matrix_sdk_account_flows() {
         options.providers
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "run scripts/qa_matrix_sdk.py (disposable Synapse and a gomuks peer)"]
+async fn matrix_sdk_rooms_spaces_and_moderation() {
+    use crate::{community::Input, moderation, permissions};
+    let fixture: Value =
+        serde_json::from_slice(&std::fs::read(env::var("UNTETHERED_QA_FIXTURE").unwrap()).unwrap())
+            .unwrap();
+    let base = PathBuf::from(env::var_os("UNTETHERED_QA_PROFILES").unwrap());
+    let server = fixture["server"].as_str().unwrap();
+    let (user, pass) = (
+        rooms::string(&fixture["username"]),
+        rooms::string(&fixture["password"]),
+    );
+    let room = fixture["unread_room"].as_str().unwrap();
+    let peer = fixture["peer"].as_str().unwrap();
+    let (mut app, rx, engine) = sign_in(&base.join("rooms"), server, &user, &pass).await;
+    app.recovery = rooms::string(&fixture["key"]);
+    let _ = app.update(Msg::Verify);
+    wait(&mut app, &rx, "verified", |a| a.verified).await;
+    wait(&mut app, &rx, "room permissions from sync", |a| {
+        a.live
+            .list
+            .get(room)
+            .is_some_and(|r| r.posting.id().is_some())
+    })
+    .await;
+    let _ = app.update(Msg::Open(room.into()));
+
+    // Posting: read-only for members, then restored, each checked against a
+    // fresh read of the room's state.
+    app.permission_panel = true;
+    for (action, members_may_post) in [
+        (permissions::Action::Restrict, false),
+        (permissions::Action::Restore, true),
+    ] {
+        let posting = &app.live.list[room].posting;
+        assert_eq!(posting.action(), Some(action));
+        let base_event = posting.id().unwrap().to_owned();
+        app.change_posting(permissions::Change {
+            room: room.into(),
+            base: base_event.clone(),
+            action,
+        });
+        wait(&mut app, &rx, "posting change", |a| {
+            !a.posting_busy(room) && a.live.list[room].posting.id() != Some(&base_event)
+        })
+        .await;
+        assert_eq!(
+            app.live.list[room].posting.can_post(peer, false),
+            Some(members_may_post)
+        );
+    }
+    app.leave_permission_panel();
+    println!("matrix-sdk: made a room read-only for members and restored posting");
+
+    // Moderation: kick the peer, then invite them back.
+    app.people = true;
+    app.read_directory(None);
+    let kind = |a: &App| a.directory.users.get(peer).map(|m| m.kind);
+    wait(&mut app, &rx, "member directory", |a| {
+        kind(a) == Some(moderation::Kind::Joined)
+    })
+    .await;
+    for (action, after) in [
+        (moderation::Action::Kick, moderation::Kind::Left),
+        (moderation::Action::Invite, moderation::Kind::Invited),
+    ] {
+        app.directory.choose(Some(peer.into()));
+        let change = app.member_change(action).expect("an admin may do this");
+        app.moderate(change);
+        wait(&mut app, &rx, "membership change", |a| {
+            kind(a) == Some(after) && !a.membership_busy()
+        })
+        .await;
+    }
+    app.people = false;
+    println!(
+        "matrix-sdk: kicked the gomuks peer and invited them back, checked against fresh room state"
+    );
+
+    // Community: a space, then an encrypted channel linked into it.
+    let _ = app.update(Msg::Setup(Input::Start(None)));
+    let _ = app.update(Msg::Setup(Input::Name("SDK made space".into())));
+    let _ = app.update(Msg::Setup(Input::Submit));
+    wait(&mut app, &rx, "space created", |a| {
+        a.setup.as_ref().is_some_and(|f| f.done)
+    })
+    .await;
+    let space = app.setup.as_ref().unwrap().created.clone().unwrap();
+    let _ = app.update(Msg::Setup(Input::Close));
+    wait(&mut app, &rx, "space synced", |a| {
+        a.live.list.get(&space).is_some_and(|r| r.space)
+    })
+    .await;
+    let _ = app.update(Msg::Setup(Input::Start(Some(space.clone()))));
+    let _ = app.update(Msg::Setup(Input::Name("sdk-channel".into())));
+    let _ = app.update(Msg::Setup(Input::Submit));
+    wait(&mut app, &rx, "channel created and linked", |a| {
+        a.setup.as_ref().is_some_and(|f| f.done)
+    })
+    .await;
+    let channel = app.setup.as_ref().unwrap().created.clone().unwrap();
+    wait(&mut app, &rx, "channel in the space", |a| {
+        a.live
+            .children
+            .get(&space)
+            .is_some_and(|c| c.contains(&channel))
+            && a.live.list.get(&channel).is_some_and(|r| r.encrypted)
+    })
+    .await;
+    println!("matrix-sdk: created a space and an encrypted channel linked into it");
+    stop(app, engine).await;
+}

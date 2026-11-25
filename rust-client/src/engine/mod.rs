@@ -16,6 +16,7 @@ mod media;
 mod messaging;
 mod rooms;
 mod session;
+mod state;
 mod timeline;
 mod verify;
 
@@ -181,6 +182,36 @@ pub enum Command {
         content: serde_json::Value,
         reply_to: Option<String>,
     },
+    /// The room's state from the homeserver, as [`Event::RoomState`].
+    RoomState {
+        id: i64,
+        room: String,
+    },
+    Moderate {
+        id: i64,
+        room: String,
+        user: String,
+        action: crate::moderation::Action,
+        reason: String,
+    },
+    /// Replace the power levels document; answered with [`Event::Created`].
+    SetPowerLevels {
+        id: i64,
+        room: String,
+        content: serde_json::Value,
+    },
+    /// A Matrix `createRoom` body; answered with [`Event::Created`].
+    CreateRoom {
+        id: i64,
+        body: serde_json::Value,
+    },
+    /// Link `child` into `space`; answered with [`Event::Created`].
+    AddToSpace {
+        id: i64,
+        space: String,
+        child: String,
+        via: Vec<String>,
+    },
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -231,6 +262,15 @@ pub enum Event {
     UploadLimit {
         id: i64,
         result: Result<u64, Failure>,
+    },
+    RoomState {
+        id: i64,
+        result: Result<crate::room_state::RoomState, Failure>,
+    },
+    /// A request that made a room or an event, with its ID.
+    Created {
+        id: i64,
+        result: Result<String, Failure>,
     },
 }
 
@@ -342,6 +382,9 @@ pub struct RoomSummary {
     pub marked_unread: bool,
     /// The `m.fully_read` marker.
     pub fully_read: Option<String>,
+    /// The documents behind permissions, from the store.
+    pub create: Option<crate::permissions::StateDoc>,
+    pub power: Option<crate::permissions::StateDoc>,
 }
 
 #[derive(Clone)]
@@ -834,19 +877,61 @@ impl Engine {
                 .await
             }
             Command::UploadLimit { id } => {
-                let result = match &self.live {
-                    Some(live) => {
-                        let client = live.client.clone();
-                        let events = self.events.clone();
-                        tokio::spawn(async move {
-                            let result = media::upload_limit(&client).await;
-                            let _ = events.send(Event::UploadLimit { id, result }).await;
-                        });
-                        return;
-                    }
-                    None => Err(Failure::Unavailable),
+                let unavailable = Event::UploadLimit {
+                    id,
+                    result: Err(Failure::Unavailable),
                 };
-                self.emit(Event::UploadLimit { id, result }).await;
+                self.answer(unavailable, move |client| async move {
+                    let result = media::upload_limit(&client).await;
+                    Event::UploadLimit { id, result }
+                })
+                .await
+            }
+            Command::RoomState { id, room } => {
+                let unavailable = Event::RoomState {
+                    id,
+                    result: Err(Failure::Unavailable),
+                };
+                self.answer(unavailable, move |client| async move {
+                    let result = state::room_state(&client, &room).await;
+                    Event::RoomState { id, result }
+                })
+                .await
+            }
+            Command::Moderate {
+                id,
+                room,
+                user,
+                action,
+                reason,
+            } => {
+                self.job(id, move |client, _, _| async move {
+                    state::moderate(&client, &room, &user, action, &reason).await
+                })
+                .await
+            }
+            Command::SetPowerLevels { id, room, content } => {
+                self.created(id, move |client| async move {
+                    state::set_power_levels(&client, &room, content).await
+                })
+                .await
+            }
+            Command::CreateRoom { id, body } => {
+                self.created(id, move |client| async move {
+                    state::create_room(&client, body).await
+                })
+                .await
+            }
+            Command::AddToSpace {
+                id,
+                space,
+                child,
+                via,
+            } => {
+                self.created(id, move |client| async move {
+                    state::add_to_space(&client, &space, &child, via).await
+                })
+                .await
             }
             Command::SendMedia {
                 id,
@@ -934,6 +1019,41 @@ impl Engine {
             let result = work(client, timelines, events.clone()).await;
             let _ = events.send(Event::Done { id, result }).await;
         });
+    }
+
+    /// Run `work` against the signed-in session off the command loop; it
+    /// answers with its own event. Without a session, `unavailable` does.
+    async fn answer<F, Fut>(&self, unavailable: Event, work: F)
+    where
+        F: FnOnce(Client) -> Fut + Send + 'static,
+        Fut: Future<Output = Event> + Send + 'static,
+    {
+        let Some(live) = &self.live else {
+            return self.emit(unavailable).await;
+        };
+        let (client, events) = (live.client.clone(), self.events.clone());
+        tokio::spawn(async move {
+            let _ = events.send(work(client).await).await;
+        });
+    }
+
+    /// Requests that make a room or an event, answered with its ID.
+    async fn created<F, Fut>(&self, id: i64, work: F)
+    where
+        F: FnOnce(Client) -> Fut + Send + 'static,
+        Fut: Future<Output = Result<String, Failure>> + Send + 'static,
+    {
+        let unavailable = Event::Created {
+            id,
+            result: Err(Failure::Unavailable),
+        };
+        self.answer(unavailable, move |client| async move {
+            Event::Created {
+                id,
+                result: work(client).await,
+            }
+        })
+        .await
     }
 
     /// Commands that end with a new recovery key.

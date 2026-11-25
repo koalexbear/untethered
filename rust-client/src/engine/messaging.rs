@@ -32,7 +32,7 @@ pub fn event_id(event: &str) -> Result<OwnedEventId, Failure> {
     EventId::parse(event).map_err(|_| Failure::Unavailable)
 }
 
-fn http(e: &matrix_sdk::Error) -> Failure {
+pub(super) fn http(e: &matrix_sdk::Error) -> Failure {
     if e.client_api_error_kind().is_some() {
         Failure::Failed
     } else {

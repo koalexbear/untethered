@@ -463,6 +463,10 @@ sso:
                            "matrix_sdk_account_flows", "--", "--ignored", "--nocapture"],
                           cwd=ROOT, env=flows).returncode:
             failed.append("matrix_sdk_account_flows")
+        if subprocess.run(["cargo", "test", "--locked", "--manifest-path", "rust-client/Cargo.toml",
+                           "matrix_sdk_rooms_spaces_and_moderation", "--", "--ignored", "--nocapture"],
+                          cwd=ROOT, env=flows).returncode:
+            failed.append("matrix_sdk_rooms_spaces_and_moderation")
         if failed:
             raise SystemExit("FAILED: " + ", ".join(failed))
         events = http("GET", f"{hs}/_matrix/client/v3/rooms/{quote(room, safe='')}/messages",

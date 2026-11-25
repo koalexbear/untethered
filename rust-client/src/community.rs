@@ -2,9 +2,8 @@
 //! restricted join rule and encryption already in place, then linked into
 //! the parent's directory. Retrying the link must never create another room.
 use crate::{
-    App, Msg, Request, Section,
-    permissions::Posting,
-    rooms::{VOICE_ROOM, items},
+    App, Msg, Request, Section, moderation::Kind as MemberKind, room_state::RoomState,
+    rooms::VOICE_ROOM,
 };
 use iced::{Task, widget::operation};
 use serde_json::{Value, json};
@@ -157,11 +156,8 @@ impl App {
                 if let Some(parent) = f.parent.clone() {
                     if self.live.list.get(&parent).is_some_and(|r| r.space) {
                         f.note = "Checking space permissions…".into();
-                        self.setup_rpc(
-                            "get_room_state",
-                            json!({"room_id":parent,"refetch":true,"include_members":true}),
-                            Step::Check,
-                        );
+                        self.fetch_room_state(&parent, Request::Setup(Step::Check));
+                        self.setup_queued(Step::Check);
                     } else {
                         f.note = "You are no longer in this space.".into();
                     }
@@ -186,8 +182,8 @@ impl App {
         }
         Task::none()
     }
-    fn setup_rpc(&mut self, cmd: &str, params: Value, step: Step) {
-        self.rpc(cmd, params, Request::Setup(step));
+    /// Report a setup request that couldn't be queued.
+    fn setup_queued(&mut self, step: Step) {
         if !self.pending.contains_key(&self.seq) {
             self.setup_error(step);
         }
@@ -202,7 +198,8 @@ impl App {
         }
         f.note = "Creating room…".into();
         let params = f.params(via);
-        self.setup_rpc("create_room", params, Step::Create);
+        self.send_create_room(params, Request::Setup(Step::Create));
+        self.setup_queued(Step::Create);
     }
     fn link_community_room(&mut self) {
         let Some(f) = &mut self.setup else { return };
@@ -212,92 +209,106 @@ impl App {
             return;
         };
         f.note = "Linking channel into space…".into();
-        let params = json!({"room_id":parent,"type":"m.space.child","state_key":child,"content":{"via":[via]}});
-        self.setup_rpc("set_state", params, Step::Link);
+        let (parent, child, via) = (parent.clone(), child.clone(), via.to_owned());
+        self.send_space_child(&parent, &child, &via, Request::Setup(Step::Link));
+        self.setup_queued(Step::Link);
     }
+    /// gomuks's answer to a setup step.
     pub fn setup_result(&mut self, step: Step, data: &Value) {
-        let Some(f) = &mut self.setup else { return };
         match step {
             Step::Check => {
-                let Some(parent) = &f.parent else { return };
-                let mut levels = Posting::default();
-                for e in items(data) {
-                    levels.ingest(parent, e, false);
-                }
-                let allowed = if f.kind == Kind::Invite {
-                    levels.can_invite(&self.matrix_id)
-                } else {
-                    levels.can_link_channel(&self.matrix_id)
-                };
-                if !self.live.list.get(parent).is_some_and(|r| r.space)
-                    || !allowed
-                    || !items(data).any(|e| {
-                        e["room_id"] == *parent
-                            && e["type"] == "m.room.member"
-                            && e["state_key"] == self.matrix_id
-                            && e["content"]["membership"] == "join"
-                    })
-                {
-                    f.note = if f.kind == Kind::Invite {
-                        "Your role cannot invite members to this space."
-                    } else {
-                        "Your role cannot add channels to this space."
-                    }
-                    .into();
-                    return;
-                }
-                if f.kind == Kind::Invite {
-                    if items(data).any(|e| {
-                        e["room_id"] == *parent
-                            && e["type"] == "m.room.member"
-                            && e["state_key"] == f.invite.trim()
-                            && matches!(
-                                e["content"]["membership"].as_str(),
-                                Some("invite" | "join" | "ban")
-                            )
-                    }) {
-                        f.note = "This person is already invited, joined, or banned.".into();
-                        return;
-                    }
-                    let body =
-                        json!({"room_id":parent,"user_id":f.invite.trim(),"action":"invite"});
-                    f.note = "Sending invitation…".into();
-                    self.setup_rpc("set_membership", body, Step::Invite);
-                } else if f.created.is_some() {
-                    self.link_community_room()
-                } else {
-                    self.create_community_room()
-                }
-            }
-            Step::Create => {
-                let Some(id) = data["room_id"]
-                    .as_str()
-                    .filter(|s| s.starts_with('!') && s.len() > 1)
-                else {
-                    self.setup_error(step);
+                let Some(parent) = self.setup.as_ref().and_then(|f| f.parent.clone()) else {
                     return;
                 };
-                f.created = Some(id.into());
-                if f.parent.is_some() {
-                    self.link_community_room();
-                } else {
-                    f.done = true;
-                    f.note = "Space created. Waiting for sync…".into();
-                }
+                self.setup_checked(RoomState::from_gomuks(&parent, data));
             }
-            Step::Link => {
-                if data.as_str().is_none_or(|id| !id.starts_with('$')) {
-                    self.setup_error(step);
-                    return;
-                }
-                f.done = true;
-                f.note = "Channel linked. Waiting for sync…".into();
-            }
-            Step::Invite => {
-                f.done = true;
-                f.note = format!("Invitation sent to {}.", f.invite.trim());
-            }
+            Step::Create => match data["room_id"].as_str() {
+                Some(id) => self.setup_created(id.to_owned()),
+                None => self.setup_error(step),
+            },
+            Step::Link => match data.as_str() {
+                Some(id) => self.setup_linked(id),
+                None => self.setup_error(step),
+            },
+            Step::Invite => self.setup_invited(),
         }
+    }
+    /// The parent space's state: may we add a channel or invite, and is the
+    /// invitee new to it?
+    pub fn setup_checked(&mut self, state: RoomState) {
+        let Some(f) = &mut self.setup else { return };
+        let Some(parent) = f.parent.clone() else {
+            return;
+        };
+        let levels = state.posting();
+        let allowed = if f.kind == Kind::Invite {
+            levels.can_invite(&self.matrix_id)
+        } else {
+            levels.can_link_channel(&self.matrix_id)
+        };
+        if !self.live.list.get(&parent).is_some_and(|r| r.space)
+            || !allowed
+            || state.membership(&self.matrix_id) != Some(MemberKind::Joined)
+        {
+            f.note = if f.kind == Kind::Invite {
+                "Your role cannot invite members to this space."
+            } else {
+                "Your role cannot add channels to this space."
+            }
+            .into();
+            return;
+        }
+        if f.kind == Kind::Invite {
+            let invitee = f.invite.trim().to_owned();
+            if matches!(
+                state.membership(&invitee),
+                Some(MemberKind::Invited | MemberKind::Joined | MemberKind::Banned)
+            ) {
+                f.note = "This person is already invited, joined, or banned.".into();
+                return;
+            }
+            f.note = "Sending invitation…".into();
+            self.send_membership(
+                &parent,
+                &invitee,
+                crate::moderation::Action::Invite,
+                "",
+                Request::Setup(Step::Invite),
+            );
+            self.setup_queued(Step::Invite);
+        } else if f.created.is_some() {
+            self.link_community_room()
+        } else {
+            self.create_community_room()
+        }
+    }
+    pub fn setup_created(&mut self, id: String) {
+        let Some(f) = &mut self.setup else { return };
+        if !(id.starts_with('!') && id.len() > 1) {
+            self.setup_error(Step::Create);
+            return;
+        }
+        f.created = Some(id);
+        if f.parent.is_some() {
+            self.link_community_room();
+        } else {
+            f.done = true;
+            f.note = "Space created. Waiting for sync…".into();
+        }
+    }
+    pub fn setup_linked(&mut self, event_id: &str) {
+        let Some(f) = &mut self.setup else { return };
+        if !event_id.starts_with('$') {
+            self.setup_error(Step::Link);
+            return;
+        }
+        f.done = true;
+        f.note = "Channel linked. Waiting for sync…".into();
+    }
+    pub fn setup_invited(&mut self) {
+        let Some(f) = &mut self.setup else { return };
+        f.done = true;
+        f.note = format!("Invitation sent to {}.", f.invite.trim());
     }
     pub fn setup_error(&mut self, step: Step) {
         if let Some(f) = &mut self.setup {

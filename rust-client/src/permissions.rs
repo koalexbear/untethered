@@ -3,6 +3,8 @@
 //! the room, not to this editor.
 use crate::{
     App, Request,
+    moderation::Kind,
+    room_state::RoomState,
     rooms::{items, server_confirmed},
 };
 use serde_json::{Value, json};
@@ -26,12 +28,35 @@ fn number(v: &Value) -> Option<i64> {
 fn level(map: &Value, key: &str, default: i64) -> Option<i64> {
     map.get(key).map_or(Some(default), number)
 }
+/// A Matrix state event as the App keeps it, without an engine's envelope.
+#[derive(Clone, Debug, PartialEq)]
+pub struct StateDoc {
+    pub event_id: String,
+    pub sender: String,
+    pub content: Value,
+    /// Redacted, so its content no longer says what it did.
+    pub redacted: bool,
+}
+impl StateDoc {
+    /// A confirmed state event of `room` from gomuks.
+    pub fn from_gomuks(room: &str, e: &Value) -> Option<Self> {
+        if e["room_id"] != room || !server_confirmed(e) {
+            return None;
+        }
+        Some(Self {
+            event_id: e["event_id"].as_str()?.into(),
+            sender: e["sender"].as_str().unwrap_or_default().into(),
+            content: e["content"].clone(),
+            redacted: e["redacted_by"].is_string(),
+        })
+    }
+}
 #[derive(Default)]
 pub struct Posting {
-    create: Option<Value>,
-    power: Option<Value>,
+    create: Option<StateDoc>,
+    power: Option<StateDoc>,
 }
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Action {
     Restrict,
     Restore,
@@ -47,8 +72,12 @@ impl Action {
     }
 }
 impl Posting {
+    pub fn new(create: Option<StateDoc>, power: Option<StateDoc>) -> Self {
+        Self { create, power }
+    }
+    /// A state event from gomuks. `initial` keeps what is already known.
     pub fn ingest(&mut self, room: &str, e: &Value, initial: bool) {
-        if e["room_id"] != room || e["state_key"] != "" || !server_confirmed(e) {
+        if e["state_key"] != "" {
             return;
         }
         let slot = match e["type"].as_str() {
@@ -56,17 +85,28 @@ impl Posting {
             Some(POWER) => &mut self.power,
             _ => return,
         };
-        if !initial || slot.is_none() {
-            *slot = Some(e.clone());
+        if let Some(doc) = StateDoc::from_gomuks(room, e)
+            && (!initial || slot.is_none())
+        {
+            *slot = Some(doc);
         }
     }
+    /// Our own power level change, once the homeserver accepted it.
+    pub fn accepted(&mut self, event_id: String, sender: String, content: Value) {
+        self.power = Some(StateDoc {
+            event_id,
+            sender,
+            content,
+            redacted: false,
+        });
+    }
     pub fn id(&self) -> Option<&str> {
-        self.power.as_ref()?["event_id"].as_str()
+        Some(&self.power.as_ref()?.event_id)
     }
     fn content(&self) -> Option<&Value> {
-        let e = self.power.as_ref()?;
-        let c = &e["content"];
-        (!e["redacted_by"].is_string()
+        let doc = self.power.as_ref()?;
+        let c = &doc.content;
+        (!doc.redacted
             && c.is_object()
             && ["users", "events"]
                 .iter()
@@ -79,13 +119,13 @@ impl Posting {
         }
         let c = self.content()?;
         let create = self.create.as_ref()?;
-        let modern = create["content"]["room_version"]
+        let modern = create.content["room_version"]
             .as_str()
             .and_then(|s| s.parse::<u32>().ok())
             .is_some_and(|v| v >= 12);
         if modern
-            && (create["sender"] == me
-                || items(&create["content"]["additional_creators"]).any(|v| v == me))
+            && (create.sender == me
+                || items(&create.content["additional_creators"]).any(|v| v == me))
         {
             return Some(MAX);
         }
@@ -288,71 +328,66 @@ impl App {
         if r.posting.id() != Some(&c.base) || r.posting.patch(&self.matrix_id, c.action).is_none() {
             return;
         }
-        // gomuks waits for the server refetch only with include_members=true.
-        self.rpc(
-            "get_room_state",
-            json!({"room_id":c.room,"include_members":true,"refetch":true}),
-            Request::Posting(Flight::Check(c)),
-        );
+        let room = c.room.clone();
+        self.fetch_room_state(&room, Request::Posting(Flight::Check(c)));
     }
+    /// gomuks's answer to a posting check or write.
     pub fn posting_result(&mut self, f: Flight, data: &Value) {
-        let c = f.change();
+        match f {
+            Flight::Check(c) => {
+                let state = RoomState::from_gomuks(&c.room, data);
+                self.posting_checked(c, state);
+            }
+            Flight::Write(c, content) => match data.as_str().filter(|id| id.starts_with('$')) {
+                Some(id) => self.posting_written(c, content, id.to_owned()),
+                None => self.status = "Posting change was not confirmed.".into(),
+            },
+        }
+    }
+    /// Fresh room state for a posting change: write it only if nothing
+    /// changed since the change was planned.
+    pub fn posting_checked(&mut self, c: Change, state: RoomState) {
+        if self.selected != c.room || !self.permission_panel || !self.verified || !self.connected {
+            return;
+        }
         let Some(r) = self.live.list.get_mut(&c.room) else {
             return;
         };
-        match f {
-            Flight::Check(c) => {
-                if self.selected != c.room
-                    || !self.permission_panel
-                    || !self.verified
-                    || !self.connected
-                {
-                    return;
-                }
-                if !items(data).any(|e| {
-                    e["room_id"] == c.room
-                        && e["type"] == "m.room.member"
-                        && e["state_key"] == self.matrix_id
-                        && e["content"]["membership"] == "join"
-                }) {
-                    self.status = "Cannot verify your membership in this room.".into();
-                    return;
-                }
-                let mut fresh = Posting::default();
-                for e in items(data) {
-                    fresh.ingest(&c.room, e, false);
-                }
-                if r.posting.id() != Some(&c.base) || fresh.id() != Some(&c.base) {
-                    if r.posting.id() == Some(&c.base) {
-                        r.posting = fresh;
-                    }
-                    self.status =
-                        "Room permissions changed. Review the current levels before trying again."
-                            .into();
-                    return;
-                }
-                let Some(content) = fresh.patch(&self.matrix_id, c.action) else {
-                    self.status = "You cannot make this permission change.".into();
-                    return;
-                };
-                self.rpc(
-                    "set_state",
-                    json!({"room_id":c.room,"type":POWER,"state_key":"","content":content}),
-                    Request::Posting(Flight::Write(c, content)),
-                );
+        if state.membership(&self.matrix_id) != Some(Kind::Joined) {
+            self.status = "Cannot verify your membership in this room.".into();
+            return;
+        }
+        let fresh = state.posting();
+        if r.posting.id() != Some(&c.base) || fresh.id() != Some(&c.base) {
+            if r.posting.id() == Some(&c.base) {
+                r.posting = fresh;
             }
-            Flight::Write(c, content) => {
-                if data.as_str().is_none_or(|id| !id.starts_with('$')) {
-                    self.status = "Posting change was not confirmed.".into();
-                    return;
-                }
-                if r.posting.id() == Some(&c.base) {
-                    r.posting.ingest(&c.room,&json!({"room_id":c.room,"type":POWER,"state_key":"","event_id":data,"content":content}),false);
-                }
-                if self.selected == c.room {
-                    self.status.clear();
-                }
-            }
+            self.status =
+                "Room permissions changed. Review the current levels before trying again.".into();
+            return;
+        }
+        let Some(content) = fresh.patch(&self.matrix_id, c.action) else {
+            self.status = "You cannot make this permission change.".into();
+            return;
+        };
+        let room = c.room.clone();
+        self.send_power_levels(
+            &room,
+            content.clone(),
+            Request::Posting(Flight::Write(c, content)),
+        );
+    }
+    /// The homeserver accepted our power levels as `event_id`.
+    pub fn posting_written(&mut self, c: Change, content: Value, event_id: String) {
+        let me = self.matrix_id.clone();
+        let Some(r) = self.live.list.get_mut(&c.room) else {
+            return;
+        };
+        if r.posting.id() == Some(&c.base) {
+            r.posting.accepted(event_id, me, content);
+        }
+        if self.selected == c.room {
+            self.status.clear();
         }
     }
 }
@@ -424,7 +459,12 @@ mod tests {
         app.matrix_id = "@creator:h".into();
         app.permission_panel = true;
         let p = policy("12", json!({}));
-        let create = p.create.clone().unwrap();
+        let create = event(
+            CREATE,
+            "$create",
+            "@creator:h",
+            json!({"room_version":"12","additional_creators":["@also:h"]}),
+        );
         app.live.list.entry("!r".into()).or_default().posting = p;
         app.change_posting(Change {
             room: "!r".into(),
@@ -434,7 +474,7 @@ mod tests {
         let req = rx.try_recv().unwrap().into_rpc();
         assert_eq!(req["command"], "get_room_state");
         assert_eq!(req["data"]["refetch"], true);
-        let member = json!({"room_id":"!r","type":"m.room.member","state_key":"@creator:h","content":{"membership":"join"}});
+        let member = json!({"room_id":"!r","type":"m.room.member","event_id":"$join","state_key":"@creator:h","content":{"membership":"join"}});
         app.frame(json!({"command":"response","request_id":req["request_id"],"data":[create,member,event(POWER,"$new","@else:h",json!({"ban":90}))]}));
         assert!(rx.try_recv().is_err());
         assert_eq!(app.live.list["!r"].posting.id(), Some("$new"));

@@ -2,14 +2,17 @@
 //! response or room-info update arrives. Simplified Sliding Sync's default
 //! `required_state` includes `m.space.child`, so space edges are local reads.
 use super::{Event, RoomList, RoomSummary};
+use crate::permissions::StateDoc;
 use async_channel::Sender;
 use matrix_sdk::{
     Client, Room,
-    deserialized_responses::SyncOrStrippedState,
+    deserialized_responses::{RawAnySyncOrStrippedState, SyncOrStrippedState},
     ruma::events::{
-        SyncStateEvent, fully_read::FullyReadEventContent, space::child::SpaceChildEventContent,
+        StateEventType, SyncStateEvent, fully_read::FullyReadEventContent,
+        space::child::SpaceChildEventContent,
     },
 };
+use serde_json::Value;
 use std::{collections::BTreeSet, time::Duration};
 use tokio::sync::broadcast::error::RecvError;
 
@@ -86,8 +89,25 @@ async fn summary(room: &Room) -> RoomSummary {
             .flatten()
             .and_then(|raw| raw.deserialize().ok())
             .map(|e| e.content.event_id.to_string()),
+        create: state_doc(room, StateEventType::RoomCreate).await,
+        power: state_doc(room, StateEventType::RoomPowerLevels).await,
         id,
     }
+}
+
+/// A state event from the store as the App keeps it. Fields are read from
+/// the JSON so power levels keep what ruma doesn't model.
+async fn state_doc(room: &Room, kind: StateEventType) -> Option<StateDoc> {
+    let RawAnySyncOrStrippedState::Sync(raw) = room.get_state_event(kind, "").await.ok()?? else {
+        return None;
+    };
+    let e: Value = raw.deserialize_as().ok()?;
+    Some(StateDoc {
+        event_id: e["event_id"].as_str()?.into(),
+        sender: e["sender"].as_str().unwrap_or_default().into(),
+        content: e["content"].clone(),
+        redacted: e["unsigned"]["redacted_because"].is_object(),
+    })
 }
 
 /// Children with a non-empty `via`; an empty or redacted edge is a removal.

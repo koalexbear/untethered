@@ -47,6 +47,7 @@ impl Rooms {
             {
                 room.dm_peer = s.dm_peer;
             }
+            room.posting = crate::permissions::Posting::new(s.create, s.power);
             room.read.fully_read = s.fully_read;
             room.read.marked = s.marked_unread;
             room.read.messages = s.unread_messages;
