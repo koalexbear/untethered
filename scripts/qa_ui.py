@@ -14,6 +14,7 @@ Points are in the caller's coordinates. Pass `origin` when the window content
 does not start at (0, 0), for example below a KWin title bar.
 """
 import io
+import itertools
 import re
 import subprocess as sp
 import time
@@ -34,6 +35,9 @@ SIDE = (0x2B, 0x2D, 0x31)  # Sidebar and dialog footer background.
 RAIL_BG = (0x1E, 0x1F, 0x22)
 GREEN = (0x23, 0xA5, 0x5A)  # Speaking ring and the Add a Space glyph.
 USER_PANEL = 56  # Your name and status at the bottom of the sidebar.
+# In the call dock's Devices panel each pick list sits on the line below its
+# label: this far between their centres. Its menu opens upwards.
+PICK_BELOW = 23
 
 
 def near(color, ref, tolerance):
@@ -152,6 +156,31 @@ def regions(im, box, match, *, min_height=24):
             else:
                 boxes.append([start, y, x, y])
     return [tuple(b) for b in boxes if b[3] - b[1] >= min_height]
+
+
+def icon_buttons(im):
+    """Centres of the call dock's 34 px icon buttons (microphone, camera,
+    screen, hang up), left to right, in `im` pixels.
+
+    Their labels exist only as hover tooltips. Scan the plain rows above
+    each glyph and keep a row only when it holds at least three squares."""
+    fills = [(56, 58, 64), (35, 118, 78), (181, 51, 69), (81, 84, 104)]
+    fills += [(min(255, r + 25), min(255, g + 25), min(255, b + 25)) for r, g, b in fills]
+    close = {(r + i, g + j, b + k) for r, g, b in fills
+             for i in range(-3, 4) for j in range(-3, 4) for k in range(-3, 4)}
+    pixels = im.load()
+    tops = []
+    for y in range(30, im.height - 36, 2):
+        for ok, group in itertools.groupby(range(im.width), lambda x: pixels[x, y] in close):
+            xs = list(group)
+            if not ok or not 27 <= len(xs) <= 36:
+                continue
+            cx = (xs[0] + xs[-1]) // 2
+            if not any(abs(cx - x) < 12 and 0 <= y - t < 36 for x, t in tops):
+                tops.append((cx, y))
+    rows = [[b for b in tops if abs(b[1] - t) <= 4] for _, t in tops]
+    row = max(rows, key=len, default=[])
+    return sorted((x, t + 15) for x, t in row) if len(row) >= 3 else []
 
 
 class Ui:

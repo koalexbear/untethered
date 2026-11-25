@@ -303,9 +303,10 @@ actual call controls and measure audio through isolated Linux devices.
 
 **Linux voice rooms (experimental):** Open an existing encrypted Matrix call
 room (`org.matrix.msc3417.call`, marked **♪**) and click **Join voice**.
-People in voice appear under the room name. While you’re connected, a green
-**Speaking** label appears beside each person talking, including you. It
-clears when their microphone goes quiet. Joining never rings the other
+People in voice appear under the room name. While you’re connected, each
+person talking, including you, gets a green ring around their avatar and a
+green speaker icon after their name. Both clear when their microphone goes
+quiet. Joining never rings the other
 members. **Leave voice** disconnects only your device; the others can keep
 talking. The [three-person test](experiments/rtc-audio/README.md#verify-three-person-voice-rooms)
 uses three Linux clients on the same MatrixRTC LiveKit service.
