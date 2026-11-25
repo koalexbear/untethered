@@ -13,7 +13,7 @@ notifications, moderation, permissions and spaces → call signaling → web
 build → remove gomuks. Throughout, the UI keeps reading
 `rooms::{Rooms, Room, Post}`; that model is the seam.
 
-## Status: steps 1 and 2 are in
+## Status: steps 1 to 3 are in
 
 The native client has a second engine built on `matrix-sdk` and
 `matrix-sdk-ui` **0.19.1**. gomuks stays the default. The wasm32 build doesn't
@@ -186,25 +186,37 @@ that compositor.
   panics on the cancelled pool task ("Cancelled"). The tests still pass. The
   SDK offers no shutdown to wait for.
 
-### Restart history check (corrects step 1)
+### Restart history check (corrects steps 1 and 2)
 
-Step 1 blamed 0.20.0 for history lost after a restart. 0.19.1 does it too,
-less often: in this harness 0.20.0 failed the check in 3 of 3 runs, and
-0.19.1 in 2 of 8.
+The earlier diagnosis was wrong: the SDK doesn't lose history after a
+restart. Traces from the live test (`UNTETHERED_QA_LOG`, see
+[Verification](#verification)) show the event cache loading the older events
+from its store and reporting the room start correctly.
 
-The symptom is always the same. Before the restart, the timeline holds all
-55 messages, in order. After it, only the 20 events from the first sync
-remain, and pagination reports the room start. So the event cache's stored
-chunks lose the link to the back-paginated history.
+The fault was in this engine. `Timeline::paginate_backwards` returns once
+the event cache has the events, but the Timeline adds them to its items
+later, on its own task. The engine reported "start reached" as soon as the
+call returned, so the App could be told the room started above a hole. The
+next snapshot filled the hole in, but the test had already checked, and the
+UI would already have hidden "Earlier messages". Events from the store
+arrive faster than from the network, which is why it showed up after a
+restart.
 
-The cause isn't confirmed. One candidate is in the event cache's sync
-handling (`caches/room/state.rs`): when a room arrives again with
-`limited: true`, the SDK moves events it already has behind a new gap.
+Fixed in step 3 (`src/engine/timeline.rs`): when a back-pagination reaches
+the start, the engine waits until the oldest events the event cache holds
+show in the Timeline, then records the Timeline's own start item. A
+snapshot reports the start only while that item is present, so a timeline
+that the SDK clears drops it too.
 
-Report it upstream with `qa_matrix_sdk.py`. Until it's fixed, a restart can
-hide older history in a room until the history is fetched again. The script
-keeps the check, and a failure there no longer stops the account test from
-running.
+Two rarer failures turned up while looping the test:
+- **"history out of order"** was the fixture. gomuks sent the 55 seed
+  messages in parallel, so the server sometimes stored "history 13" before
+  "history 12", and the SDK showed the server's order. The QA script now
+  waits for each seed message before sending the next.
+- **"engine exited"** right after the restart: the stopped engine's session
+  tasks were aborted but not awaited, so one could still hold the profile
+  lock when the new engine opened the profile. Shutdown, sign-out and a
+  rejected token now wait for those tasks.
 
 ### Step 2 verification
 
@@ -236,12 +248,41 @@ matrix-sdk: single sign-on ([("cas", "CAS")]) signed in through the loopback red
 PASS matrix-sdk engine: login, recovery, sync, pagination, encrypted send/receive, restart, keyring, emoji verification, devices, recovery setup/change/reset and sign-out
 ```
 
-The last run, on the final code, passed the account test again and failed
-only the restart history check described above.
+The last step-2 run passed the account test and failed only the restart
+history check. That was the engine's pagination race, fixed in step 3 (see
+above).
+
+## Step 3: messaging on the SDK Timeline
+
+The App still builds these requests as gomuks RPCs at their existing call
+sites. On the new engine, `engine_rpc` (`src/engine/app.rs`) turns them into
+typed commands, so `reactions.rs`, `edits.rs`, `reports.rs`, `reading.rs` and
+`replies.rs` keep one code path for both engines. The message toolbar's
+React, Edit and Report controls now appear on the new engine.
+
+| Feature | Implementation | How it was verified |
+| --- | --- | --- |
+| Reactions | `Timeline::toggle_reaction`. Chips come from the Timeline's aggregation, including whether one is ours | Our chip showed one reaction, ours; the gomuks peer decrypted the reaction |
+| Edits | `Timeline::edit` with Markdown. A post carries the newest edit's event ID, which reports refer to. Only messages the SDK lets us edit get the Edit control | The peer decrypted the edit's `m.new_content`; the edited text survived a restart |
+| Reports | `Room::report_content`, with the reason if one was given | Synapse's `event_reports` holds the report and its reason |
+| Read state | One request for the read receipt (public or private) and the fully-read marker; the marked-unread flag; other people's receipts from the Timeline; Timeline order for the automatic read marker; the read-sharing choice as account data (`com.untethered.read_receipts.v1`, the same key as on gomuks) | Synapse's `receipts_linearized` holds our private receipt |
+| View original | `Room::event_with_context` (12 events each side) into the existing original slice | Opened a message outside the loaded timeline |
+| Markdown | matrix-sdk's `markdown` feature for messages and edits. Replies stay literal text, as with gomuks | The peer received the formatted body |
+
+### Step 3 verification
+
+On this branch, matrix-sdk 0.19.1, Synapse 1.166.0:
+- `cargo test` (57 unit tests), `cargo clippy --all-targets`, the wasm32
+  check and the Windows cross-build;
+- `qa_matrix_sdk.py`, which now also checks each change from the gomuks
+  peer's side (formatted body, edit, reaction) and the report and private
+  read receipt in Synapse's database. After the fixes above, the round trip
+  passed 10 times in a row (`UNTETHERED_QA_ONLY=round-trip` runs only that
+  test), then the full script passed with both live tests.
 
 ## (a) gomuks calls and their matrix-sdk equivalents
 
-Status: **Done** = implemented on the new engine in this step; **Available**
+Status: **Done** = implemented on the new engine; **Available**
 = the SDK has it, not wired yet; **Partial**/**Gap** as noted. API names are
 from matrix-sdk/matrix-sdk-ui 0.19.1. Those marked *(0.20)* exist only in
 0.20.0 or later; in 0.19.1 they need raw ruma requests or event handlers.
@@ -251,22 +292,22 @@ from matrix-sdk/matrix-sdk-ui 0.19.1. Those marked *(0.20)* exist only in
 | gomuks call | Where the client uses it | matrix-sdk equivalent | Status |
 | --- | --- | --- | --- |
 | `create_room` | Space and channel setup (`community.rs`) | `Client::create_room(create_room::v3::Request)` → `Room`; space edges with `Room::send_state_event(SpaceChildEventContent)` or `SpaceService::add_child_to_space` | Available |
-| `get_event_context` | Opening a reply's original or a mention beyond loaded history (`replies.rs`) | `Room::event_with_context`; better, a second `Timeline` with `TimelineFocus::Event` that paginates both ways | Available |
+| `get_event_context` | Opening a reply's original or a mention beyond loaded history (`replies.rs`) | `Room::event_with_context`; better, a second `Timeline` with `TimelineFocus::Event` that paginates both ways | Done (`event_with_context`) |
 | `get_media_config` | Upload size limit (`account.rs`, `transfers.rs`) | `Client::load_or_fetch_max_upload_size()` (cached) | Available |
 | `get_room_state` | Members and power levels (`main.rs`, `moderation.rs`, `permissions.rs`), call memberships (`desktop_call.rs`, `incoming.rs`), community setup | `Room::members`/`sync_members`, `Room::power_levels`, `get_state_events_static::<T>()` or raw `get_state_events`, and `Room::subscribe_to_state_events` *(0.20)*. `Posting::ingest` and `Room::voice_state` take JSON today and need typed inputs | Available |
 | `get_rtc_transports` | "Check call server support" (`main.rs`), call setup (`desktop_call.rs`) | gomuks calls the MSC4143 `/rtc/transports` endpoint: `client.send(ruma::api::client::rtc::transports::…::Request)`; the well-known variant is `Client::rtc_foci()` | Available |
 | `get_state` | Own user and device ID (`desktop_call.rs`), refresh after verification (`main.rs`) | `Client::user_id`/`device_id`, `Encryption::get_own_device`, `verification_state()`, `recovery().state()` | Done (as `Event::Account`) |
 | `listen_to_device` | Receiving call encryption keys (`desktop_call.rs`) | `Client::subscribe_to_custom_to_device_messages([types])` *(0.20)*: Olm-decrypted, with the sender's device. In 0.19.1, a to-device event handler | Available |
 | `login` | Account form | `matrix_auth().login_username()`; `Client::restore_session` on start | Done |
-| `mark_read` | Read markers and Mark read (`reading.rs`) | `Timeline::send_single_receipt` / `mark_as_read(ReceiptType::Read or ReadPrivate)`, `Room::send_multiple_receipts` for fully-read; per-item receipts in `EventTimelineItem::read_receipts()` | Available |
+| `mark_read` | Read markers and Mark read (`reading.rs`) | `Timeline::send_single_receipt` / `mark_as_read(ReceiptType::Read or ReadPrivate)`, `Room::send_multiple_receipts` for fully-read; per-item receipts in `EventTimelineItem::read_receipts()` | Done (`send_multiple_receipts`) |
 | `paginate` | History (`main.rs`) | `Timeline::paginate_backwards(50)` | Done |
-| `report_event` | Report message (`reports.rs`) | `Room::report_content` | Available |
+| `report_event` | Report message (`reports.rs`) | `Room::report_content` | Done |
 | `request_openid_token` | LiveKit JWT service auth (`desktop_call.rs`) | `client.send(request_openid_token::v3::Request::new(user_id))` | Available (raw ruma request) |
 | `search_local` | Room search (`search.rs`), mentions inbox (`mentions.rs`) | No equivalent. The `experimental-search` feature (Tantivy, `Room::search_messages`, matrix-sdk-ui `SearchService`) covers part of room search | Gap; see (b) |
-| `send_event` | Edits (`edits.rs`), reactions (`reactions.rs`), call decline (`incoming.rs`), call events (`desktop_call.rs`) | `Timeline::edit`, `Timeline::toggle_reaction`, `Room::send`, `Room::send_raw` | Available |
-| `send_message` | Composer and replies (`main.rs`), media captions (`transfers.rs`) | `Timeline::send`, `send_reply`, `send_attachment` (send queue: local echo, retry, wedged-queue handling) | Done for plain text and replies; Markdown (`markdown` feature) and media open |
+| `send_event` | Edits (`edits.rs`), reactions (`reactions.rs`), call decline (`incoming.rs`), call events (`desktop_call.rs`) | `Timeline::edit`, `Timeline::toggle_reaction`, `Room::send`, `Room::send_raw` | Done for edits and reactions; calls open |
+| `send_message` | Composer and replies (`main.rs`), media captions (`transfers.rs`) | `Timeline::send`, `send_reply`, `send_attachment` (send queue: local echo, retry, wedged-queue handling) | Done for text (Markdown) and replies; media open |
 | `send_to_device` | Sending call encryption keys (`desktop_call/channel.rs`) | `Encryption::encrypt_and_send_raw_to_device` behind the `experimental-send-custom-to-device` feature | Available behind a feature |
-| `set_account_data` | Marked unread (`reading.rs`), space alert preferences (`notifications/spaces.rs`) | `Room::set_unread_flag`, `Room::set_account_data_raw`, `Account::set_account_data_raw` | Available |
+| `set_account_data` | Marked unread (`reading.rs`), space alert preferences (`notifications/spaces.rs`) | `Room::set_unread_flag`, `Room::set_account_data_raw`, `Account::set_account_data_raw` | Done for the unread flag and read sharing; space alerts open |
 | `set_membership` | Kick, ban, unban, invite (`moderation.rs`), joins (`community.rs`) | `Room::kick_user`, `ban_user`, `unban_user`, `invite_user_by_id`, `leave`; `Client::join_room_by_id` | Available |
 | `set_state` | Power levels (`permissions.rs`), space edges (`community.rs`), call membership with delayed leave (`rtc_membership.rs`, `desktop_call.rs`) | `Room::send_state_event`/`send_state_event_raw`; MSC4140 delayed events with `SendRawStateEvent::into_delayed` *(0.20)* | Available |
 | `update_delayed_event`¹ | Restart/send/cancel the delayed call leave (`rtc_membership.rs`) | `Client::update_delayed_event(delay_id, action, …)` *(0.20)*; `Client::rtc_livekit_delegate_delayed_leave` *(0.20)* hands it to the homeserver | Available |
@@ -556,8 +597,8 @@ All of the following were run on this branch:
   - Synapse holds no plaintext `m.room.message` in the encrypted room.
 
   With per-room subscriptions the in-order check fails on both versions.
-  The restart check fails on 0.20.0 every time and on 0.19.1 sometimes (see
-  step 2).
+  The restart check used to fail sometimes; that was the engine's
+  pagination race, fixed in step 3.
 - The real binary, started with `UNTETHERED_ENGINE=matrix-sdk` in a private
   virtual KWin on a profile restored by the test, opened without signing
   in. It showed the space in the rail, the DM, the unread badge, and the
@@ -573,20 +614,18 @@ UNTETHERED_BACKEND=/path/to/gomuks uv run --python 3.13 --with matrix-synapse \
 
 ## Next steps
 
-0. **Report the two event cache issues upstream** with the acceptance test:
-   pages out of order after a room subscription, and history lost after a
-   restart (often on 0.20.0, rarely on 0.19.1). Re-run `qa_matrix_sdk.py` on
-   each SDK release.
+0. **Report the event cache issue upstream** with the acceptance test: pages
+   come back out of order after a room subscription. Re-run
+   `qa_matrix_sdk.py` on each SDK release.
 1. **Finish account work:**
    - test OAuth sign-in against a real MAS (it needs PostgreSQL);
    - approve MAS identity resets in the browser;
    - verify other people (in-room requests) and support QR codes;
    - rename devices;
    - move step-1 passphrases from the session file into the keyring.
-2. **Messaging on the Timeline:** receipts and Mark read, reactions, edits,
-   Markdown, typing. Then delete the hand-rolled aggregation in
-   `rooms.rs`/`edits.rs`/`reactions.rs`/`replies.rs`/`reading.rs` from the
-   SDK path.
+2. **Messaging on the Timeline:** done in step 3 except typing
+   notifications. Once gomuks is gone, delete the hand-rolled aggregation in
+   `rooms.rs`/`edits.rs`/`reactions.rs`/`replies.rs`/`reading.rs`.
 3. **Media and send queue:** carry `MediaSource` in `media::Media`, send
    attachments with progress, and add thumbnail/download commands.
 4. Notifications, moderation, permissions and spaces; then calls (above);
