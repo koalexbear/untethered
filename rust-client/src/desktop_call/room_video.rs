@@ -90,6 +90,14 @@ struct Wall {
 #[derive(Clone, Default)]
 pub(crate) struct Previews(Arc<Mutex<Wall>>);
 impl Previews {
+    pub fn remote_share(&self) -> bool {
+        self.0
+            .lock()
+            .unwrap()
+            .feeds
+            .values()
+            .any(|f| f.source == VideoInput::Window && !f.user.is_empty())
+    }
     pub(crate) fn snapshot(&self) -> (Option<String>, Vec<Feed>) {
         let wall = self.0.lock().unwrap();
         (wall.focus.clone(), wall.feeds.values().cloned().collect())

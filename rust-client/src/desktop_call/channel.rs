@@ -208,11 +208,13 @@ impl Subscriptions {
                 let wanted = keys.ready.contains(&id.0)
                     && matches!(
                         (publication.kind(), publication.source()),
-                        (TrackKind::Audio, TrackSource::Microphone)
-                            | (
-                                TrackKind::Video,
-                                TrackSource::Screenshare | TrackSource::Camera
-                            )
+                        (
+                            TrackKind::Audio,
+                            TrackSource::Microphone | TrackSource::ScreenshareAudio
+                        ) | (
+                            TrackKind::Video,
+                            TrackSource::Screenshare | TrackSource::Camera
+                        )
                     );
                 if wanted && publication.encryption_type() != EncryptionType::Gcm {
                     return Err("Unencrypted voice room track.");
@@ -231,6 +233,7 @@ impl Subscriptions {
                     self.tracks.entry(sid).or_insert_with(|| match track {
                         RemoteTrack::Audio(track) => self.jobs.spawn(play(
                             track,
+                            publication.source(),
                             Some(keys.members[&id.0].user.clone()),
                             mode.clone(),
                             notices.clone(),

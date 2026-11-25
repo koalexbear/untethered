@@ -144,6 +144,12 @@
   peer and back, and enlarged the share in theater. Element rendered both
   patterns at 924 px wide and shared its own changing tab back. Both cameras
   and both microphones kept their encrypted track IDs throughout.
+- **Incoming shared audio on Linux:** Element shared a tab with an independent
+  GCM audio publication. In a DM, the native speaker reproduced the tab and
+  microphone together; unchecking **Play shared audio** removed only the tab.
+  **Deafen** silenced both and preserved the listener’s choice. Stopping
+  the tab closed its playback stream without interrupting voice. Outbound
+  Linux window/system audio is a separate milestone.
 - **Three-person Linux voice rooms:** **Join voice** and **Leave voice** use
   the encrypted room's MatrixRTC slot without DM notifications. In the
   [three-account desktop test](experiments/rtc-audio/README.md#verify-three-person-voice-rooms)

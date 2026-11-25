@@ -119,6 +119,8 @@ enum Msg {
     #[cfg(target_os = "linux")]
     ToggleDeafen,
     #[cfg(target_os = "linux")]
+    SetShareSound(uuid::Uuid, bool),
+    #[cfg(target_os = "linux")]
     RoomPtt(bool),
     #[cfg(target_os = "linux")]
     TalkKey(bool),
@@ -1212,6 +1214,15 @@ impl App {
                         s.hold(false);
                         true
                     });
+                }
+            }
+            #[cfg(target_os = "linux")]
+            Msg::SetShareSound(id, enabled) => {
+                if let Some(c) = &self.call
+                    && c.id == id
+                    && !c.cancel.is_closed()
+                {
+                    c.audio.send_modify(|m| m.share_silent = !enabled);
                 }
             }
             #[cfg(target_os = "linux")]

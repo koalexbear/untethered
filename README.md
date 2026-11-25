@@ -205,6 +205,12 @@ it again. Your choice of view doesn’t change what anyone else receives.
 **Theater** hides the sidebars; **Open chat** keeps a compact preview above
 the conversation. [Live screen-share test and screenshots](experiments/rtc-audio/README.md#verify-the-call-stage).
 
+When someone shares a browser tab **with audio**, the Linux client plays
+the tab alongside their microphone. Uncheck **Play shared audio** to hear
+just the conversation; this changes only your playback. **Deafen** silences
+both and restores your previous choice when turned off. Untethered’s own
+Linux **Share window** still sends window pixels, not system audio.
+
 ![Untethered showing the user's own shared playtest board during a call](experiments/rtc-audio/evidence/own-share-stage.png)
 
 Video calls also work with **Element Web** in either caller direction.

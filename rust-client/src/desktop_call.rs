@@ -77,6 +77,7 @@ pub struct AudioMode {
     // Deafen is an overlay: lifting it must not undo a manual mute.
     pub muted: bool,
     pub deafened: bool,
+    pub share_silent: bool,
     pub(super) talk: TalkGate,
     pub mic: Route,
     pub speaker: Route,
@@ -777,13 +778,21 @@ async fn call(
     let capture = |publication| {
         controlled_capture(src.clone(), publication, devices.clone(), notices.clone())
     };
-    let playback = |track| play(track, None, devices.clone(), notices.clone());
+    let playback = |track| {
+        play(
+            track,
+            TrackSource::Microphone,
+            None,
+            devices.clone(),
+            notices.clone(),
+        )
+    };
     let mut camera = room_video::Publisher::new(VideoInput::Camera);
     let mut share = room_video::Publisher::new(VideoInput::Window);
     share.local_preview = Some(previews.clone());
     camera.local_preview = Some(previews.clone());
-    let mut tiles = JoinSet::new();
-    let mut displays = std::collections::BTreeMap::<String, tokio::task::AbortHandle>::new();
+    let mut media_jobs = JoinSet::new();
+    let mut subscriptions = std::collections::BTreeMap::<String, tokio::task::AbortHandle>::new();
     audio.spawn(capture(publication));
     let mut playing = false;
     let mut recovering: Option<Instant> = None;
@@ -823,30 +832,49 @@ async fn call(
             && let Some(p) = lk.remote_participants().get(&peer_id.to_owned().into())
         {
             for pubn in p.track_publications().into_values() {
-                let source = match pubn.source() {
-                    TrackSource::Camera => VideoInput::Camera,
-                    TrackSource::Screenshare => VideoInput::Window,
-                    _ => continue,
-                };
                 if pubn.encryption_type() != EncryptionType::Gcm || pubn.is_muted() {
                     continue;
                 }
-                if let Some(RemoteTrack::Video(track)) = pubn.track() {
-                    let sid = pubn.sid().to_string();
-                    live.insert(sid.clone());
-                    displays.entry(sid).or_insert_with(|| {
-                        tiles.spawn(room_video::display(
-                            track,
-                            dm_peer.into(),
-                            source,
-                            previews.clone(),
-                            events.clone(),
-                        ))
-                    });
+                let sid = pubn.sid().to_string();
+                match (pubn.source(), pubn.track()) {
+                    (
+                        source @ (TrackSource::Camera | TrackSource::Screenshare),
+                        Some(RemoteTrack::Video(track)),
+                    ) => {
+                        live.insert(sid.clone());
+                        subscriptions.entry(sid).or_insert_with(|| {
+                            media_jobs.spawn(room_video::display(
+                                track,
+                                dm_peer.into(),
+                                if source == TrackSource::Camera {
+                                    VideoInput::Camera
+                                } else {
+                                    VideoInput::Window
+                                },
+                                previews.clone(),
+                                events.clone(),
+                            ))
+                        });
+                    }
+                    (source @ TrackSource::ScreenshareAudio, Some(RemoteTrack::Audio(track))) => {
+                        // A tab may stop or be replaced while the microphone stays live.
+                        // Its worker follows the publication SID, not the call recovery path.
+                        live.insert(sid.clone());
+                        subscriptions.entry(sid).or_insert_with(|| {
+                            media_jobs.spawn(play(
+                                track,
+                                source,
+                                None,
+                                devices.clone(),
+                                notices.clone(),
+                            ))
+                        });
+                    }
+                    _ => (),
                 }
             }
         }
-        displays.retain(|sid, job| {
+        subscriptions.retain(|sid, job| {
             if live.contains(sid) {
                 true
             } else {
@@ -858,7 +886,7 @@ async fn call(
             changed=mode.changed()=>{changed.map_err(|_|ENDED)?;false}
             update=camera.next()=>{camera.update(update,lk,key.index,events,w.room,&mode).await?;false}
             update=share.next()=>{share.update(update,lk,key.index,events,w.room,&mode).await?;false}
-            _=tiles.join_next(),if !tiles.is_empty()=>false,
+            _=media_jobs.join_next(),if !media_jobs.is_empty()=>false,
             e=w.frame()=>{e?;false}
             _=heartbeat.tick()=>{
                 if recovering.is_some_and(|since| since.elapsed()>=RECOVERY_LIMIT) {
@@ -1246,6 +1274,7 @@ async fn capture(
 }
 async fn play(
     track: RemoteAudioTrack,
+    source: TrackSource,
     user: Option<String>,
     mut mode: watch::Receiver<AudioMode>,
     notices: DeviceNotices,
@@ -1272,7 +1301,9 @@ async fn play(
             };
             let gain = {
                 let settings = mode.borrow();
-                if settings.deafened {
+                if settings.deafened
+                    || source == TrackSource::ScreenshareAudio && settings.share_silent
+                {
                     0
                 } else {
                     user.as_ref().map_or(100, |u| settings.volume(u))

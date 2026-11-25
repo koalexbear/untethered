@@ -1,5 +1,6 @@
 """Two actual video callers, independent synthetic camera inputs and rendered remote pixels."""
 import io
+import json
 import re
 import subprocess as sp
 from urllib.parse import urlsplit
@@ -126,28 +127,50 @@ def verify(stack,tmp,root,backend,page,room,alice,bob,secret,incoming,switch_cam
                 colors=[((53,214,83),(189,34,95)),((113,61,202),(249,166,65))]
                 def paint(i):tab.evaluate("cs=>[...document.querySelectorAll('div')].forEach((d,i)=>d.style.background=cs[i])",
                                           ["rgb(%d,%d,%d)"%c for c in colors[i]])
-                paint(0);page.bring_to_front()
+                paint(0)
+                tab.evaluate("""async()=>{const c=new AudioContext(),o=c.createOscillator(),g=c.createGain();
+                    g.gain.value=0.22;o.frequency.value=1030;o.connect(g).connect(c.destination);o.start();
+                    await c.resume();window.tabTone=o;}""")
+                page.bring_to_front()
                 share_button=w.get_by_test_id("incall_screenshare")
                 share_button.click(timeout=10000)
                 screen=(bob,"SCREEN_SHARE")
-                wait_for("Element published tab capture",lambda:screen in tracks(),18)
+                wait_for("Element published tab capture with audio",lambda:{screen,(bob,"SCREEN_SHARE_AUDIO")}<=tracks().keys(),18)
                 shared=tracks()
-                assert shared[screen][1:]==("GCM",False) and all(shared[k]==v for k,v in share_base.items())
+                assert all(shared[k][1:]==("GCM",False) for k in (screen,(bob,"SCREEN_SHARE_AUDIO"))) and all(shared[k]==v for k,v in share_base.items())
                 def stage(i):
                     hit=pattern_box(kde.capture().crop((290,280,1179,470)),colors[i])
                     return hit and hit[2]-hit[0]>350
                 wait_for("native stage rendered Element's tab",lambda:stage(0),18)
                 paint(1)
                 wait_for("native stage rendered changed Element tab",lambda:stage(1),18)
-                fresh_audio()
+                def mix(expected):
+                    desk.windows.clear()
+                    wait_for("speaker has only "+str(sorted(expected))+" Hz",lambda:desk.hears(expected),15)
+                def outputs():
+                    return len([s for s in json.loads(kde.command("pactl","-f","json","list","sink-inputs").stdout)
+                                if s["properties"].get("application.name")=="Untethered"])
+                mix({670,1030})
+                assert outputs()==2
+                desk.click("play");mix({670})
+                tab.evaluate("window.tabTone.frequency.value=830")
+                desk.click("deafen");mix(set())
+                desk.click("undeafen");mix({670})
+                desk.click("play");mix({670,830})
+                wait_for("native mic reaches Element during tab share",lambda:w.evaluate("window.qaAudioStats().then(s=>s.run410>=10)"))
+                desk.click("deafen");mix(set())
+                desk.click("undeafen");mix({670,830})
                 assert tracks()==shared
                 share_button.click()
                 wait_for("Element tab unpublished",lambda:tracks()==share_base)
+                mix({670})
+                wait_for("share playback closed without closing mic playback",lambda:outputs()==1)
                 wait_for("native stage returned to camera",lambda:not stage(1) and any(
                     (r:=native_box(p)) and r[2]-r[0]>400 for p in BROWSER))
                 tab.close()
-                print("Element shared a changing Chromium tab back to Untethered; it occupied the main stage. "
-                      "Stop restored its camera on the original GCM publications.",flush=True)
+                print("Element shared a changing Chromium tab with GCM audio. Linux heard 670 Hz mic + 1030 Hz tab; "
+                      "Play shared audio off retained only speech, on restored the changed 830 Hz tab. Deafen silenced both. "
+                      "Stop returned to the original camera and microphone publications.",flush=True)
             camera_button(w).click(timeout=7000)
             wait_for("Element camera off",lambda:not cam(bob),10)
             wait_for("Element's old video cleared in Iced",lambda:all(not native_box(p) for p in BROWSER),12)

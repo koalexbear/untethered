@@ -330,6 +330,18 @@ impl App {
             );
         }
         bar = bar.push(container(controls.wrap()).center_x(Fill));
+        if call.picker || call.previews.remote_share() {
+            let id = call.id;
+            bar = bar.push(
+                iced::widget::checkbox(!mode.share_silent)
+                    .label("Play shared audio")
+                    .size(16)
+                    .text_size(14)
+                    .on_toggle_maybe(
+                        active.then_some(move |enabled| Msg::SetShareSound(id, enabled)),
+                    ),
+            );
+        }
         if self.verified
             && active
             && browsing

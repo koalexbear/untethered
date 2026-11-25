@@ -126,8 +126,15 @@ a different participant, changes Prism, reselects **Your screen** and enters
 **Theater**. The recipient continues to see Prism, and fresh audio travels in
 both directions. Stopping the share closes its portal grant and reader,
 while the call keeps its original four camera and microphone publications.
-Element also shares a changing browser tab back to Untethered, then stops it;
-the native stage must return to the peer's camera.
+Element also shares a changing browser tab with audio back to Untethered.
+The tab plays 1030 Hz independently of the 670 Hz Element microphone. The
+native speaker must reproduce both, then only the microphone when **Play
+shared audio** is unchecked. With the tab changed to 830 Hz, **Deafen** and
+**Undeafen** must preserve that choice. Re-enabling share playback must recover
+the new tab tone. Stopping the share must close its output stream and return
+the stage to the peer's camera without replacing the microphone tracks.
+Chromium and Untethered use separate private PulseAudio servers; sound cannot
+reach the listener through a local desktop loopback.
 
 The [normal stage](evidence/own-share-stage.png) and [theater view](evidence/own-share-theater.png)
 are screenshots of the running client. Set `RTC_QA_SCREENSHOTS` to an output

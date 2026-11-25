@@ -156,14 +156,20 @@ def test(tmp, hs, name, jwt, root, backend, seed, http, service, *, desktop=Fals
         launch={}
         capture_flags=["--use-fake-ui-for-media-stream"]
         if share and element_video:
-            from qa_native_paste import isolated_env,start_display
+            from qa_native_paste import child,isolated_env,start_display
             chromium_dir=tmp/"browser-display";chromium_dir.mkdir()
             env=isolated_env(chromium_dir,backend,"x11")
             start_display(stack,chromium_dir,env,"x11",1280,900)
-            launch=dict(env=env,headless=False)
+            audio_sock=chromium_dir/"pulse"
+            env.update(PULSE_SERVER="unix:"+str(audio_sock),PULSE_SINK="BrowserOutput")
+            stack.enter_context(child(["pulseaudio","-n","--daemonize=no","--exit-idle-time=-1","--use-pid-file=no",
+                "--load=module-native-protocol-unix socket="+str(audio_sock)+" auth-anonymous=1",
+                "--load=module-null-sink sink_name=BrowserOutput rate=48000"],env))
+            wait_for("isolated browser speaker",audio_sock.is_socket)
+            launch=dict(env=env,headless=False,ignore_default_args=["--mute-audio"])
             capture_flags=["--auto-select-tab-capture-source-by-title=Untethered Prism QA","--ozone-platform=x11"]
         browser=pw.chromium.launch(executable_path=chrome,**launch,args=[*video_flags,"--use-fake-device-for-media-stream",
-            "--ignore-certificate-errors-spki-list="+pin,*capture_flags,"--mute-audio",
+            "--ignore-certificate-errors-spki-list="+pin,*capture_flags,*([] if share and element_video else ["--mute-audio"]),
             "--use-file-for-fake-audio-capture="+str(wav),"--autoplay-policy=no-user-gesture-required"])
         stack.callback(browser.close)
         ctx=browser.new_context(permissions=["microphone","camera"])
