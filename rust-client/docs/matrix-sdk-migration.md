@@ -13,18 +13,21 @@ notifications, moderation, permissions and spaces → call signaling → web
 build → remove gomuks. Throughout, the UI keeps reading
 `rooms::{Rooms, Room, Post}`; that model is the seam.
 
-## Status: step 1 is in
+## Status: steps 1 and 2 are in
 
 The native client has a second engine built on `matrix-sdk` and
 `matrix-sdk-ui` **0.19.1**. gomuks stays the default. The wasm32 build doesn't
 compile the SDK.
 
 **Why not 0.20.0:** it was published during this work and builds without code
-changes. But the acceptance test's restart check fails on it every time:
+changes. But it failed the acceptance test's restart check in all three runs:
 history that was back-paginated before the restart is gone afterwards. Only
 the newest 20 events return, and pagination reports the start of the room.
-0.19.1 passes the same test. Move to 0.20.x once that check passes; the call
-port (below) needs APIs that only 0.20 has.
+0.19.1 failed the same check in two of eight runs, so it is probably one
+event-cache bug that 0.20.0 hits far more often (see
+[restart history](#restart-history-check-corrects-step-1)). Move to 0.20.x once
+the check passes reliably; the call port (below) needs APIs that only 0.20
+has.
 
 ```sh
 UNTETHERED_ENGINE=matrix-sdk bash scripts/rust-client.sh
@@ -111,8 +114,130 @@ Known differences on the new engine, each owned by a later step:
 - Sends are plain text; gomuks renders Markdown.
 - Calls, moderation, permissions, search and the mentions inbox are
   unavailable.
-- The verify form's static gomuks emoji note still shows, because the view
-  is unchanged.
+
+## Step 2: account and verification
+
+Also on the new engine only. gomuks, its screens and its labels behave as
+before.
+
+| Flow | Implementation | How it was verified |
+| --- | --- | --- |
+| Emoji (SAS) verification with another of the account's devices: ask from "Verify this device", or accept a request | `UserIdentity::request_verification_with_methods([SasV1])`; incoming requests arrive through a to-device event handler; one flow at a time. Once our identity is verified, matrix-sdk-crypto requests the cross-signing and backup keys from the other device, so this device ends up cross-signed | Two engine instances against Synapse showed the same seven emoji, and the new device ended up cross-signed |
+| Recovery setup for an account without keys | `bootstrap_cross_signing` (the password goes out only if the server asks for it), then `recovery().enable().wait_for_backups_to_upload()`. The key is shown once and never stored | A fresh account got a key and a verified device; a second device verified with that key |
+| Change recovery key | `recovery().reset_key()`, or `enable()` if a verified device never set recovery up | The new key verified a new device; the old key was refused |
+| Reset encryption | `recovery().reset_identity()` with the password, then a new recovery key | New identity and key; the earlier device then reported itself unverified |
+| Devices | `Client::devices` plus `get_user_devices` for the cross-signing state; `delete_devices` with the password | The new device showed as verified; a wrong password was refused; removing it signed that device out |
+| Sign out | `Client::logout`, then the session file, stores and keyring entry are removed | Nothing restored afterwards |
+| Store passphrase in the OS keyring | keyring-core with the Secret Service store (Linux, over zbus) or the Credential Manager store (Windows); falls back to the 0600 file. `UNTETHERED_KEYRING=off` forces the file | Round trip and restart against a private GNOME Keyring on a private session bus; the account test ran with the keyring off |
+| Single sign-on | `get_sso_login_url`, a loopback redirect on 127.0.0.1, then `login_token` | Synapse's CAS login against a mock CAS server in the QA script; the session restored after a restart |
+| OAuth 2.0 / MAS | Dynamic client registration as a native app with a loopback redirect, `oauth().login()` and `finish_login`; refreshed tokens are saved | **Not tested end to end.** MAS needs PostgreSQL, which this machine doesn't have. Tested: discovery reports no OAuth on plain Synapse; the loopback listener returns the redirect; only http(s) URLs reach the browser |
+
+### Screens, and merging with the Discord-style pass
+
+- **New screens** are in `src/view/sdk_account.rs`: emoji comparison, the
+  one-time recovery key, verification choices under the recovery form,
+  Encryption/Devices/Session groups on the account page, and "Other ways to
+  sign in".
+- **Shared helpers only:** they import just what both layouts share
+  (`surface`, `label`, the base colours, `El`, `BOLD`) and keep local copies of
+  the Discord-style button and field styles. The file compiles unchanged on
+  `discord-ui-pass`.
+- **Hooks in existing files:**
+  - `view.rs`: a module line; a full-window screen at the top of `view()` for
+    verification and the recovery key; the gomuks emoji note behind
+    `self.sdk.is_none()`; and one block after the account form that adds the
+    SDK sections.
+  - `main.rs`: the `sdk_ui` field, `Msg::Sdk`, and one match arm.
+- **On `discord-ui-pass`,** the account-page sections become extra groups in
+  `settings_view`, and the login choices go under its Sign in button.
+- **No gomuks label changed.**
+
+The live tests drive these screens' state and actions. Only the "Verify this
+device" screen was also checked in the running app, in a private virtual
+KWin. The other screens were not rendered, because nothing could click in
+that compositor.
+
+### Things worth knowing
+
+- **Own devices only:** verification covers just the user's own devices.
+  Requests from other people, and a second request while one runs, are
+  ignored rather than cancelled, because a cancel from this device would also
+  end the request for the user's other clients.
+- **No QR codes:** QR verification isn't offered. If the other device
+  switches to it, the flow stops with a message.
+- **Secrets:** the recovery key stays in App memory only until "I’ve saved
+  it". Actions that need the account password take it from a field on the
+  screen and clear it after each request.
+- **Session file format 2** records whether the session is a Matrix or an
+  OAuth session, and where the passphrase is (`"keyring"` with the entry
+  name, or `"passphrase"`). Step-1 files (format 1) still restore, with their
+  passphrase in the file.
+- **Keyring entries** are named "matrix-sdk store <user> <device>" under the
+  service "Untethered".
+- **Browser sign-in** opens `xdg-open` (or `rundll32` on Windows) without a
+  shell, and only for http(s) URLs.
+- **OAuth client URI:** client registration uses
+  `https://github.com/koalexbear/untethered` as the client URI. Change it if
+  the project gets a homepage.
+- **MAS accounts:** resetting encryption on an OAuth (MAS) account needs
+  approval in the browser. That isn't wired yet, and the screen says so.
+- **Test shutdown noise:** when a test ends, the tokio runtime cancels SDK
+  background tasks that still hold the SQLite store, and matrix-sdk-sqlite
+  panics on the cancelled pool task ("Cancelled"). The tests still pass. The
+  SDK offers no shutdown to wait for.
+
+### Restart history check (corrects step 1)
+
+Step 1 blamed 0.20.0 for history lost after a restart. 0.19.1 does it too,
+less often: in this harness 0.20.0 failed the check in 3 of 3 runs, and
+0.19.1 in 2 of 8.
+
+The symptom is always the same. Before the restart, the timeline holds all
+55 messages, in order. After it, only the 20 events from the first sync
+remain, and pagination reports the room start. So the event cache's stored
+chunks lose the link to the back-paginated history.
+
+The cause isn't confirmed. One candidate is in the event cache's sync
+handling (`caches/room/state.rs`): when a room arrives again with
+`limited: true`, the SDK moves events it already has behind a new gap.
+
+Report it upstream with `qa_matrix_sdk.py`. Until it's fixed, a restart can
+hide older history in a room until the history is fetched again. The script
+keeps the check, and a failure there no longer stops the account test from
+running.
+
+### Step 2 verification
+
+On this branch, matrix-sdk 0.19.1, Synapse 1.166.0:
+- `cargo test` (54 unit tests);
+- `scripts/qa_matrix_sdk.py`, which runs both live tests. One full pass:
+
+```text
+Synapse 1.166.0; Simplified Sliding Sync advertised: True
+Private GNOME Keyring on a private session bus
+matrix-sdk: password login as @sdk479421:test.invalid
+matrix-sdk: store passphrase saved in the Secret Service keyring
+matrix-sdk: recovery key verified this device; encrypted room synced
+matrix-sdk: space child edge, DM and highlight count (1) mapped
+matrix-sdk: back-paginated to the room start (20 then 55 posts); 55 of 55 earlier messages decrypted from key backup
+matrix-sdk: sent an encrypted message; waiting for the gomuks peer
+gomuks peer decrypted the matrix-sdk message $Fi8mm8QB2tjXu0Js1FMXknXxTl61dDg5CTyN5AEuJPM
+matrix-sdk: decrypted and rendered the gomuks peer's message
+matrix-sdk: restart restored the session and both encrypted messages
+matrix-sdk: both devices show 🏁 Flag, 🍕 Pizza, 🌽 Corn, 🦋 Butterfly, ☁️ Cloud, 🔑 Key, 🔥 Fire
+matrix-sdk: emoji verification cross-signed the new device
+matrix-sdk: device list showed it verified; removing it (password checked) signed it out
+matrix-sdk: recovery setup created keys, verified the device and showed a key once
+matrix-sdk: the changed key verifies a new device and the old one doesn't
+matrix-sdk: sign-out removed the session and stores
+matrix-sdk: reset encryption gave a new identity and recovery key
+matrix-sdk: the earlier device reports itself unverified after the reset
+matrix-sdk: single sign-on ([("cas", "CAS")]) signed in through the loopback redirect and restored
+PASS matrix-sdk engine: login, recovery, sync, pagination, encrypted send/receive, restart, keyring, emoji verification, devices, recovery setup/change/reset and sign-out
+```
+
+The last run, on the final code, passed the account test again and failed
+only the restart history check described above.
 
 ## (a) gomuks calls and their matrix-sdk equivalents
 
@@ -430,8 +555,9 @@ All of the following were run on this branch:
   - a second engine can't open a locked profile;
   - Synapse holds no plaintext `m.room.message` in the encrypted room.
 
-  With per-room subscriptions the in-order check fails on both versions,
-  and on 0.20.0 the restart check fails; both are described above.
+  With per-room subscriptions the in-order check fails on both versions.
+  The restart check fails on 0.20.0 every time and on 0.19.1 sometimes (see
+  step 2).
 - The real binary, started with `UNTETHERED_ENGINE=matrix-sdk` in a private
   virtual KWin on a profile restored by the test, opened without signing
   in. It showed the space in the rail, the DM, the unread badge, and the
@@ -449,10 +575,14 @@ UNTETHERED_BACKEND=/path/to/gomuks uv run --python 3.13 --with matrix-synapse \
 
 0. **Report the two event cache issues upstream** with the acceptance test:
    pages out of order after a room subscription, and history lost after a
-   restart on 0.20.0. Re-run `qa_matrix_sdk.py` on each SDK release.
-1. **Account and verification:** SAS emoji verification, recovery setup,
-   OIDC/SSO, logout and device list, storing the store passphrase in the OS
-   keyring.
+   restart (often on 0.20.0, rarely on 0.19.1). Re-run `qa_matrix_sdk.py` on
+   each SDK release.
+1. **Finish account work:**
+   - test OAuth sign-in against a real MAS (it needs PostgreSQL);
+   - approve MAS identity resets in the browser;
+   - verify other people (in-room requests) and support QR codes;
+   - rename devices;
+   - move step-1 passphrases from the session file into the keyring.
 2. **Messaging on the Timeline:** receipts and Mark read, reactions, edits,
    Markdown, typing. Then delete the hand-rolled aggregation in
    `rooms.rs`/`edits.rs`/`reactions.rs`/`replies.rs`/`reading.rs` from the
