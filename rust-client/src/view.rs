@@ -979,10 +979,20 @@ impl App {
             .width(5)
             .scroller_width(5)
             .spacing(5);
+        // Status lines stay in a short strip so the channel list keeps its
+        // room. A panel the user opened gets enough height to be usable: the
+        // Mixer shows three peers' sliders, Devices its audio pickers.
+        let details_height = if call.mixer || call.picker {
+            160
+        } else if call.stage_open {
+            116
+        } else {
+            64
+        };
         bar = bar.push(
             container(scrollable(details).direction(scrollable::Direction::Vertical(scrollbar)))
                 .width(Fill)
-                .max_height(if call.stage_open { 116 } else { 64 }),
+                .max_height(details_height),
         );
         Some(
             container(bar)
