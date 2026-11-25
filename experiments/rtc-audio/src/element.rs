@@ -17,6 +17,8 @@ use tokio_tungstenite::{
 
 #[path = "../../../rust-client/src/rtc_keys.rs"]
 mod keys;
+// The probe only needs the membership; the call signaling seam goes unused.
+#[allow(dead_code)]
 #[path = "../../../rust-client/src/rtc_membership.rs"]
 mod membership;
 use keys::{EVENT as KEY, SenderKey};
@@ -160,7 +162,7 @@ pub async fn run() -> Result<()> {
         "Element advertised another transport"
     );
     let my_member =
-        membership::Membership::join(room, user, device, &auth, 30000, async |cmd, body| {
+        membership::Membership::join(room, user, device, &auth, 30000, &mut async |cmd, body| {
             rpc.call(cmd, body).await.map_err(|e| e.to_string())
         })
         .await
@@ -222,7 +224,7 @@ pub async fn run() -> Result<()> {
     ensure!(lk.local_participant().identity().0 == my_id);
     let tone = publish(&lk, 480).await?;
     my_member
-        .heartbeat(async |cmd, body| rpc.call(cmd, body).await.map_err(|e| e.to_string()))
+        .heartbeat(&mut async |cmd, body| rpc.call(cmd, body).await.map_err(|e| e.to_string()))
         .await
         .map_err(anyhow::Error::msg)?;
     tokio::time::timeout(
@@ -300,7 +302,7 @@ pub async fn run() -> Result<()> {
     drop(tone);
     lk.close().await?;
     my_member
-        .leave(async |cmd, body| rpc.call(cmd, body).await.map_err(|e| e.to_string()))
+        .leave(&mut async |cmd, body| rpc.call(cmd, body).await.map_err(|e| e.to_string()))
         .await
         .map_err(anyhow::Error::msg)?;
     Ok(())

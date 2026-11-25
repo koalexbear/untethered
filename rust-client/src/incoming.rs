@@ -1,7 +1,7 @@
 //! Foreground encrypted DM invitations. An incoming notification never starts capture.
 use crate::{
     App, Msg, Request,
-    desktop_call::{active_member, check_dm, now},
+    desktop_call::{active_member, check_dm, gomuks_state_event, now},
     rooms::items,
 };
 use async_channel::{Receiver, Sender};
@@ -32,13 +32,31 @@ fn decoded(e: &Value) -> (&Value, &Value) {
         (&e["type"], &e["content"])
     }
 }
+/// A gomuks timeline event as a Matrix event, with its decrypted type and
+/// content.
+fn from_gomuks(e: &Value) -> Value {
+    let (ty, c) = decoded(e);
+    let mut event = json!({"type":ty,"sender":e["sender"],"event_id":e["event_id"],
+        "room_id":e["room_id"],"content":c});
+    if let Some(ts) = e["timestamp"].as_u64() {
+        event["origin_server_ts"] = ts.into();
+    }
+    if e["redacted_by"].is_string() {
+        event["unsigned"] = json!({"redacted_because":{}});
+    }
+    event
+}
+fn redacted(e: &Value) -> bool {
+    e["unsigned"]["redacted_because"].is_object()
+}
 impl Offer {
+    /// A ring in `room` from a Matrix event (decrypted).
     fn parse(e: &Value, room: &str, peer: &str, user: &str, at: u64) -> Option<Self> {
-        let (ty, c) = decoded(e);
+        let (ty, c) = (&e["type"], &e["content"]);
         if ty != RING
-            || e["room_id"] != room
+            || e.get("room_id").is_some_and(|r| r != room)
             || e["sender"] != peer
-            || e["redacted_by"].is_string()
+            || redacted(e)
             || c["notification_type"] != "ring"
             || !matches!(c["m.call.intent"].as_str(), Some("audio" | "video"))
             || c["slot_id"].as_str().is_some_and(|s| s != "m.call#ROOM")
@@ -50,7 +68,7 @@ impl Offer {
         if !direct && c["m.mentions"]["room"] != true {
             return None;
         }
-        let server = e["timestamp"].as_u64()?;
+        let server = e["origin_server_ts"].as_u64()?;
         let sent = c["sender_ts"].as_u64()?;
         let sent = if sent > server.saturating_add(20_000) {
             server
@@ -205,7 +223,7 @@ impl App {
                     outcome = Some("Call declined on another device.");
                 }
             } else if pending.is_some()
-                && active_member(e)
+                && active_member(&gomuks_state_event(e))
                 && e["state_key"].as_str().is_some_and(|k| {
                     e["rowid"]
                         .as_i64()
@@ -240,8 +258,10 @@ impl App {
                     && e["sender"] == peer
                     && i.caller_session
                         .as_ref()
-                        .map_or(!active_member(e), |(key, _)| e["state_key"] == *key)
-                    && !i.matches_member(e))
+                        .map_or(!active_member(&gomuks_state_event(e)), |(key, _)| {
+                            e["state_key"] == *key
+                        })
+                    && !i.matches_member(&gomuks_state_event(e)))
                     || (e["type"] == "m.room.member"
                         && e["state_key"] == peer
                         && e["content"]["membership"] != "join"
@@ -286,18 +306,24 @@ impl App {
             {
                 continue;
             }
-            if let Some(i) = Offer::parse(e, room, &peer, &self.matrix_id, at) {
+            if let Some(i) = Offer::parse(&from_gomuks(e), room, &peer, &self.matrix_id, at) {
                 self.inbox.seen.insert(key, i.expires);
-                self.inbox.checking = Some(i.clone());
-                self.rpc(
-                    "get_room_state",
-                    json!({"room_id":room,"fetch_members":true,"include_members":true}),
-                    Request::RingState(i),
-                );
-                if !matches!(self.pending.get(&self.seq), Some(Request::RingState(_))) {
-                    self.inbox.checking = None;
-                }
+                self.check_ring(i);
             }
+        }
+    }
+    /// Check a new ring against the room's current call state before
+    /// presenting it.
+    fn check_ring(&mut self, i: Offer) {
+        let room = i.room.clone();
+        self.inbox.checking = Some(i.clone());
+        self.rpc(
+            "get_room_state",
+            json!({"room_id":room,"fetch_members":true,"include_members":true}),
+            Request::RingState(i),
+        );
+        if !matches!(self.pending.get(&self.seq), Some(Request::RingState(_))) {
+            self.inbox.checking = None;
         }
     }
     pub(super) fn present_ring(&mut self, mut i: Offer, state: &Value) {
@@ -325,7 +351,7 @@ impl App {
                 .zip(
                     e["content"]["created_ts"]
                         .as_u64()
-                        .or(e["timestamp"].as_u64()),
+                        .or(e["origin_server_ts"].as_u64()),
                 )
                 .map(|(k, t)| (k.to_owned(), t));
         }
@@ -450,7 +476,7 @@ mod tests {
             json!({"type":"m.room.encryption","content":{"algorithm":"m.megolm.v1.aes-sha2"}}),
             json!({"type":"m.room.member","state_key":ME,"content":{"membership":"join"}}),
             json!({"type":"m.room.member","state_key":PEER,"content":{"membership":"join"}}),
-            json!({"type":EVENT_TYPE,"event_id":"$join","sender":PEER,"state_key":"caller_session","timestamp":t,
+            json!({"type":EVENT_TYPE,"event_id":"$join","sender":PEER,"state_key":"caller_session","origin_server_ts":t,
                 "content":{"application":"m.call","call_id":"","scope":"m.room","device_id":"D","created_ts":t,"expires":90000}}),
         ]
     }
@@ -458,16 +484,16 @@ mod tests {
     fn only_fresh_targeted_dm_rings_with_live_referenced_membership() {
         let t = now();
         let mut e = ring(t);
-        assert!(Offer::parse(&e, ROOM, PEER, ME, t + 30_000).is_none());
+        assert!(Offer::parse(&from_gomuks(&e), ROOM, PEER, ME, t + 30_000).is_none());
         let mut s = members(t);
-        let i = Offer::parse(&e, ROOM, PEER, ME, t).unwrap();
+        let i = Offer::parse(&from_gomuks(&e), ROOM, PEER, ME, t).unwrap();
         assert!(!i.valid_state(&s, ME), "unauthorized room mention");
         s.push(json!({"type":"m.room.power_levels","content":{"notifications":{"room":0}}}));
         assert!(i.valid_state(&s, ME));
         e["decrypted"]["m.mentions"] = json!({"user_ids":["@elsewhere:example"]});
-        assert!(Offer::parse(&e, ROOM, PEER, ME, t).is_none());
+        assert!(Offer::parse(&from_gomuks(&e), ROOM, PEER, ME, t).is_none());
         e["decrypted"]["m.mentions"] = json!({"user_ids":[ME]});
-        let direct = Offer::parse(&e, ROOM, PEER, ME, t).unwrap();
+        let direct = Offer::parse(&from_gomuks(&e), ROOM, PEER, ME, t).unwrap();
         s.pop();
         assert!(direct.valid_state(&s, ME));
         s[3]["event_id"] = json!("$new-session");

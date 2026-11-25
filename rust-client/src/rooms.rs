@@ -134,6 +134,7 @@ impl Room {
             .map(|(user, _)| user.as_str())
             .collect()
     }
+    /// `e` is a call member state event in client-server format.
     #[cfg(target_os = "linux")]
     pub fn voice_state(&mut self, e: &Value) {
         if !self.voice || e["type"] != untethered_iced::rtc_membership::EVENT_TYPE {
@@ -148,7 +149,7 @@ impl Room {
         {
             let expires = e["content"]["created_ts"]
                 .as_u64()
-                .or(e["timestamp"].as_u64())
+                .or(e["origin_server_ts"].as_u64())
                 .unwrap_or(0)
                 .saturating_add(e["content"]["expires"].as_u64().unwrap_or(14_400_000));
             self.voice_members
@@ -533,7 +534,7 @@ impl Rooms {
                     && delta["state"][untethered_iced::rtc_membership::EVENT_TYPE][key]
                         == e["rowid"]
                 {
-                    room.voice_state(e);
+                    room.voice_state(&crate::desktop_call::gomuks_state_event(e));
                 }
                 if e["type"] == "m.room.member"
                     && let Some(user) = e["state_key"].as_str()

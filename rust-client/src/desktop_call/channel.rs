@@ -100,9 +100,9 @@ impl GroupKeys {
             ready: BTreeSet::new(),
         })
     }
-    async fn reconcile(
+    async fn reconcile<S: CallSignal>(
         &mut self,
-        w: &mut Wire<'_>,
+        w: &mut Wire<'_, S>,
         s: &Session,
         next: Roster,
         lk: &Room,
@@ -139,26 +139,25 @@ impl GroupKeys {
             }
         }
         if !next.is_empty() {
-            let request = key.to_devices(
-                w.room,
-                &self.local,
-                &s.device,
-                next.values().map(|p| (p.user.as_str(), p.device.as_str())),
-            );
-            w.rpc("send_to_device", request).await?;
+            let targets: Vec<(String, String)> = next
+                .values()
+                .filter(|p| !p.device.is_empty() && p.device != "*")
+                .map(|p| (p.user.clone(), p.device.clone()))
+                .collect();
+            w.signal
+                .send_to_device(KEY, key.content(w.room, &self.local, &s.device), &targets)
+                .await?;
         }
         self.outbound = key;
         self.members = next;
         Ok(())
     }
-    fn receive(&mut self, w: &mut Wire<'_>) -> Result<()> {
+    fn receive<S>(&mut self, w: &mut Wire<'_, S>) -> Result<()> {
         let mut early = Vec::new();
         for (received, e) in w.keys.drain(..) {
-            let c = &e["content"];
-            let (Some(user), Some(device)) = (
-                e["sender"].as_str(),
-                c["member"]["claimed_device_id"].as_str(),
-            ) else {
+            let c = &e.content;
+            let user = e.sender.as_str();
+            let Some(device) = c["member"]["claimed_device_id"].as_str() else {
                 continue;
             };
             let id = format!("{user}:{device}");
@@ -265,8 +264,8 @@ impl Subscriptions {
     }
 }
 
-pub(super) async fn joined(
-    w: &mut Wire<'_>,
+pub(super) async fn joined<S: CallSignal>(
+    w: &mut Wire<'_, S>,
     s: &Session,
     m: &mut Membership,
     events: &Sender<Value>,
@@ -303,6 +302,8 @@ pub(super) async fn joined(
     let mut label = String::new();
     w.roster_dirty = true;
     loop {
+        // Roster changes and keys can arrive alongside request answers.
+        w.absorb();
         if std::mem::take(&mut w.roster_dirty) {
             let state = w.state(false).await?;
             check_room(&state, &s.user)?;
@@ -363,12 +364,12 @@ pub(super) async fn joined(
                 Some(Err(e)) if e.is_cancelled()=>(),
                 _=>return Err("Voice room playback failed."),
             },
-            frame=w.frame()=>{frame?;}
+            frame=w.pump()=>{frame?;}
             _=heartbeat.tick()=>{
                 #[cfg(debug_assertions)]
                 if trace_video {room_video::trace_video_stats(lk).await;}
-                if renew.elapsed()>SECOND*36{m.renew(&mut *w).await.map_err(|_|"Could not renew voice room membership.")?;renew=Instant::now();}
-                else{m.heartbeat(&mut *w).await.map_err(|_|"Lost voice room membership.")?;}
+                if renew.elapsed()>SECOND*36{m.renew(&mut w.signal).await.map_err(|_|"Could not renew voice room membership.")?;renew=Instant::now();}
+                else{m.heartbeat(&mut w.signal).await.map_err(|_|"Lost voice room membership.")?;}
                 w.roster_dirty=true;
             }
             e=rtc.recv()=>match e {
@@ -390,12 +391,12 @@ mod tests {
         let joined =
             json!({"type":"m.room.member","state_key":user,"content":{"membership":"join"}});
         let device = |d: &str| {
-            json!({"type":EVENT_TYPE,"sender":user,"timestamp":now(),
+            json!({"type":EVENT_TYPE,"sender":user,"origin_server_ts":now(),
             "state_key":format!("_{user}_{d}_m.call"),"content":{"application":"m.call","scope":"m.room",
             "call_id":"","device_id":d,"expires":60000,"foci_preferred":[{"type":"livekit","livekit_service_url":focus.as_str()}]}})
         };
         let mut expired = device("E");
-        expired["timestamp"] = 1.into();
+        expired["origin_server_ts"] = 1.into();
         let mut wrong_slot = device("W");
         wrong_slot["content"]["call_id"] = "another".into();
         let mut spoofed = device("S");

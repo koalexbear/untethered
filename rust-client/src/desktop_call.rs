@@ -2,7 +2,7 @@
 //! only the media and audio streams live here, for the lifetime of a call.
 use crate::call_devices::{Catalog, Port, Route};
 use async_channel::{Receiver, Sender};
-use futures_util::{SinkExt, StreamExt};
+use futures_util::StreamExt;
 use livekit::{
     e2ee::{E2eeOptions, EncryptionType, key_provider::KeyProvider},
     prelude::*,
@@ -21,21 +21,18 @@ use std::{
 };
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpStream,
     process::Command,
     sync::watch,
     task::JoinSet,
     time::{self, Instant},
 };
-use tokio_tungstenite::{
-    MaybeTlsStream, WebSocketStream,
-    tungstenite::{Message, client::IntoClientRequest},
-};
 use untethered_iced::rtc_keys::{self, EVENT as KEY, SenderKey};
-use untethered_iced::rtc_membership::{EVENT_TYPE, Membership};
+use untethered_iced::rtc_membership::{CallKey, CallSignal, CallUpdate, EVENT_TYPE, Membership};
 use url::Url;
 mod cameras;
 mod channel;
+mod gomuks;
+pub(crate) use gomuks::{room_state as gomuks_room_state, state_event as gomuks_state_event};
 mod room_video;
 mod share_audio;
 pub(crate) use cameras::{CameraChoice, list_cameras};
@@ -251,84 +248,61 @@ pub(super) fn now() -> u64 {
         .as_millis() as u64
 }
 
-struct Wire<'a> {
-    ws: WebSocketStream<MaybeTlsStream<TcpStream>>,
+/// One call's signaling: the engine's [`CallSignal`], and what the call
+/// collects from it while it waits.
+struct Wire<'a, S> {
+    signal: S,
     room: &'a str,
     dm_peer: Option<&'a str>,
-    seq: u64,
-    keys: Vec<(Instant, Value)>,
+    keys: Vec<(Instant, CallKey)>,
     roster_dirty: bool,
     declines: VecDeque<String>,
 }
-impl Wire<'_> {
-    async fn frame(&mut self) -> Result<Value> {
-        loop {
-            match self.ws.next().await {
-                Some(Ok(Message::Text(raw))) => {
-                    let f: Value =
-                        serde_json::from_str(&raw).map_err(|_| "Invalid call signaling.")?;
-                    if f["command"] == "client_state" && f["data"]["is_verified"] != true {
-                        return Err("The verified call session ended.");
+impl<S: CallSignal> Wire<'_, S> {
+    /// Wait for the next signal and note what it means for this call.
+    async fn pump(&mut self) -> Result<()> {
+        let updates = self.signal.next(self.room).await?;
+        self.note(updates);
+        Ok(())
+    }
+    /// Note what already arrived, without waiting.
+    fn absorb(&mut self) {
+        let updates = self.signal.ready();
+        self.note(updates);
+    }
+    fn note(&mut self, updates: Vec<CallUpdate>) {
+        for update in updates {
+            match update {
+                CallUpdate::Roster => self.roster_dirty = true,
+                CallUpdate::Key(key) => {
+                    if self.dm_peer.is_some_and(|peer| key.sender != peer)
+                        || key.content["room_id"] != self.room
+                    {
+                        continue;
                     }
-                    if f["command"] == "sync_complete" {
-                        let state = &f["data"]["rooms"][self.room]["state"];
-                        self.roster_dirty |= state.get(EVENT_TYPE).is_some()
-                            || state.get("m.room.member").is_some()
-                            || crate::rooms::items(&f["data"]["left_rooms"])
-                                .any(|r| r == self.room);
-                        for e in crate::rooms::items(&f["data"]["to_device"]) {
-                            if e["type"] == KEY
-                                && e["encrypted"] == true
-                                && self.dm_peer.is_none_or(|peer| e["sender"] == peer)
-                                && e["content"]["room_id"] == self.room
-                            {
-                                if self.keys.len() >= 64 {
-                                    // Keep the queue bounded even if a room member
-                                    // sends keys without joining the voice slot.
-                                    self.keys.remove(0);
-                                }
-                                self.keys.push((Instant::now(), e.clone()));
-                            }
-                        }
+                    if self.keys.len() >= 64 {
+                        // Keep the queue bounded even if a room member
+                        // sends keys without joining the voice slot.
+                        self.keys.remove(0);
                     }
-                    if let Some(peer) = self.dm_peer {
-                        collect_declines(&mut self.declines, &f, self.room, peer);
-                    }
-                    return Ok(f);
+                    self.keys.push((Instant::now(), key));
                 }
-                Some(Ok(Message::Ping(_) | Message::Pong(_))) => continue,
-                _ => return Err("Lost the Matrix call connection."),
+                CallUpdate::Decline { sender, refers_to } => {
+                    if self.dm_peer != Some(sender.as_str())
+                        || self.declines.iter().any(|t| *t == refers_to)
+                    {
+                        continue;
+                    }
+                    if self.declines.len() == 64 {
+                        self.declines.pop_front();
+                    }
+                    self.declines.push_back(refers_to);
+                }
             }
         }
     }
-    async fn rpc(&mut self, name: &str, body: Value) -> Result<Value> {
-        time::timeout(SECOND * 10, async {
-            self.seq += 1;
-            self.ws
-                .send(Message::Text(
-                    json!({"command":name,"request_id":self.seq,"data":body})
-                        .to_string()
-                        .into(),
-                ))
-                .await
-                .map_err(|_| "Matrix call signaling failed.")?;
-            loop {
-                let f = self.frame().await?;
-                if f["request_id"] == self.seq {
-                    match f["command"].as_str() {
-                        Some("response") => return Ok(f["data"].clone()),
-                        Some("error") => return Err("Homeserver rejected the call request."),
-                        _ => (),
-                    }
-                }
-            }
-        })
-        .await
-        .map_err(|_| "Matrix call request timed out.")?
-    }
-    async fn state(&mut self, initial: bool) -> Result<Vec<Value>> {
-        let data=self.rpc("get_room_state",json!({"room_id":self.room,"fetch_members":initial,"refetch":initial,"include_members":true})).await?;
-        data.as_array().cloned().ok_or("Room state unavailable.")
+    async fn state(&mut self, refetch: bool) -> Result<Vec<Value>> {
+        self.signal.room_state(self.room, refetch).await
     }
     async fn open_slot(&mut self, state: &[Value]) -> Result<()> {
         let previous = state
@@ -345,50 +319,11 @@ impl Wire<'_> {
         if previous == Some(&content) {
             return Ok(());
         }
-        self.rpc(
-            "set_state",
-            json!({"room_id":self.room,"type":SLOT,"state_key":SLOT_ID,"content":content}),
-        )
-        .await?;
+        self.signal
+            .set_state(self.room, SLOT, SLOT_ID, content)
+            .await
+            .map_err(|_| "Homeserver rejected the call request.")?;
         Ok(())
-    }
-}
-// Room keys may arrive after the invite response's timeline sync. Use both
-// gomuks event paths, and require an encrypted, peer-authored reference.
-fn collect_declines(targets: &mut VecDeque<String>, frame: &Value, room: &str, peer: &str) {
-    let delta = match frame["command"].as_str() {
-        Some("sync_complete") => &frame["data"]["rooms"][room],
-        Some("events_decrypted") if frame["data"]["room_id"] == room => &frame["data"],
-        _ => return,
-    };
-    for e in crate::rooms::items(&delta["events"]) {
-        let rel = &e["decrypted"]["m.relates_to"];
-        if e["room_id"] == room
-            && e["sender"] == peer
-            && e["type"] == "m.room.encrypted"
-            && e["decrypted_type"] == "org.matrix.msc4310.rtc.decline"
-            && crate::rooms::server_confirmed(e)
-            && !e["redacted_by"].is_string()
-            && rel["rel_type"] == "m.reference"
-            && let Some(id) = rel["event_id"]
-                .as_str()
-                .filter(|id| id.starts_with('$') && id.len() > 1)
-            && !targets.iter().any(|t| t == id)
-        {
-            if targets.len() == 64 {
-                targets.pop_front();
-            }
-            targets.push_back(id.into());
-        }
-    }
-}
-impl untethered_iced::rtc_membership::Signal for &mut Wire<'_> {
-    async fn request(
-        &mut self,
-        cmd: &'static str,
-        body: Value,
-    ) -> std::result::Result<Value, String> {
-        self.rpc(cmd, body).await.map_err(str::to_owned)
     }
 }
 fn allowed(url: &Url, tls: &str, local: &str, allow_loopback: bool) -> bool {
@@ -438,7 +373,7 @@ pub(super) fn active_member(e: &Value) -> bool {
             .is_some_and(|d| !d.is_empty() && d != "*")
         && c["created_ts"]
             .as_u64()
-            .or(e["timestamp"].as_u64())
+            .or(e["origin_server_ts"].as_u64())
             .unwrap_or(0)
             .saturating_add(c["expires"].as_u64().unwrap_or(14_400_000))
             > now()
@@ -450,13 +385,15 @@ struct Session {
     sfu: String,
     token: String,
 }
-async fn prepare(w: &mut Wire<'_>, incoming: Option<&crate::incoming::Offer>) -> Result<Session> {
-    let identity = w.rpc("get_state", json!({})).await?;
-    if identity["is_verified"] != true {
+async fn prepare<S: CallSignal>(
+    w: &mut Wire<'_, S>,
+    incoming: Option<&crate::incoming::Offer>,
+) -> Result<Session> {
+    let identity = w.signal.identity().await?;
+    if !identity.verified {
         return Err("Verify the Matrix device before calling.");
     }
-    let user = identity["user_id"].as_str().ok_or("No Matrix user.")?;
-    let device = identity["device_id"].as_str().ok_or("No Matrix device.")?;
+    let (user, device) = (identity.user.as_str(), identity.device.as_str());
     let state = w.state(true).await?;
     if let Some(peer) = w.dm_peer {
         check_dm(&state, user, peer)?;
@@ -470,19 +407,16 @@ async fn prepare(w: &mut Wire<'_>, incoming: Option<&crate::incoming::Offer>) ->
     } else {
         channel::check_room(&state, user)?;
     }
-    let hs = Url::parse(identity["homeserver_url"].as_str().unwrap_or(""))
-        .map_err(|_| "Unknown homeserver.")?;
+    let hs = Url::parse(&identity.homeserver).map_err(|_| "Unknown homeserver.")?;
     let local = matches!(hs.host_str(), Some("127.0.0.1" | "localhost" | "[::1]"));
     let http = reqwest::Client::builder()
         .timeout(SECOND * 7)
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|_| "Could not create RTC client.")?;
-    let mut service = focus(
-        &w.rpc("get_rtc_transports", json!({}))
-            .await
-            .unwrap_or_default()["rtc_transports"],
-    );
+    let mut service = focus(&Value::Array(
+        w.signal.rtc_transports().await.unwrap_or_default(),
+    ));
     if service.is_none() {
         // Legacy Element Call deployments announce their OpenID service here.
         let canonical = user
@@ -527,7 +461,7 @@ async fn prepare(w: &mut Wire<'_>, incoming: Option<&crate::incoming::Offer>) ->
             "The caller is using another call server; multi-server calls are not supported yet.",
         );
     }
-    let openid = w.rpc("request_openid_token", json!({})).await?;
+    let openid = w.signal.openid_token().await?;
     let auth: Value = http
         .post(format!("{}/sfu/get", focus.as_str().trim_end_matches('/')))
         .json(&json!({"room":w.room,"device_id":device,"openid_token":openid}))
@@ -562,9 +496,22 @@ async fn status(events: &Sender<Value>, room: &str, label: &str) {
         .send(json!({"command":"desktop_call","data":{"room":room,"label":label}}))
         .await;
 }
+/// A call on the gomuks engine.
 pub async fn run(
     addr: SocketAddr,
     cookie: &str,
+    room: &str,
+    target: Target,
+    controls: Controls,
+    events: &Sender<Value>,
+) -> Result<&'static str> {
+    let signal = gomuks::GomuksSignal::connect(addr, cookie, room).await?;
+    run_with(signal, room, target, controls, events).await
+}
+
+/// A call whose Matrix signaling goes through `signal`.
+pub async fn run_with<S: CallSignal>(
+    signal: S,
     room: &str,
     target: Target,
     controls: Controls,
@@ -583,22 +530,10 @@ pub async fn run(
             video,
         } => (Some(peer.as_str()), incoming.as_ref(), *video),
     };
-    let mut req = format!("ws://{addr}/_gomuks/websocket")
-        .into_client_request()
-        .map_err(|_| "Cannot open call signaling.")?;
-    req.headers_mut().insert(
-        "Cookie",
-        cookie.parse().map_err(|_| "Missing Matrix session.")?,
-    );
-    let ws = tokio_tungstenite::connect_async(req)
-        .await
-        .map_err(|_| "Could not connect to gomuks.")?
-        .0;
     let mut w = Wire {
-        ws,
+        signal,
         room,
         dm_peer,
-        seq: 0,
         keys: vec![],
         roster_dirty: true,
         declines: VecDeque::new(),
@@ -609,7 +544,7 @@ pub async fn run(
         return Ok(ENDED);
     }
     // Element may send its key as soon as it sees our membership.
-    let prior = w.rpc("listen_to_device", json!(true)).await?;
+    w.signal.start().await?;
     let mut member = match Membership::join_with_video(
         room,
         &s.user,
@@ -617,13 +552,13 @@ pub async fn run(
         &s.focus,
         LEASE.as_millis() as u32,
         video,
-        &mut w,
+        &mut w.signal,
     )
     .await
     {
         Ok(member) => member,
         Err(_) => {
-            let _ = w.rpc("listen_to_device", prior).await;
+            w.signal.stop().await;
             return Err("Could not join the MatrixRTC call.");
         }
     };
@@ -656,8 +591,8 @@ pub async fn run(
         let _ = time::timeout(SECOND * 4, lk.close()).await;
     }
     // Dropping call() already stopped the audio jobs. Publish leave even on error/cancel.
-    let leave = member.leave(&mut w).await;
-    let _ = w.rpc("listen_to_device", prior).await;
+    let leave = member.leave(&mut w.signal).await;
+    w.signal.stop().await;
     leave.map_err(|_| "Disconnected; homeserver will expire call membership.")?;
     result
 }
@@ -667,8 +602,8 @@ struct DmMedia<'a> {
     video: bool,
     previews: Previews,
 }
-async fn call(
-    w: &mut Wire<'_>,
+async fn call<S: CallSignal>(
+    w: &mut Wire<'_, S>,
     s: &Session,
     m: &mut Membership,
     events: &Sender<Value>,
@@ -689,19 +624,15 @@ async fn call(
             Duration::from_millis(i.expires.saturating_sub(now())).min(RING_LIFETIME)
         });
     let notification = if incoming.is_none() {
-        let n = w
-            .rpc(
-                "send_event",
-                json!({"room_id":w.room,"type":RING,"synchronous":true,"content":{
+        let content = json!({
         "slot_id":SLOT_ID,"notification_type":"ring","m.mentions":{"user_ids":[dm_peer]},
         "m.relates_to":{"rel_type":"m.reference","event_id":m.event_id},
-        "m.call.intent":if video{"video"}else{"audio"},"sender_ts":now(),"lifetime":RING_LIFETIME.as_millis() as u64,"msc4354_sticky_key":SLOT_ID}}),
-            )
-            .await?;
+        "m.call.intent":if video{"video"}else{"audio"},"sender_ts":now(),"lifetime":RING_LIFETIME.as_millis() as u64,"msc4354_sticky_key":SLOT_ID});
+        let n = w.signal.send_event(w.room, RING, content).await?;
         status(events, w.room, "Ringing").await;
-        n
+        Some(n)
     } else {
-        Value::Null
+        None
     };
     let lease_started = Instant::now();
     let mut heartbeat = time::interval(SECOND * 4);
@@ -709,7 +640,7 @@ async fn call(
     let answer=time::timeout_at(deadline,async {
         loop {
             tokio::select!{
-                _=heartbeat.tick()=>m.heartbeat(&mut *w).await.map_err(|_|"Lost call membership.")?,
+                _=heartbeat.tick()=>m.heartbeat(&mut w.signal).await.map_err(|_|"Lost call membership.")?,
                 _=poll.tick()=>{
                     let state=w.state(false).await?;check_dm(&state,&s.user,dm_peer)?;
                     if let Some(e)=state.iter().find(|e|e["sender"]==dm_peer && active_member(e) && incoming.is_none_or(|i|i.matches_member(e))){
@@ -721,7 +652,9 @@ async fn call(
                     if incoming.is_some(){return Err("The caller has left.")}
                 }
             }
-            if w.declines.iter().any(|id|notification["event_id"]==*id){return Err("Call declined.")}
+            // Declines arrive alongside the answers to these requests.
+            w.absorb();
+            if w.declines.iter().any(|id|notification.as_deref()==Some(id.as_str())){return Err("Call declined.")}
         }
     }).await;
     let answer = match answer {
@@ -739,21 +672,23 @@ async fn call(
     let provider = rtc_keys::provider();
     let my_id = format!("{}:{}", s.user, s.device);
     let key = SenderKey::fresh(0)?;
-    w.rpc(
-        "send_to_device",
-        key.to_device(w.room, &my_id, &s.device, dm_peer, peer_device),
-    )
-    .await?;
-    fn install(
-        w: &mut Wire<'_>,
+    w.signal
+        .send_to_device(
+            KEY,
+            key.content(w.room, &my_id, &s.device),
+            &[(dm_peer.to_owned(), peer_device.to_owned())],
+        )
+        .await?;
+    fn install<S>(
+        w: &mut Wire<'_, S>,
         p: &KeyProvider,
         device: &str,
         member: &str,
         id: &str,
     ) -> Result<bool> {
         let mut installed = false;
-        for (_, e) in w.keys.drain(..) {
-            let Some((idx, bytes)) = rtc_keys::receive(&e["content"], device, member)? else {
+        for (_, key) in w.keys.drain(..) {
+            let Some((idx, bytes)) = rtc_keys::receive(&key.content, device, member)? else {
                 continue;
             };
             if !p.set_key(&id.to_owned().into(), idx, bytes) {
@@ -765,7 +700,7 @@ async fn call(
     }
     time::timeout(SECOND*14,async {
         while !install(w,&provider,peer_device,&peer.member,peer_id)? {
-            tokio::select!{r=w.frame()=>{r?;},_=heartbeat.tick()=>m.heartbeat(&mut *w).await.map_err(|_|"Lost call membership.")?}
+            tokio::select!{r=w.pump()=>{r?;},_=heartbeat.tick()=>m.heartbeat(&mut w.signal).await.map_err(|_|"Lost call membership.")?}
         }
         Ok::<(),&'static str>(())
     }).await.map_err(|_|"The other device did not provide an encrypted audio key.")??;
@@ -898,7 +833,7 @@ async fn call(
             update=share.next()=>{share.update(update,lk,key.index,events,w.room,&mode).await?;false}
             ended=sound.ended()=>{sound.finish(ended,lk,events,w.room).await?;false}
             _=media_jobs.join_next(),if !media_jobs.is_empty()=>false,
-            e=w.frame()=>{e?;false}
+            e=w.pump()=>{e?;false}
             _=heartbeat.tick()=>{
                 if recovering.is_some_and(|since| since.elapsed()>=RECOVERY_LIMIT) {
                     return Err("Could not reconnect to the call.");
@@ -1065,7 +1000,7 @@ async fn publish_mic<'a>(
 fn created(event: &Value) -> Option<u64> {
     event["content"]["created_ts"]
         .as_u64()
-        .or_else(|| event["timestamp"].as_u64())
+        .or_else(|| event["origin_server_ts"].as_u64())
 }
 impl PeerSession {
     // User/device IDs alone could also describe a *new* call after hangup.
@@ -1089,9 +1024,9 @@ enum LeaseState {
     Offline,
 }
 impl LeaseWatch {
-    async fn check(
+    async fn check<S: CallSignal>(
         &mut self,
-        w: &mut Wire<'_>,
+        w: &mut Wire<'_, S>,
         m: &mut Membership,
         user: &str,
         peer: &PeerSession,
@@ -1104,7 +1039,7 @@ impl LeaseWatch {
         // Never replace an expired membership to recover a call. Retry the
         // existing delayed leave first. Late RPC replies have unique request IDs.
         if !matches!(
-            time::timeout(SECOND * 2, m.heartbeat(&mut *w)).await,
+            time::timeout(SECOND * 2, m.heartbeat(&mut w.signal)).await,
             Ok(Ok(()))
         ) {
             return Ok(LeaseState::Offline);
@@ -1126,7 +1061,7 @@ impl LeaseWatch {
             return Err("Our call membership is no longer active.");
         }
         if self.renewed.elapsed() > SECOND * 36 {
-            m.renew(&mut *w)
+            m.renew(&mut w.signal)
                 .await
                 .map_err(|_| "Failed to renew call membership.")?;
             self.renewed = started;
@@ -1383,23 +1318,6 @@ mod tests {
     }
 
     #[test]
-    fn late_decrypted_declines_keep_matching_references_but_ignore_wrong_peer_room_or_relation() {
-        let mut targets = VecDeque::new();
-        let event = |eid: &str, u: &str, rel: &str| {
-            json!({"room_id":"!dm","event_id":eid,"sender":u,
-            "type":"m.room.encrypted","decrypted_type":"org.matrix.msc4310.rtc.decline",
-            "decrypted":{"m.relates_to":{"rel_type":rel,"event_id":eid}}})
-        };
-        let late = json!({"command":"events_decrypted","data":{"room_id":"!dm","events":[
-            event("$ours","@alice","m.reference"),event("$old","@alice","m.reference"),
-            event("$wrong","@bob","m.reference"),event("$bad","@alice","m.annotation")]}});
-        collect_declines(&mut targets, &late, "!different", "@alice");
-        assert!(targets.is_empty());
-        collect_declines(&mut targets, &late, "!dm", "@alice");
-        collect_declines(&mut targets, &late, "!dm", "@alice");
-        assert_eq!(targets.into_iter().collect::<Vec<_>>(), ["$ours", "$old"]);
-    }
-    #[test]
     fn boosted_playback_clips_peaks_without_inverting_them() {
         let mut bytes = Vec::new();
         playback_pcm(&[-20_000, -10_000, 0, 10_000, 20_000], 200, &mut bytes);
@@ -1422,11 +1340,11 @@ mod tests {
             identity: "@b:chat:D".into(),
             created: stamp,
         };
-        let mut e = json!({"event_id":"$original","type":EVENT_TYPE,"sender":"@b:chat","timestamp":stamp,
+        let mut e = json!({"event_id":"$original","type":EVENT_TYPE,"sender":"@b:chat","origin_server_ts":stamp,
             "content":{"application":"m.call","scope":"m.room","call_id":"","device_id":"D","expires":60000}});
         assert!(peer.matches("@b:chat", &e));
         e["event_id"] = "$renewed".into();
-        e["timestamp"] = (stamp + 1).into();
+        e["origin_server_ts"] = (stamp + 1).into();
         e["content"]["created_ts"] = stamp.into();
         assert!(peer.matches("@b:chat", &e));
         e["content"]["created_ts"] = (stamp + 1).into();

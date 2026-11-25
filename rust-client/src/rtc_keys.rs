@@ -35,8 +35,14 @@ impl SenderKey {
     ) -> Value {
         self.to_devices(room, member, device, [(peer, peer_device)])
     }
-    /// One Olm request, addressed to explicit user/device pairs, even when
-    /// multiple devices belonging to the same room member are in voice.
+    /// The key message for `member`'s `device`, as Element Call sends it.
+    pub fn content(&self, room: &str, member: &str, device: &str) -> Value {
+        let key = json!({"index":self.index,"key":STANDARD.encode(self.bytes)});
+        json!({"room_id":room,"member_id":member,"member":{"id":member,"claimed_device_id":device},"media_key":key,"keys":key})
+    }
+    /// One gomuks `send_to_device` request, addressed to explicit user/device
+    /// pairs, even when multiple devices belonging to the same room member are
+    /// in voice.
     pub fn to_devices<'a>(
         &self,
         room: &str,
@@ -44,8 +50,7 @@ impl SenderKey {
         device: &str,
         peers: impl IntoIterator<Item = (&'a str, &'a str)>,
     ) -> Value {
-        let key = json!({"index":self.index,"key":STANDARD.encode(self.bytes)});
-        let content = json!({"room_id":room,"member_id":member,"member":{"id":member,"claimed_device_id":device},"media_key":key,"keys":key});
+        let content = self.content(room, member, device);
         let mut messages = json!({});
         for (user, target) in peers {
             if !target.is_empty() && target != "*" {

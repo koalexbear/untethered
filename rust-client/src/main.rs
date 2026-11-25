@@ -922,7 +922,9 @@ impl App {
                     #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
                     Request::Dnd(on, revision) => self.saved_dnd(on, revision),
                     #[cfg(target_os = "linux")]
-                    Request::RingState(i) => self.present_ring(i, data),
+                    Request::RingState(i) => {
+                        self.present_ring(i, &crate::desktop_call::gomuks_room_state(data))
+                    }
                     #[cfg(target_os = "linux")]
                     Request::DeclineSent => self.status = "Call declined.".into(),
                     Request::MediaConfig => {
@@ -993,7 +995,7 @@ impl App {
                             #[cfg(target_os = "linux")]
                             if r.voice {
                                 for e in items(data) {
-                                    r.voice_state(e);
+                                    r.voice_state(&crate::desktop_call::gomuks_state_event(e));
                                 }
                             }
                             for e in items(data).filter(|e| e["type"] == "m.room.member") {
