@@ -80,6 +80,7 @@ def room_camera(stack,desks,secret,original,publications):
     def video():
         return [(p["identity"],t) for p in sfu_participants(secret) for t in p.get("tracks",[]) if t.get("type")=="VIDEO"]
     assert not present(kde) and not video_nodes(), "test needs a private camera-free PipeWire server"
+    for p in peers:p.open_stage()
     sender.click("start")
     wait_for("no-camera feedback",lambda:{"no","camera","available"}.issubset({v for v,_,_ in sender.words()}),10)
     assert not video()
@@ -125,6 +126,18 @@ def room_camera(stack,desks,secret,original,publications):
     assert links and all(x["info"]["state"]=="active" for x in links) and len(reader_pids())==1
     wait_for("both camera tiles decode the first pattern",lambda:all(area(p,palettes[0]) for p in peers),18)
     print("Camera on: private Camera portal authorized the capture; both peers rendered the green/magenta pattern on one GCM CAMERA track.",flush=True)
+    if sender.stats:
+        from qa_window_share import video_stats
+        def sent():
+            out=list(video_stats(sender,"outbound","camera").values())
+            return out[0] if len(out)==1 and (out[0]["width"],out[0]["height"])==(1280,720) else None
+        try:out=wait_for("sender encodes the camera at 1280x720",sent,30)
+        except RuntimeError:
+            print("Sender outbound:",video_stats(sender,"outbound"),flush=True);raise
+        inbound=[next(iter(video_stats(p,"inbound","camera").values()),None) for p in peers]
+        print(f"Camera video: sender encodes {out['width']}x{out['height']} at {out['fps']:.1f} fps from the 12 fps "
+              "synthetic source; receivers decode "+" / ".join(f"{i['width']}x{i['height']} at {i['fps']:.1f} fps"
+              if i else "n/a" for i in inbound)+".",flush=True)
     show(1)
     desks[0].tone=3;desks[1].tone=4
     fresh=({830,1030},{530,1030},{530,830})
@@ -139,7 +152,7 @@ def room_camera(stack,desks,secret,original,publications):
         # "Start camera" stays in the call controls; the incoming tile's
         # caption contains "Camera" and the publisher's display name.
         words=peer.words()
-        return not any(word=="camera" and any(w=="alice" and 280<xx<x and abs(yy-y)<6 for w,xx,yy in words)
+        return not any(word=="camera" and any(w=="alice" and 312<xx<x and abs(yy-y)<6 for w,xx,yy in words)
                        for word,x,y in words) and not area(peer,palettes[1])
     wait_for("camera tiles cleared",lambda:all(tile_gone(p) for p in peers),10)
     desks[0].tone=0;desks[1].tone=1

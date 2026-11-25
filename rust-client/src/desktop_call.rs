@@ -809,6 +809,8 @@ async fn call(
     heartbeat.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
     #[cfg(debug_assertions)]
     let trace_ice = std::env::var("UNTETHERED_QA_ICE_STATS").as_deref() == Ok("1");
+    #[cfg(debug_assertions)]
+    let trace_video = room_video::trace_video_enabled();
     loop {
         install(w, &provider, peer_device, &peer.member, peer_id)?;
         let (requested, route) = {
@@ -909,6 +911,10 @@ async fn call(
                         #[cfg(debug_assertions)]
                         if trace_ice && playing && recovering.is_none() {
                             trace_selected_ice(lk).await;
+                        }
+                        #[cfg(debug_assertions)]
+                        if trace_video && recovering.is_none() {
+                            room_video::trace_video_stats(lk).await;
                         }
                         if restoring && let Some((mic,track))=encrypted_tracks(lk,&my_id,peer_id)? {
                             audio.spawn(capture(mic));audio.spawn(playback(track));

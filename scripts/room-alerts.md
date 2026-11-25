@@ -73,9 +73,9 @@ positive notifications on both screens and in both daemon histories.
 | Step | Result on each device |
 |---|---|
 | Direct mention in a room set to **Mute ordinary** | One baseline popup |
-| Linux **Account → Pause alerts** | No popup for a direct mention in the muted room or ordinary chat in the other encrypted room |
+| Linux **User Settings → Pause alerts** | No popup for a direct mention in the muted room or ordinary chat in the other encrypted room |
 | Restart the native client and reload Chromium | DND remains on. Another direct mention produces no popup. Both silenced mentions appear in the native inbox. |
-| Chromium **Account → Resume alerts** | A fresh direct mention and ordinary chat in the other room each produce one popup. Ordinary chat in the muted room still produces none. |
+| Chromium **User Settings → Resume alerts** | A fresh direct mention and ordinary chat in the other room each produce one popup. Ordinary chat in the muted room still produces none. |
 
 Required total: **three** calls and three archived popups per receiver.
 The only change to Synapse’s `m.push_rules` is the `enabled` flag of the

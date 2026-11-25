@@ -23,7 +23,7 @@ Element sees for the recipient's public read receipt.
 | Workflow | Acceptance evidence |
 |---|---|
 | Read the latest message | After 55 older posts, neither a hidden tab nor an unfocused or scrolled-up native window advances the private receipt. Focusing the native timeline at the bottom advances it to the exact event. |
-| Read on the second device | A new mention appears after the native **New messages** divider. Keeping Chromium in search leaves the marker unchanged; returning to the timeline advances it and clears the native unread state. |
+| Read on the second device | A new mention appears after the native **NEW** divider. Keeping Chromium in search leaves the marker unchanged; returning to the timeline advances it and clears the native unread state. |
 | Save a reminder | **Mark unread** sets room account data. Restarting Linux, reloading the web app, and receiving another message do not discard it. **Mark read** on web clears it and advances to that new event. The untouched encrypted room keeps its highlight badge. |
 | Publish only when requested | The private reads do not reach Element. After opting in on web, Element observes the exact next event read on Linux. After opting out, the public receipt remains at that event while the private receipt advances. |
 | Edit at the timeline end | A visible edited message marks the replacement event read, even though it has no separate rendered row. The next message appears after the unread divider. |

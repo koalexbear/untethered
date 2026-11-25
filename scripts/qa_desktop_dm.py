@@ -17,6 +17,7 @@ from urllib.parse import urlsplit
 from PIL import Image
 import requests
 from qa_native_paste import child, isolated_env, start_display, wait_for
+from qa_ui import Ui
 
 
 def sfu_participants(secret,*,allow_empty=False):
@@ -135,7 +136,13 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
         return [(s[11],(int(s[6])+int(s[8])//2)//2,(int(s[7])+int(s[9])//2)//2) for line in data.splitlines()
                 if len(s:=line.split("\t"))==12 and s[0]=="5" and s[11].strip()]
     def find(label):
+        if label=="Voice":return call_ready()
         return next(((x,y) for t,x,y in words() if re.sub(r"^\W+|\W+$","",t).lower()==label.lower()),None)
+    def hover(pos):cmd("xdotool","mousemove","--window",win,*map(str,pos),check=True)
+    ui=Ui(words,hover,width=1180,height=760)
+    def call_ready():
+        # The DM header's phone icon (tooltip "Start Voice Call") starts a call.
+        return ui.header("start voice call")
     def click(label):
         x,y=wait_for("desktop "+label+" control",lambda:find(label),20)
         cmd("xdotool","mousemove","--window",win,str(x),str(y),"click","1",check=True)
@@ -225,7 +232,7 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
         else:click("Hang")
         wait_for("desktop and Element left DM call",lambda:roster()==[],22)
         wait_for("desktop released both audio devices",lambda:not streams("source-outputs") and not streams("sink-inputs"))
-        wait_for("desktop ready to call again",lambda:find("Voice"),8)
+        wait_for("desktop ready to call again",lambda:find("Voice"),12)
         print("Hangup → empty Element call roster, 0 desktop capture/playback streams; call control available again.",flush=True)
     except Exception:
         if relay_links:

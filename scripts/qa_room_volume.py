@@ -9,7 +9,7 @@ def check_volume(desks):
     alice.click("mixer")
 
     def row(name):
-        words=[(w,x,y) for w,x,y in alice.words() if x>280]
+        words=[(w,x,y) for w,x,y in alice.words() if x>312]
         for w,_,y in words:
             if w!=name:continue
             line={v:x for v,x,yy in words if abs(yy-y)<=5}

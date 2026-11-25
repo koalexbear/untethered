@@ -1,6 +1,8 @@
 """Check the rendered inbox before/after restart and each actual /context target."""
 from urllib.parse import quote
 
+from qa_ui import CHAT_X
+
 
 def check_inbox(hs,peer,one,hdr,http,restart,locate,click,paths):
     me=http("GET",hs+"/_matrix/client/v3/account/whoami",headers=hdr).json()["user_id"]
@@ -14,7 +16,7 @@ def check_inbox(hs,peer,one,hdr,http,restart,locate,click,paths):
     peer.wait_for_function("([r,u])=>window.mxMatrixClientPeg.get().getRoom(r)?.getMember(u)?.membership==='join'",arg=[two,me])
 
     def points(ws,w,left=False):
-        return [(xx,y) for word,xx,y in ws if word==w and ((70<xx<280) if left else xx>280)]
+        return [(xx,y) for word,xx,y in ws if word==w and ((70<xx<CHAT_X) if left else xx>CHAT_X)]
     def tap_inbox():click(locate("global Mentions sidebar",lambda ws:next(iter(points(ws,"mentions",True)),None)))
     tap_inbox()
     locate("empty mentions surface",lambda ws:points(ws,"inbox") and points(ws,"no"))
@@ -86,7 +88,7 @@ def check_inbox(hs,peer,one,hdr,http,restart,locate,click,paths):
                                    (two,"violet","jade",ids["base"])]:
         hits=locate("inbox before target selection",entries)
         paths.clear();click(hits[(room,w)])
-        locate("highlighted target and correct neighbor",lambda ws:points(ws,"history") and points(ws,"original")
+        locate("highlighted target and correct neighbor",lambda ws:points(ws,"older") and points(ws,"original")
                and points(ws,w) and points(ws,neighbor))
         assert paths==[f"/_matrix/client/v3/rooms/{room}/context/{target}"],paths
         print(f"Cold inbox selected {room} → {target}; original and {neighbor.title()} marker visible.",flush=True)

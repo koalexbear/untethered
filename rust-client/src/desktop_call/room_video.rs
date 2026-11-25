@@ -1,4 +1,4 @@
-//! Group camera and single-window video use distinct portal grants and tracks.
+//! Group camera and screen/window video use distinct portal grants and tracks.
 use super::*;
 use ashpd::desktop::{
     PersistMode, Session as PortalSession,
@@ -7,9 +7,11 @@ use ashpd::desktop::{
 };
 use ashpd::{zbus, zvariant};
 use iced::widget::image::Handle;
+use livekit::options::VideoEncoding;
 use livekit::webrtc::{
     prelude::{
-        I420Buffer, RtcVideoSource, VideoFormatType, VideoFrame, VideoResolution, VideoRotation,
+        I420Buffer, RtcVideoSource, VideoBuffer, VideoFormatType, VideoFrame, VideoResolution,
+        VideoRotation,
     },
     video_source::native::NativeVideoSource,
     video_stream::native::NativeVideoStream,
@@ -22,10 +24,51 @@ use std::{
 use tokio::process::{Child, ChildStdout};
 use uuid::Uuid;
 
-const W: u32 = 960;
-const H: u32 = 540;
-const Y: usize = (W * H) as usize;
-const FRAME: usize = Y * 3 / 2;
+/// Upper bounds for one published video track. A capture never upscales its
+/// source past `width`×`height`; Go Live (U4) will choose these per share.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Quality {
+    pub width: u32,
+    pub height: u32,
+    pub fps: u32,
+    pub max_bitrate: u64,
+}
+impl Quality {
+    pub(crate) const SCREEN: Self = Self {
+        width: 1920,
+        height: 1080,
+        fps: 30,
+        max_bitrate: 2_500_000,
+    };
+    pub(crate) const CAMERA: Self = Self {
+        width: 1280,
+        height: 720,
+        fps: 30,
+        max_bitrate: 1_700_000,
+    };
+    fn encoding(self) -> VideoEncoding {
+        VideoEncoding {
+            max_bitrate: self.max_bitrate,
+            max_framerate: f64::from(self.fps),
+        }
+    }
+    /// Fit a source into these bounds, keeping its aspect ratio. I420 needs
+    /// even sides. An unknown source size uses the full bounds (letterboxed).
+    fn fit(self, source: Option<(i32, i32)>) -> (u32, u32) {
+        let (w, h) = source
+            .filter(|&(w, h)| w > 0 && h > 0)
+            .map_or((self.width, self.height), |(w, h)| (w as u32, h as u32));
+        let scale = (f64::from(self.width) / f64::from(w))
+            .min(f64::from(self.height) / f64::from(h))
+            .min(1.);
+        let even = |v: u32| ((f64::from(v) * scale) as u32 & !1).max(2);
+        (even(w), even(h))
+    }
+}
+/// Largest frame a receiver converts for display, and its fastest redraw.
+const SHOW_W: u32 = 1920;
+const SHOW_H: u32 = 1080;
+const SHOW_EVERY: Duration = Duration::from_millis(33);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum VideoInput {
@@ -45,13 +88,13 @@ impl VideoInput {
     }
     pub(crate) fn starting(self) -> &'static str {
         match self {
-            Self::Window => "Choose a window in the desktop picker…",
+            Self::Window => "Choose a screen or window in the desktop picker…",
             Self::Camera => "Opening camera…",
         }
     }
     pub(crate) fn control(self, requested: bool, live: bool) -> &'static str {
         match (self, requested, live) {
-            (Self::Window, false, _) => "Share window",
+            (Self::Window, false, _) => "Share screen",
             (Self::Window, true, true) => "Stop sharing",
             (Self::Window, true, false) => "Cancel share",
             (Self::Camera, false, _) => "Start camera",
@@ -67,6 +110,12 @@ impl VideoInput {
     }
     fn request(self, mode: &AudioMode) -> Option<Uuid> {
         mode.video[self as usize]
+    }
+    fn default_quality(self) -> Quality {
+        match self {
+            Self::Window => Quality::SCREEN,
+            Self::Camera => Quality::CAMERA,
+        }
     }
 }
 #[derive(Default)]
@@ -157,8 +206,13 @@ pub(super) async fn display(
         events,
     };
     let mut stream = NativeVideoStream::new(track.rtc_track());
-    let mut tick = time::interval(Duration::from_millis(100));
+    // The stream holds only the newest decoded frame. Waking at most every
+    // SHOW_EVERY and then waiting for that frame follows the publisher's own
+    // rate up to 30 fps without queueing stale frames.
+    let mut tick = time::interval(SHOW_EVERY);
     tick.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
+    #[cfg(debug_assertions)]
+    let mut probe = trace_video_enabled().then(|| RenderProbe::new(&tile.sid));
     loop {
         tick.tick().await;
         let Some(frame) = stream.next().await else {
@@ -168,28 +222,97 @@ pub(super) async fn display(
         if w == 0 || h == 0 || u64::from(w) * u64::from(h) > 8_294_400 {
             continue;
         }
-        let mut buf = frame.buffer.to_i420();
-        let scale = (W as f64 / w as f64).min(H as f64 / h as f64).min(1.);
-        let (ow, oh) = (
-            (f64::from(w) * scale).round().max(1.) as u32,
-            (f64::from(h) * scale).round().max(1.) as u32,
-        );
-        if (ow, oh) != (w, h) {
-            buf = buf.scale(ow as i32, oh as i32);
+        #[cfg(debug_assertions)]
+        let started = Instant::now();
+        let frame = rgba(&mut frame.buffer.to_i420(), SHOW_W, SHOW_H);
+        #[cfg(debug_assertions)]
+        if let Some(probe) = &mut probe {
+            probe.frame(started.elapsed(), w, h);
         }
-        let mut rgba = vec![0; (ow * oh * 4) as usize];
-        use livekit::webrtc::video_frame::native::VideoFrameBufferExt;
+        tile.views.frame(&tile.sid, &user, source, frame);
+        let _ = tile.events.try_send(json!({"command":"video_redraw"}));
+    }
+}
+
+/// Frames handed to the UI per remote track, and the CPU conversion cost of
+/// each (I420 copy, scale, RGBA and the new `image::Handle`).
+#[cfg(debug_assertions)]
+struct RenderProbe {
+    sid: String,
+    since: Instant,
+    frames: u32,
+    busy: Duration,
+}
+#[cfg(debug_assertions)]
+impl RenderProbe {
+    fn new(sid: &str) -> Self {
+        Self {
+            sid: sid.into(),
+            since: Instant::now(),
+            frames: 0,
+            busy: Duration::ZERO,
+        }
+    }
+    /// Frames read from the capture pipe, after GStreamer's rate limit.
+    fn capture(&mut self, w: u32, h: u32) {
+        self.frames += 1;
+        let elapsed = self.since.elapsed();
+        if elapsed >= SECOND * 4 {
+            eprintln!(
+                "RTC video capture source={:?} width={w} height={h} fps={:.1}",
+                self.sid,
+                f64::from(self.frames) / elapsed.as_secs_f64(),
+            );
+            *self = Self::new(&self.sid);
+        }
+    }
+    fn frame(&mut self, busy: Duration, w: u32, h: u32) {
+        self.frames += 1;
+        self.busy += busy;
+        let elapsed = self.since.elapsed();
+        if elapsed >= SECOND * 4 {
+            eprintln!(
+                "RTC video render sid={} width={w} height={h} fps={:.1} convert_ms={:.2}",
+                self.sid,
+                f64::from(self.frames) / elapsed.as_secs_f64(),
+                self.busy.as_secs_f64() * 1000. / f64::from(self.frames),
+            );
+            *self = Self::new(&self.sid);
+        }
+    }
+}
+
+/// Convert to an RGBA image no larger than `max_w`×`max_h`, never upscaling.
+fn rgba(buf: &mut I420Buffer, max_w: u32, max_h: u32) -> Handle {
+    use livekit::webrtc::video_frame::native::VideoFrameBufferExt;
+    let (w, h) = (buf.width(), buf.height());
+    let scale = (f64::from(max_w) / f64::from(w))
+        .min(f64::from(max_h) / f64::from(h))
+        .min(1.);
+    let (ow, oh) = (
+        (f64::from(w) * scale).round().max(1.) as u32,
+        (f64::from(h) * scale).round().max(1.) as u32,
+    );
+    let mut pixels = vec![0; (ow * oh * 4) as usize];
+    // libyuv's ABGR is R, G, B, A in memory.
+    if (ow, oh) == (w, h) {
         buf.to_argb(
             VideoFormatType::ABGR,
-            &mut rgba,
+            &mut pixels,
             ow * 4,
             ow as i32,
             oh as i32,
         );
-        let frame = Handle::from_rgba(ow, oh, rgba);
-        tile.views.frame(&tile.sid, &user, source, frame);
-        let _ = tile.events.try_send(json!({"command":"video_redraw"}));
+    } else {
+        buf.scale(ow as i32, oh as i32).to_argb(
+            VideoFormatType::ABGR,
+            &mut pixels,
+            ow * 4,
+            ow as i32,
+            oh as i32,
+        );
     }
+    Handle::from_rgba(ow, oh, pixels)
 }
 
 type Session = PortalSession<'static, Screencast<'static>>;
@@ -272,70 +395,96 @@ async fn authorize_camera(portal: &Camera<'_>) -> Result<()> {
 }
 pub(super) struct Capture {
     route: CameraChoice,
+    quality: Quality,
     lease: Option<Lease>,
     child: Child,
     pipe: ChildStdout,
+    /// Even I420 frame size chosen when the source opened. A source that
+    /// later resizes is letterboxed into it by `videoscale add-borders`.
+    width: u32,
+    height: u32,
     pixels: Vec<u8>,
 }
 impl Capture {
-    async fn open(input: VideoInput, route: CameraChoice) -> Result<Self> {
-        let (fd, node, lease) = match input {
+    async fn open(input: VideoInput, route: CameraChoice, quality: Quality) -> Result<Self> {
+        let (fd, node, lease, size) = match input {
             VideoInput::Window => {
-                let (fd, node, lease) = Self::window().await?;
-                (fd, Some(node), Some(lease))
+                let (fd, node, lease, size) = Self::screen().await?;
+                (fd, Some(node), Some(lease), quality.fit(size))
             }
-            VideoInput::Camera => (camera_remote().await?, None, None),
+            VideoInput::Camera => (
+                camera_remote().await?,
+                None,
+                None,
+                (quality.width & !1, quality.height & !1),
+            ),
         };
-        Self::reader(fd, node, lease, route).await
+        Self::reader(fd, node, lease, route, quality, size).await
     }
-    async fn window() -> Result<(OwnedFd, u32, Lease)> {
+    async fn screen() -> Result<(OwnedFd, u32, Lease, Option<(i32, i32)>)> {
         let proxy = Screencast::new()
             .await
-            .map_err(|_| "Window capture portal unavailable.")?;
+            .map_err(|_| "Screen capture portal unavailable.")?;
+        let wanted = SourceType::Window | SourceType::Monitor;
+        let types = match proxy.available_source_types().await {
+            Ok(offered) if offered.intersects(wanted) => offered & wanted,
+            _ => wanted,
+        };
+        let cursor = match proxy.available_cursor_modes().await {
+            Ok(modes) if modes.contains(CursorMode::Embedded) => CursorMode::Embedded,
+            _ => CursorMode::Hidden,
+        };
         let lease = Lease(Some(
             proxy
                 .create_session()
                 .await
-                .map_err(|_| "Could not open window picker.")?,
+                .map_err(|_| "Could not open the screen picker.")?,
         ));
         let session = lease.0.as_ref().unwrap();
         proxy
-            .select_sources(
-                session,
-                CursorMode::Hidden,
-                SourceType::Window.into(),
-                false,
-                None,
-                PersistMode::DoNot,
-            )
+            .select_sources(session, cursor, types, false, None, PersistMode::DoNot)
             .await
             .and_then(|r| r.response())
-            .map_err(|_| "The desktop could not select a window.")?;
+            .map_err(|_| "The desktop could not select a screen or window.")?;
         let selection = proxy
             .start(session, None)
             .await
             .and_then(|r| r.response())
-            .map_err(|_| "Window sharing was cancelled or denied.")?;
+            .map_err(|_| "Screen sharing was cancelled or denied.")?;
         let [stream] = selection.streams() else {
-            return Err("Select exactly one window.");
+            return Err("Select exactly one screen or window.");
         };
-        if stream
-            .source_type()
-            .is_some_and(|t| t != SourceType::Window)
+        if stream.source_type().is_some_and(|t| !wanted.contains(t)) {
+            return Err("The selection was not a screen or window.");
+        }
+        let node = stream.pipe_wire_node_id();
+        let mut size = stream.size();
+        if size.is_none()
+            && let Ok(fd) = proxy.open_pipe_wire_remote(session).await
         {
-            return Err("The selection was not a window.");
+            size = probe_size(fd, node).await;
+        }
+        #[cfg(debug_assertions)]
+        if trace_video_enabled() {
+            eprintln!(
+                "RTC video portal source={:?} size={:?} measured={size:?}",
+                stream.source_type(),
+                stream.size(),
+            );
         }
         let fd = proxy
             .open_pipe_wire_remote(session)
             .await
             .map_err(|_| "Could not open the selected PipeWire stream.")?;
-        Ok((fd, stream.pipe_wire_node_id(), lease))
+        Ok((fd, node, lease, size))
     }
     async fn reader(
         fd: OwnedFd,
         node: Option<u32>,
         lease: Option<Lease>,
         route: CameraChoice,
+        quality: Quality,
+        (width, height): (u32, u32),
     ) -> Result<Self> {
         // Stdio maps the already-authorized FD to descriptor 0 in the child;
         // no inheritance of arbitrary FDs, temporary recording or shell needed.
@@ -352,6 +501,7 @@ impl Capture {
                 "stream-properties=props,media.role=Camera,node.name=untethered-camera-capture",
             );
         }
+        let fps = quality.fps.max(1);
         let mut child = pipeline
             .args([
                 "do-timestamp=true",
@@ -360,16 +510,26 @@ impl Capture {
                 "max-size-buffers=2",
                 "leaky=downstream",
                 "!",
+                // PipeWire screen streams are variable-rate (0/1), and
+                // videorate only enforces max-rate against a fixed output
+                // rate. Prefer exactly fps; a slower fixed-rate camera falls
+                // through to the range (drop-only cannot raise its rate).
                 "videorate",
                 "drop-only=true",
-                "max-rate=12",
+                &format!("max-rate={fps}"),
+                "!",
+                &format!("video/x-raw,framerate={fps}/1;video/x-raw,framerate=[1/1,{fps}/1]"),
                 "!",
                 "videoconvert",
+                "n-threads=2",
                 "!",
                 "videoscale",
                 "add-borders=true",
+                "n-threads=2",
                 "!",
-                "video/x-raw,format=I420,width=960,height=540,pixel-aspect-ratio=1/1",
+                &format!(
+                    "video/x-raw,format=I420,width={width},height={height},pixel-aspect-ratio=1/1"
+                ),
                 "!",
                 "fdsink",
                 "fd=1",
@@ -382,16 +542,19 @@ impl Capture {
             .spawn()
             .map_err(|_| "Install GStreamer and its PipeWire plugin to capture video.")?;
         let mut pipe = child.stdout.take().unwrap();
-        let mut pixels = vec![0; FRAME];
+        let mut pixels = vec![0; (width * height * 3 / 2) as usize];
         time::timeout(SECOND * 12, pipe.read_exact(&mut pixels))
             .await
             .map_err(|_| "Video capture timed out.")?
             .map_err(|_| "Could not read video from the selected source.")?;
         Ok(Self {
             route,
+            quality,
             lease,
             child,
             pipe,
+            width,
+            height,
             pixels,
         })
     }
@@ -434,7 +597,7 @@ impl Capture {
                 let next = mode.borrow_and_update().camera.clone();
                 tokio::select! {biased;
                     r=mode.wait_for(|m|input.request(m)!=Some(id) || m.camera!=next)=>{if r.is_err(){return Ok(())}}
-                    cap=Self::open(input,next.clone())=>{self=cap?;break;}
+                    cap=Self::open(input,next.clone(),self.quality)=>{self=cap?;break;}
                 }
             }
         }
@@ -460,35 +623,31 @@ impl Capture {
         };
         tokio::pin!(closed);
         let mut last = None;
+        // Even sides give contiguous planes: stride Y = width, U = V = width/2.
+        let luma = (self.width * self.height) as usize;
+        let (pw, ph) = if input == VideoInput::Window {
+            (1280, 720)
+        } else {
+            (320, 180)
+        };
+        #[cfg(debug_assertions)]
+        let mut probe = trace_video_enabled().then(|| RenderProbe::new(input.name()));
         loop {
-            let mut buf = I420Buffer::new(W, H);
+            #[cfg(debug_assertions)]
+            if let Some(probe) = &mut probe {
+                probe.capture(self.width, self.height);
+            }
+            let mut buf = I420Buffer::new(self.width, self.height);
             let (y, u, v) = buf.data_mut();
-            y.copy_from_slice(&self.pixels[..Y]);
-            u.copy_from_slice(&self.pixels[Y..Y + Y / 4]);
-            v.copy_from_slice(&self.pixels[Y + Y / 4..]);
+            y.copy_from_slice(&self.pixels[..luma]);
+            u.copy_from_slice(&self.pixels[luma..luma + luma / 4]);
+            v.copy_from_slice(&self.pixels[luma + luma / 4..]);
+            // The sharer's own preview stays at 10 fps; encoding gets the CPU.
             if let Some(tile) = preview
                 && last.is_none_or(|at: Instant| at.elapsed() >= Duration::from_millis(100))
             {
-                use livekit::webrtc::video_frame::native::VideoFrameBufferExt;
-                let (w, h) = if input == VideoInput::Window {
-                    (W, H)
-                } else {
-                    (320, 180)
-                };
-                let mut rgba = vec![0; (w * h * 4) as usize];
-                if input == VideoInput::Window {
-                    buf.to_argb(VideoFormatType::ABGR, &mut rgba, w * 4, w as i32, h as i32);
-                } else {
-                    buf.scale(w as i32, h as i32).to_argb(
-                        VideoFormatType::ABGR,
-                        &mut rgba,
-                        w * 4,
-                        w as i32,
-                        h as i32,
-                    );
-                }
                 tile.views
-                    .frame(&tile.sid, "", input, Handle::from_rgba(w, h, rgba));
+                    .frame(&tile.sid, "", input, rgba(&mut buf, pw, ph));
                 let _ = tile.events.try_send(json!({"command":"video_redraw"}));
                 last = Some(Instant::now());
             }
@@ -499,6 +658,48 @@ impl Capture {
             }
         }
     }
+}
+/// KDE's portal reports no size for window streams. Read the negotiated
+/// buffer size from one frame on a separate PipeWire connection instead.
+async fn probe_size(fd: OwnedFd, node: u32) -> Option<(i32, i32)> {
+    use tokio::io::{AsyncBufReadExt, BufReader};
+    let mut child = Command::new("gst-launch-1.0")
+        .args(["-v", "pipewiresrc", "fd=0"])
+        .arg(format!("path={node}"))
+        .args(["num-buffers=1", "!", "video/x-raw", "!", "fakesink"])
+        .stdin(Stdio::from(fd))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .ok()?;
+    let mut lines = BufReader::new(child.stdout.take()?).lines();
+    let size = time::timeout(SECOND * 5, async {
+        while let Ok(Some(line)) = lines.next_line().await {
+            if let Some(size) = negotiated_size(&line) {
+                return Some(size);
+            }
+        }
+        None
+    })
+    .await
+    .ok()
+    .flatten();
+    let _ = child.kill().await;
+    size
+}
+/// `width=(int)W, height=(int)H` from a `gst-launch-1.0 -v` source caps line.
+fn negotiated_size(line: &str) -> Option<(i32, i32)> {
+    if !line.contains("GstPipeWireSrc") || !line.contains("caps = video/x-raw") {
+        return None;
+    }
+    let field = |name: &str| -> Option<i32> {
+        let rest = &line[line.find(&format!("{name}=(int)"))? + name.len() + 6..];
+        rest[..rest.find(|c: char| !c.is_ascii_digit())?]
+            .parse()
+            .ok()
+    };
+    Some((field("width")?, field("height")?))
 }
 pub(super) async fn camera_remote() -> Result<OwnedFd> {
     let portal = Camera::new()
@@ -520,6 +721,8 @@ pub(super) async fn camera_remote() -> Result<OwnedFd> {
 
 pub(super) struct Publisher {
     pub(super) local_preview: Option<Previews>,
+    /// Applies to the next capture this publisher opens.
+    pub(super) quality: Quality,
     input: VideoInput,
     request: Option<Uuid>,
     picker: JoinSet<Result<Capture>>,
@@ -539,6 +742,7 @@ impl Publisher {
     pub(super) fn new(input: VideoInput) -> Self {
         Self {
             local_preview: None,
+            quality: input.default_quality(),
             input,
             request: None,
             picker: JoinSet::new(),
@@ -559,7 +763,8 @@ impl Publisher {
         self.stop(lk).await?;
         self.request = request;
         if request.is_some() {
-            self.picker.spawn(Capture::open(self.input, route));
+            self.picker
+                .spawn(Capture::open(self.input, route, self.quality));
         }
         Ok(())
     }
@@ -607,8 +812,8 @@ impl Publisher {
             Update::Chosen(Ok(cap)) => {
                 let src = NativeVideoSource::new(
                     VideoResolution {
-                        width: W,
-                        height: H,
+                        width: cap.width,
+                        height: cap.height,
                     },
                     self.input == VideoInput::Window,
                 );
@@ -620,9 +825,12 @@ impl Publisher {
                     .local_participant()
                     .publish_track(
                         LocalTrack::Video(video),
+                        // Degradation stays at the SDK default per source:
+                        // screens keep resolution, cameras keep frame rate.
                         TrackPublishOptions {
                             source: self.input.source(),
                             simulcast: false,
+                            video_encoding: Some(cap.quality.encoding()),
                             ..Default::default()
                         },
                     )
@@ -656,7 +864,7 @@ impl Publisher {
                                 cap.feed(src, mode, id, input, preview).await
                             });
                             Ok(match self.input {
-                                VideoInput::Window => "Sharing the selected window",
+                                VideoInput::Window => "Sharing your screen",
                                 VideoInput::Camera => "Camera is on",
                             })
                         } else {
@@ -678,5 +886,132 @@ impl Publisher {
             )
             .await;
         Ok(())
+    }
+}
+
+/// Whether `UNTETHERED_QA_VIDEO_STATS=1` asked for [`trace_video_stats`].
+#[cfg(debug_assertions)]
+pub(super) fn trace_video_enabled() -> bool {
+    std::env::var("UNTETHERED_QA_VIDEO_STATS").as_deref() == Ok("1")
+}
+/// Opt-in acceptance diagnostics, one line per sent or received video track:
+/// direction, source, frame size, frame rate and byte count. Never log the
+/// stats report itself: it carries candidate addresses, ICE and certificates.
+#[cfg(debug_assertions)]
+pub(super) async fn trace_video_stats(lk: &Room) {
+    use livekit::webrtc::stats::RtcStats;
+    let Ok(Ok(stats)) = time::timeout(SECOND * 3, lk.get_stats()).await else {
+        eprintln!("RTC video stats unavailable");
+        return;
+    };
+    let source = |s: TrackSource| match s {
+        TrackSource::Camera => "camera",
+        TrackSource::Screenshare => "screenshare",
+        _ => "other",
+    };
+    let mut tracks = BTreeMap::new();
+    for p in lk.local_participant().track_publications().into_values() {
+        if let Some(LocalTrack::Video(t)) = p.track() {
+            tracks.insert(
+                t.rtc_track().id(),
+                (p.sid().to_string(), source(p.source())),
+            );
+        }
+    }
+    for peer in lk.remote_participants().into_values() {
+        for p in peer.track_publications().into_values() {
+            if let Some(RemoteTrack::Video(t)) = p.track() {
+                tracks.insert(
+                    t.rtc_track().id(),
+                    (p.sid().to_string(), source(p.source())),
+                );
+            }
+        }
+    }
+    // With LiveKit's single peer connection both directions are in one report.
+    for report in [&stats.publisher_stats, &stats.subscriber_stats] {
+        for r in report {
+            match r {
+                RtcStats::OutboundRtp(o) if o.stream.kind == "video" => {
+                    let track = report.iter().find_map(|m| match m {
+                        RtcStats::MediaSource(m) if m.rtc.id == o.outbound.media_source_id => {
+                            tracks.get(&m.source.track_identifier)
+                        }
+                        _ => None,
+                    });
+                    let (sid, kind) = track.map_or(("?", "unknown"), |(s, k)| (s.as_str(), *k));
+                    let x = &o.outbound;
+                    eprintln!(
+                        "RTC video outbound sid={sid} source={kind} rid={} width={} height={} fps={:.1} bytes={} limit={:?} encoder={}",
+                        if x.rid.is_empty() { "-" } else { &x.rid },
+                        x.frame_width,
+                        x.frame_height,
+                        x.frames_per_second,
+                        o.sent.bytes_sent,
+                        x.quality_limitation_reason,
+                        if x.encoder_implementation.is_empty() {
+                            "-"
+                        } else {
+                            &x.encoder_implementation
+                        },
+                    );
+                }
+                RtcStats::InboundRtp(i) if i.stream.kind == "video" => {
+                    let x = &i.inbound;
+                    let (sid, kind) = tracks
+                        .get(&x.track_identifier)
+                        .map_or(("?", "unknown"), |(s, k)| (s.as_str(), *k));
+                    eprintln!(
+                        "RTC video inbound sid={sid} source={kind} width={} height={} fps={:.1} bytes={} decoded={} dropped={}",
+                        x.frame_width,
+                        x.frame_height,
+                        x.frames_per_second,
+                        x.bytes_received,
+                        x.frames_decoded,
+                        x.frames_dropped,
+                    );
+                }
+                _ => (),
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn screen_capture_keeps_source_size_up_to_1080p() {
+        let q = Quality::SCREEN;
+        assert_eq!(q.fit(Some((1600, 900))), (1600, 900));
+        assert_eq!(q.fit(Some((2560, 1440))), (1920, 1080));
+        assert_eq!(q.fit(Some((3840, 1600))), (1920, 800));
+        assert_eq!(q.fit(Some((1080, 1920))), (606, 1080));
+        assert_eq!(q.fit(Some((1001, 777))), (1000, 776));
+        assert_eq!(q.fit(Some((1, 1))), (2, 2));
+        assert_eq!(q.fit(None), (1920, 1080));
+        assert_eq!(q.fit(Some((0, 720))), (1920, 1080));
+    }
+
+    #[test]
+    fn reads_the_negotiated_window_size() {
+        let line = "/GstPipeline:pipeline0/GstPipeWireSrc:pipewiresrc0.GstPad:src: caps = video/x-raw, format=(string)BGRx, width=(int)1600, height=(int)930, framerate=(fraction)0/1";
+        assert_eq!(negotiated_size(line), Some((1600, 930)));
+        let filter = "/GstPipeline:pipeline0/GstCapsFilter:capsfilter0.GstPad:src: caps = video/x-raw, width=(int)8, height=(int)8";
+        assert_eq!(negotiated_size(filter), None);
+        assert_eq!(
+            negotiated_size("GstPipeWireSrc caps = video/x-raw, width=(int)1600"),
+            None
+        );
+    }
+
+    #[test]
+    fn default_encodings_match_the_go_live_targets() {
+        let screen = VideoInput::Window.default_quality().encoding();
+        assert_eq!((screen.max_bitrate, screen.max_framerate), (2_500_000, 30.));
+        let camera = VideoInput::Camera.default_quality();
+        assert_eq!((camera.width, camera.height, camera.fps), (1280, 720, 30));
+        assert_eq!(camera.encoding().max_bitrate, 1_700_000);
     }
 }

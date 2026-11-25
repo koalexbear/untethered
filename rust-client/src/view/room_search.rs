@@ -1,49 +1,66 @@
-use super::{BOLD, El, MUTED, Msg, Room, nav};
+use super::{
+    ACTIVE, BODY, BOLD, CHANNEL, El, Icon, LINK, MUTED, Msg, Room, SIDE, TEXT, avatar, icon,
+    input_style, plain, primary, scroll_style, thin_scrollbar,
+};
 use crate::search::Search;
 use chrono::{DateTime, Local};
 use iced::{
-    Fill,
+    Alignment::Center,
+    Border, Fill, color,
     widget::{Column, button, column, container, row, scrollable, text, text_input},
 };
 
 pub(super) fn view<'a>(s: &'a Search, room: &'a Room, opening: bool) -> El<'a> {
+    let link = |label: &'static str, msg: Option<Msg>| {
+        button(text(label).size(14))
+            .padding([4, 8])
+            .style(plain(LINK, color!(0x5fc5ff)))
+            .on_press_maybe(msg)
+    };
     let mut panel = column![
         row![
+            icon(Icon::Search, 20., color!(0x80848e)),
             text(format!("Search · {}", room.name))
+                .size(16)
                 .font(BOLD)
+                .color(TEXT)
                 .width(Fill),
-            button("Return to timeline")
-                .style(nav(false))
-                .on_press(Msg::ReturnToReading)
+            link("Return to timeline", Some(Msg::ReturnToReading))
         ]
-        .spacing(8),
-        row![
-            text("Searches messages synced and readable on this device.")
-                .size(13)
-                .color(MUTED)
-                .width(Fill),
-            button(text("Check coverage").size(14))
-                .style(nav(false))
-                .on_press_maybe(
-                    s.coverage
-                        .as_ref()
-                        .is_none_or(|c| c.done || c.failed)
-                        .then_some(Msg::SearchCoverage)
-                )
-        ]
-        .spacing(6),
+        .spacing(8)
+        .align_y(Center),
         row![
             text_input("Words or phrase", &s.input)
                 .id("room-search-input")
                 .on_input(Msg::SearchInput)
                 .on_submit(Msg::RunSearch(false))
-                .padding(8),
-            button("Find")
+                .size(16)
+                .padding(10)
+                .style(input_style),
+            button(text("Find").size(14).font(BOLD))
+                .padding([10, 18])
+                .style(primary)
                 .on_press_maybe((!s.input.trim().is_empty()).then_some(Msg::RunSearch(false)))
         ]
+        .spacing(8)
+        .align_y(Center),
+        row![
+            text("Searches messages synced and readable on this device.")
+                .size(13)
+                .color(MUTED)
+                .width(Fill),
+            link(
+                "Check coverage",
+                s.coverage
+                    .as_ref()
+                    .is_none_or(|c| c.done || c.failed)
+                    .then_some(Msg::SearchCoverage)
+            )
+        ]
         .spacing(6)
+        .align_y(Center)
     ]
-    .spacing(8);
+    .spacing(12);
     if let Some(c) = &s.coverage {
         let oldest = c
             .oldest
@@ -86,43 +103,73 @@ pub(super) fn view<'a>(s: &'a Search, room: &'a Room, opening: bool) -> El<'a> {
                     s.term
                 )
             })
-            .size(14),
+            .size(14)
+            .font(BOLD)
+            .color(BODY),
         );
     }
-    let mut list = Column::new().spacing(5);
+    let mut list = Column::new().spacing(8);
     for hit in &s.hits {
         let date = DateTime::from_timestamp_millis(hit.time)
             .unwrap_or_default()
             .with_timezone(&Local);
+        let sender = room.display(&hit.sender);
         list = list.push(
             button(
-                column![
-                    text(format!(
-                        "{} · {}",
-                        room.display(&hit.sender),
-                        date.format("%b %-d, %Y %H:%M")
-                    ))
-                    .size(12)
-                    .color(MUTED),
-                    text(&hit.snippet).size(16)
+                row![
+                    avatar(sender, 40.),
+                    column![
+                        row![
+                            text(sender).size(16).font(BOLD).color(TEXT),
+                            text(date.format("%b %-d, %Y %H:%M").to_string())
+                                .size(12)
+                                .color(CHANNEL)
+                        ]
+                        .spacing(8)
+                        .align_y(Center),
+                        text(&hit.snippet).size(16).color(BODY)
+                    ]
+                    .spacing(3)
+                    .width(Fill)
                 ]
-                .spacing(3),
+                .spacing(16),
             )
-            .padding([6, 10])
+            .padding([12, 16])
             .width(Fill)
-            .style(nav(false))
+            .style(|_, st| button::Style {
+                background: Some(
+                    if st == button::Status::Hovered {
+                        ACTIVE
+                    } else {
+                        SIDE
+                    }
+                    .into(),
+                ),
+                border: Border::default().rounded(8),
+                ..Default::default()
+            })
             .on_press(Msg::SearchHit(hit.id.clone())),
         );
     }
     if s.next.is_some() && !s.busy && !s.failed {
         list = list.push(
-            button("More matches")
-                .on_press_maybe((s.input.trim() == s.term).then_some(Msg::RunSearch(true))),
+            container(link(
+                "More matches",
+                (s.input.trim() == s.term).then_some(Msg::RunSearch(true)),
+            ))
+            .center_x(Fill),
         );
     }
-    container(panel.push(scrollable(list).height(Fill)))
-        .width(Fill)
-        .height(Fill)
-        .padding(16)
-        .into()
+    container(
+        panel.push(
+            scrollable(list)
+                .direction(thin_scrollbar())
+                .style(scroll_style(None))
+                .height(Fill),
+        ),
+    )
+    .width(Fill)
+    .height(Fill)
+    .padding(16)
+    .into()
 }

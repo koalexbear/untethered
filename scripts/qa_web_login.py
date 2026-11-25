@@ -4,7 +4,8 @@ def login_client(page,web,fixture):
     page.wait_for_function("document.title.includes('Preview')",timeout=45000)
     page.mouse.click(1095,73)
     page.wait_for_function("document.title.includes('Account')")
-    for y,field in [(333,"server"),(391,"username"),(447,"password")]:
+    # Homeserver, username and password fields of the sign-in card.
+    for y,field in [(299,"server"),(381,"username"),(464,"password")]:
         page.mouse.click(510,y);page.keyboard.type(fixture[field],delay=6)
     page.keyboard.press("Enter")
     secret=page.get_by_label("Recovery key or passphrase")

@@ -165,7 +165,7 @@ def round_trip(tmp,hs,gateway,uploads,release,root,backend,seed,plain,web_client
         with sqlite3.connect((tmp/"homeserver.db").as_uri()+"?mode=ro",uri=True) as db:
             assert db.execute("select count(*) from local_media_repository where media_length is not null").fetchone()[0]==0
         print(kde.command("dolphin","--version").stdout.strip()+": Wayland DnD staged PNG + PDF together; before Send: 0 uploads, 0 messages.",flush=True)
-        kde.click(1137,898)
+        kde.click(1140,908)  # Send arrow: 1180×960 window, 28 px title bar
         wait_for("first outbound upload at gate",lambda:uploads)
         select_room("zz-other")
         assert not events() and not events(other)
