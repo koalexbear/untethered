@@ -2,7 +2,7 @@
 //! room's matrix-sdk-ui Timeline), reports, read receipts and the unread
 //! flag, events around a message outside the loaded timeline, and the
 //! account's read receipt preference.
-use super::{Delivery, Event, Failure, Kind, Message, Reply};
+use super::{Delivery, Event, Failure, Kind, Message, Reply, media::Sources};
 use async_channel::Sender;
 use matrix_sdk::{
     Client, Room,
@@ -77,7 +77,12 @@ pub async fn mark_unread(client: &Client, room: &str) -> Result<(), Failure> {
 }
 
 /// The event and up to 12 events on each side, from `/context`.
-pub async fn context(client: &Client, room: &str, event: &str) -> Result<Vec<Message>, Failure> {
+pub async fn context(
+    client: &Client,
+    room: &str,
+    event: &str,
+    sources: &Sources,
+) -> Result<Vec<Message>, Failure> {
     let me = client
         .user_id()
         .map(ToString::to_string)
@@ -97,12 +102,12 @@ pub async fn context(client: &Client, room: &str, event: &str) -> Result<Vec<Mes
         .chain(context.events_after.iter());
     Ok(ordered
         .zip(1..)
-        .filter_map(|(event, row)| message(event, row, &me))
+        .filter_map(|(event, row)| message(event, row, &me, sources))
         .collect())
 }
 
 /// A single event outside a Timeline, mapped like a timeline item.
-fn message(event: &TimelineEvent, row: i64, me: &str) -> Option<Message> {
+fn message(event: &TimelineEvent, row: i64, me: &str, sources: &Sources) -> Option<Message> {
     let encrypted = event.encryption_info().is_some();
     let parsed = event.raw().deserialize().ok();
     let (id, sender, time) = match &parsed {
@@ -138,6 +143,7 @@ fn message(event: &TimelineEvent, row: i64, me: &str) -> Option<Message> {
         mentions: None,
         edit_id: None,
         receipts: Vec::new(),
+        media: None,
     };
     match parsed {
         Some(AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomMessage(m))) => {
@@ -157,16 +163,23 @@ fn message(event: &TimelineEvent, row: i64, me: &str) -> Option<Message> {
                 }),
                 _ => None,
             };
-            let kind = match &m.content.msgtype {
+            let (kind, media) = match &m.content.msgtype {
                 MessageType::Image(_)
                 | MessageType::File(_)
                 | MessageType::Audio(_)
-                | MessageType::Video(_) => Kind::Attachment,
-                _ => Kind::Text,
+                | MessageType::Video(_) => {
+                    sources.remember(&m.content.msgtype);
+                    (
+                        Kind::Attachment,
+                        serde_json::to_value(&m.content.msgtype).ok(),
+                    )
+                }
+                _ => (Kind::Text, None),
             };
             Some(Message {
                 body: m.content.body().to_owned(),
                 kind,
+                media,
                 text: matches!(m.content.msgtype, MessageType::Text(_)),
                 editable: m.sender == me,
                 reply_to,

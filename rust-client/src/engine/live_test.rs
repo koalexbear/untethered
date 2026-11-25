@@ -52,13 +52,17 @@ fn logs() {
 
 fn session_at(dir: &Path) -> (App, Receiver<Event>, Engine) {
     logs();
-    let (gomuks, _) = async_channel::bounded(1);
+    let (transfers, backend) = async_channel::bounded(64);
     let (commands, rx): (Sender<Command>, _) = async_channel::bounded(64);
     let (tx, events) = async_channel::bounded(64);
-    let mut app = App::new(gomuks);
+    let mut app = App::new(transfers);
     app.sdk = Some(commands);
     let dir = dir.to_path_buf();
-    (app, events, tokio::spawn(run_in(dir, browser(), rx, tx)))
+    (
+        app,
+        events,
+        tokio::spawn(run_in(dir, browser(), rx, backend, tx)),
+    )
 }
 
 fn session() -> (App, Receiver<Event>, Engine) {
@@ -176,6 +180,190 @@ fn disorder(app: &App, room: &str) -> String {
         .map(|w| format!("{} {:?} before {} {:?}", w[0].0, w[0].1, w[1].0, w[1].1))
         .collect::<Vec<_>>()
         .join("; ")
+}
+
+/// An image big enough for a thumbnail and a text file, sent encrypted
+/// through the attachment tray with a caption; then an image from the gomuks
+/// peer, shown inline and saved.
+async fn attachments(app: &mut App, rx: &Receiver<Event>, room: &str, signals: &Path) {
+    let files = tempfile::tempdir_in(signals).unwrap();
+    let image_path = files.path().join("photo.png");
+    let mut image = image::RgbImage::new(1200, 900);
+    for (x, y, pixel) in image.enumerate_pixels_mut() {
+        *pixel = image::Rgb([(x % 256) as u8, (y % 256) as u8, 160]);
+    }
+    image.save(&image_path).unwrap();
+    let file_path = files.path().join("notes.txt");
+    std::fs::write(
+        &file_path,
+        format!("notes from matrix-sdk {}", uuid::Uuid::new_v4()),
+    )
+    .unwrap();
+    let staged = [&image_path, &file_path]
+        .into_iter()
+        .map(|p| crate::media::LocalFile::from_path(p.clone()).unwrap())
+        .collect();
+    let _ = app.update(Msg::Files(room.into(), staged));
+    let caption = format!("caption from matrix-sdk {}", uuid::Uuid::new_v4());
+    app.editor = text_editor::Content::with_text(&caption);
+    let _ = app.update(Msg::Send);
+    assert!(app.batch.is_some(), "the tray started sending");
+    wait(app, rx, "attachments delivered", |a| {
+        a.batch.is_none() && !a.outbox.rooms.contains_key(room)
+    })
+    .await;
+    assert!(
+        app.editor.text().trim().is_empty(),
+        "the caption left the composer"
+    );
+    // (text, media, event ID) of our post with that attachment.
+    let mine = |a: &App, name: &str| {
+        a.live.list[room]
+            .posts()
+            .find(|p| {
+                p.sender == a.matrix_id
+                    && p.event_id.is_some()
+                    && p.media.as_ref().is_some_and(|m| m.name == name)
+            })
+            .map(|p| {
+                (
+                    p.text().to_owned(),
+                    p.media.clone().unwrap(),
+                    p.event_id.clone(),
+                )
+            })
+    };
+    wait(app, rx, "attachments in the timeline", |a| {
+        mine(a, "photo.png").is_some() && mine(a, "notes.txt").is_some()
+    })
+    .await;
+    let (text, media, photo) = mine(app, "photo.png").unwrap();
+    let (_, _, notes) = mine(app, "notes.txt").unwrap();
+    assert_eq!(text, caption, "the first file carries the caption");
+    let preview = media.preview.clone().expect("the image has a preview");
+    assert!(media.encrypted && preview.encrypted);
+    assert_ne!(preview.mxc, media.mxc, "a thumbnail went with the image");
+    assert!(
+        inline(app, preview).await,
+        "the encrypted thumbnail shows inline"
+    );
+    let saved = files.path().join("saved.png");
+    save(app, rx, media, &saved).await;
+    assert_eq!(
+        std::fs::read(&saved).unwrap(),
+        std::fs::read(&image_path).unwrap()
+    );
+    std::fs::write(
+        signals.join("sdk-media"),
+        serde_json::json!({
+            "image": photo, "file": notes, "caption": caption,
+            "image_path": image_path, "file_path": file_path,
+        })
+        .to_string(),
+    )
+    .unwrap();
+    println!(
+        "matrix-sdk: sent an encrypted image (with thumbnail) and a file; previewed and saved the image"
+    );
+
+    let theirs: Value = serde_json::from_str(&signal(signals, "peer-media").await).unwrap();
+    let name = theirs["name"].as_str().unwrap().to_owned();
+    let peer = |a: &App| {
+        a.live.list[room]
+            .posts()
+            .find(|p| p.sender != a.matrix_id && p.media.as_ref().is_some_and(|m| m.name == name))
+            .and_then(|p| p.media.clone())
+    };
+    wait(app, rx, "the peer's image", |a| peer(a).is_some()).await;
+    let media = peer(app).unwrap();
+    assert!(media.encrypted);
+    assert!(
+        inline(
+            app,
+            media
+                .preview
+                .clone()
+                .expect("a small image previews itself")
+        )
+        .await,
+        "the peer's image shows inline"
+    );
+    let saved = files.path().join("from-gomuks.png");
+    save(app, rx, media, &saved).await;
+    assert_eq!(
+        std::fs::read(&saved).unwrap(),
+        std::fs::read(theirs["path"].as_str().unwrap()).unwrap()
+    );
+    println!("matrix-sdk: showed and saved the gomuks peer's encrypted image");
+}
+
+/// An image in an unencrypted room: a plain upload, previewed through the
+/// homeserver's thumbnail.
+async fn plain_attachment(app: &mut App, rx: &Receiver<Event>, room: &str, signals: &Path) {
+    let _ = app.update(Msg::Open(room.into()));
+    wait(app, rx, "unencrypted room open", |a| {
+        a.selected == room && a.live.list[room].has_metadata
+    })
+    .await;
+    assert!(!app.live.list[room].encrypted);
+    let files = tempfile::tempdir_in(signals).unwrap();
+    let path = files.path().join("plain.png");
+    image::RgbImage::from_pixel(64, 48, image::Rgb([20, 120, 200]))
+        .save(&path)
+        .unwrap();
+    let staged = vec![crate::media::LocalFile::from_path(path.clone()).unwrap()];
+    let _ = app.update(Msg::Files(room.into(), staged));
+    let _ = app.update(Msg::Send);
+    wait(app, rx, "plain attachment delivered", |a| {
+        a.batch.is_none() && !a.outbox.rooms.contains_key(room)
+    })
+    .await;
+    let found = |a: &App| {
+        a.live.list[room]
+            .posts()
+            .find(|p| {
+                p.event_id.is_some() && p.media.as_ref().is_some_and(|m| m.name == "plain.png")
+            })
+            .and_then(|p| p.media.clone())
+    };
+    wait(app, rx, "plain attachment in the timeline", |a| {
+        found(a).is_some()
+    })
+    .await;
+    let media = found(app).unwrap();
+    assert!(!media.encrypted && !media.mxc.is_empty());
+    assert!(inline(app, media.preview.clone().unwrap()).await);
+    let saved = files.path().join("saved-plain.png");
+    save(app, rx, media, &saved).await;
+    assert_eq!(
+        std::fs::read(&saved).unwrap(),
+        std::fs::read(&path).unwrap()
+    );
+    println!("matrix-sdk: sent, previewed and saved an image in an unencrypted room");
+}
+
+/// Ask the engine for an inline preview, as the timeline does.
+async fn inline(app: &App, source: crate::media::PreviewRef) -> bool {
+    let (result, image) = async_channel::bounded(1);
+    app.commands
+        .send(crate::backend::Command::Inline { source, result })
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(30), image.recv())
+        .await
+        .expect("inline preview answered")
+        .unwrap()
+        .is_some()
+}
+
+async fn save(app: &mut App, rx: &Receiver<Event>, media: crate::media::Media, to: &Path) {
+    let _ = app.update(Msg::SaveTo(media, Some(to.to_path_buf())));
+    assert!(app.pending.values().any(|p| matches!(p, Request::Download)));
+    wait(app, rx, "download", |a| {
+        !a.pending.values().any(|p| matches!(p, Request::Download))
+    })
+    .await;
+    assert_eq!(app.status, "Attachment saved.");
 }
 
 async fn paginate_to_start(app: &mut App, rx: &Receiver<Event>, room: &str) {
@@ -436,6 +624,10 @@ async fn matrix_sdk_login_restore_and_encrypted_round_trip() {
     .unwrap();
     signal(&signals, "peer-confirmed").await;
     println!("matrix-sdk: reaction and edit shown here and decrypted by the gomuks peer");
+
+    attachments(&mut app, &rx, room, &signals).await;
+    plain_attachment(&mut app, &rx, unread, &signals).await;
+    let _ = app.update(Msg::Open(room.into()));
 
     assert!(app.begin_report(room, &theirs_id));
     let _ = app.update(Msg::ReportReason("qa report".into()));

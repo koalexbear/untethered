@@ -32,9 +32,11 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import struct
 import threading
 import time
 from urllib.parse import parse_qs, quote, urlsplit
+import zlib
 
 import requests
 import websocket
@@ -70,6 +72,7 @@ class Gomuks:
         threading.Thread(target=self.p.stdout.read, daemon=True).start()
         cookie = http("POST", f"http://{addr}/_gomuks/auth?insecure_cookie=true",
                       auth=("desktop-key", key)).cookies["gomuks_auth"]
+        self.addr, self.cookie = addr, cookie
         self.ws = websocket.create_connection(f"ws://{addr}/_gomuks/websocket", suppress_origin=True,
                                               cookie="gomuks_auth=" + cookie, timeout=30)
         self.n, self.last, self.pinged, self.events, self.rooms = 0, 0, time.monotonic(), [], set()
@@ -135,6 +138,19 @@ class Gomuks:
             self.frame(1)
         raise RuntimeError(f"gomuks never decrypted {body!r}")
 
+    def media(self, mxc, encrypted):
+        """An attachment's bytes, decrypted by gomuks with the keys from its event."""
+        server, media_id = mxc.removeprefix("mxc://").split("/", 1)
+        return http("GET", f"http://{self.addr}/_gomuks/media/{server}/{media_id}",
+                    params={"encrypted": "true" if encrypted else "false"},
+                    cookies={"gomuks_auth": self.cookie}).content
+
+    def upload(self, data, filename, encrypt):
+        """The attachment content gomuks makes for an upload."""
+        return http("POST", f"http://{self.addr}/_gomuks/upload", data=data,
+                    params={"filename": filename, "encrypt": "true" if encrypt else "false"},
+                    cookies={"gomuks_auth": self.cookie}).json()
+
     def close(self):
         self.ws.close()
         self.p.terminate()
@@ -142,6 +158,17 @@ class Gomuks:
             self.p.wait(timeout=12)
         except subprocess.TimeoutExpired:
             self.p.kill()
+
+
+def png(width, height):
+    """An RGB PNG with a gradient, without image libraries."""
+    rows = b"".join(b"\0" + b"".join(bytes((x % 256, y % 256, 90)) for x in range(width))
+                    for y in range(height))
+
+    def chunk(kind, body):
+        return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
 
 
 SSO_USER = "ssouser"
@@ -384,6 +411,32 @@ sso:
                       and content(e).get("m.relates_to", {}).get("key") == acted["key"])
             (signals / "peer-confirmed").write_text("")
             print("gomuks peer decrypted the matrix-sdk edit and reaction", flush=True)
+        while not (signals / "sdk-media").is_file():
+            if test.poll() is not None:
+                break
+            peer.frame(.5)
+        if (signals / "sdk-media").is_file():
+            sent = json.loads((signals / "sdk-media").read_text())
+            content = lambda e: e.get("decrypted") or e.get("content") or {}
+            image = content(peer.find("the image", lambda e: e.get("event_id") == sent["image"]))
+            info = image.get("info", {})
+            assert image.get("msgtype") == "m.image" and image.get("filename") == "photo.png", image
+            assert image.get("body") == sent["caption"], image
+            assert (info.get("w"), info.get("h"), info.get("mimetype")) == (1200, 900, "image/png"), info
+            assert info.get("thumbnail_info", {}).get("w") == 800, info
+            assert peer.media(image["file"]["url"], True) == Path(sent["image_path"]).read_bytes()
+            thumbnail = peer.media(info["thumbnail_file"]["url"], True)
+            assert thumbnail.startswith(b"\xff\xd8"), "the thumbnail is a JPEG"
+            notes = content(peer.find("the file", lambda e: e.get("event_id") == sent["file"]))
+            assert notes.get("msgtype") == "m.file" and notes.get("body") == "notes.txt", notes
+            assert peer.media(notes["file"]["url"], True) == Path(sent["file_path"]).read_bytes()
+            print("gomuks peer decrypted the matrix-sdk image, its thumbnail and the file", flush=True)
+            back = png(320, 200)
+            (signals / "peer.png").write_bytes(back)
+            descriptor = peer.upload(back, "from-gomuks.png", encrypt=True)
+            peer.rpc("send_message", {"room_id": room, "base_content": descriptor, "text": ""})
+            (signals / "peer-media").write_text(json.dumps({"name": "from-gomuks.png",
+                                                             "path": str(signals / "peer.png")}))
         while test.poll() is None:
             peer.frame(.5)
         if (signals / "sdk-reported").is_file():

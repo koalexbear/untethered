@@ -8,16 +8,17 @@ use serde_json::Value;
 
 impl App {
     pub(crate) fn boot_engine() -> (Self, Task<Msg>) {
-        // gomuks-only paths (uploads, inline media, calls) fail fast on a
-        // closed channel instead of reaching a backend that isn't running.
-        let (gomuks, _) = async_channel::bounded(1);
+        // Transfers (uploads, inline media, downloads) keep the gomuks
+        // backend's command shape; the engine answers them. Calls don't run
+        // on this engine yet and are ignored there.
+        let (transfers, backend) = async_channel::bounded(64);
         let (commands, rx) = async_channel::bounded(64);
         let (tx, events) = async_channel::bounded(64);
-        let mut app = Self::new(gomuks);
+        let mut app = Self::new(transfers);
         app.sdk = Some(commands);
         app.status = "Starting the matrix-sdk engine…".into();
         let task = Task::batch([
-            Task::perform(run(rx, tx), |result| {
+            Task::perform(run(rx, backend, tx), |result| {
                 Msg::Stopped(
                     result
                         .err()
@@ -116,6 +117,24 @@ impl App {
                 let public = *public;
                 self.command(|id| Command::ShareReads { id, public }, request);
             }
+            Request::MediaConfig => self.command(|id| Command::UploadLimit { id }, request),
+            // transfers.rs sends an uploaded attachment's content this way.
+            Request::MediaSend(room, _) if cmd == "send_message" => {
+                let room = room.clone();
+                let content = data["base_content"].clone();
+                let reply_to = data["relates_to"]["m.in_reply_to"]["event_id"]
+                    .as_str()
+                    .map(str::to_owned);
+                self.command(
+                    |id| Command::SendMedia {
+                        id,
+                        room,
+                        content,
+                        reply_to,
+                    },
+                    request,
+                );
+            }
             _ => self.engine_unsupported(request),
         }
     }
@@ -124,7 +143,13 @@ impl App {
     /// reads stay quiet; anything the user asked for says why nothing happened.
     pub(crate) fn engine_unsupported(&mut self, request: Request) {
         match request {
-            Request::MediaConfig | Request::Members(_) => {}
+            Request::Members(_) => {}
+            // A retry by transaction ID; this engine never hands one out.
+            Request::MediaSend(room, id) => self.fail_file(
+                &room,
+                id,
+                "Transfer failed. Retry or remove the attachment.",
+            ),
             Request::Mentions(_) => self.mentions_failed(),
             Request::Search(room, kind) => self.fail_search(&room, kind),
             Request::Setup(step) => self.setup_error(step),
@@ -230,12 +255,18 @@ impl App {
             self.status = "This room is read-only for your account.".into();
             return;
         }
-        if self.outbox.rooms.get(&room).is_some_and(|q| !q.is_empty()) {
-            self.status = "Attachments aren’t available with the matrix-sdk engine yet.".into();
+        // Do not send just the caption if Enter races PNG encoding.
+        if self.pasting {
             return;
         }
         let body = self.editor.text();
+        // Staged files go out with the text as their caption (transfers.rs).
+        if self.outbox.rooms.get(&room).is_some_and(|q| !q.is_empty()) {
+            self.send_files(room, body);
+            return;
+        }
         if room.is_empty()
+            || self.outbox.skipped.contains_key(&room)
             || body.trim().is_empty()
             || !self.verified
             || self
@@ -312,6 +343,29 @@ impl App {
                 messages,
             } => self.engine_context(room, event, messages),
             Event::ReadSharing(public) => self.read_sharing.set_from_engine(public),
+            Event::UploadProgress { id, fraction } => self.upload_progress(id, fraction),
+            Event::Uploaded { id, result } => {
+                // Absent after a cancel: that attempt must never send.
+                if let Some(Request::Upload(room, attachment)) = self.pending.remove(&id) {
+                    match result {
+                        Ok(content) => self.uploaded(&room, attachment, &content),
+                        Err(_) => self.fail_file(
+                            &room,
+                            attachment,
+                            "Transfer failed. Retry or remove the attachment.",
+                        ),
+                    }
+                }
+            }
+            Event::UploadLimit { id, result } => {
+                if matches!(self.pending.remove(&id), Some(Request::MediaConfig))
+                    && let Ok(limit) = result
+                    && limit > 0
+                {
+                    self.media_limit = crate::media::MAX_BYTES.min(limit);
+                    self.outbox.apply_limit(self.media_limit);
+                }
+            }
         }
     }
 
@@ -432,6 +486,18 @@ impl App {
             (Request::ShareReads(..), Err(_)) => {
                 self.status =
                     "Could not save your read receipt preference. Try again.".into();
+            }
+            (Request::MediaSend(room, attachment), Ok(())) => {
+                self.finish_delivery(&room, attachment, true)
+            }
+            (Request::MediaSend(room, attachment), Err(_)) => self.fail_file(
+                &room,
+                attachment,
+                "Transfer failed. Retry or remove the attachment.",
+            ),
+            (Request::Download, Ok(())) => self.status = "Attachment saved.".into(),
+            (Request::Download, Err(_)) => {
+                self.status = "Could not save the attachment.".into();
             }
             _ => {}
         }
@@ -585,8 +651,21 @@ mod tests {
     fn rooms_timeline_paging_and_send_round_trip() {
         let (mut app, rx) = app();
         app.engine_event(signed_in(true));
-        // A verified device loads its device list for the account page.
-        assert!(matches!(rx.try_recv(), Ok(Command::Devices { .. })));
+        // A verified device loads its device list for the account page, and
+        // the upload size limit.
+        let sent: Vec<Command> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        assert!(sent.iter().any(|c| matches!(c, Command::Devices { .. })));
+        let Some(Command::UploadLimit { id: limit }) = sent
+            .into_iter()
+            .find(|c| matches!(c, Command::UploadLimit { .. }))
+        else {
+            panic!("expected an upload limit request")
+        };
+        app.engine_event(Event::UploadLimit {
+            id: limit,
+            result: Ok(1024),
+        });
+        assert_eq!(app.media_limit, 1024);
         app.engine_event(Event::Rooms(RoomList {
             rooms: vec![RoomSummary {
                 id: "!r:example".into(),
@@ -623,6 +702,7 @@ mod tests {
                 mentions: None,
                 edit_id: None,
                 receipts: vec![("@you:example".into(), 1)],
+                media: None,
             }],
         }));
         app.engine_event(Event::Done { id, result: Ok(()) });
@@ -688,6 +768,7 @@ mod tests {
                 mentions: None,
                 edit_id: None,
                 receipts: vec![],
+                media: None,
             }],
         });
         let original = app.original.as_ref().expect("the original opens");
@@ -700,5 +781,106 @@ mod tests {
         let _ = app.update(Msg::CheckCalls);
         assert!(rx.try_recv().is_err());
         assert!(app.rtc_status.contains("matrix-sdk engine"));
+    }
+
+    #[test]
+    fn attachments_upload_then_send_and_a_cancelled_upload_never_sends() {
+        let (transfers, backend) = async_channel::bounded(8);
+        let (tx, rx) = async_channel::bounded(8);
+        let mut app = App::new(transfers);
+        app.sdk = Some(tx);
+        app.engine_event(signed_in(true));
+        // Files wait for the upload limit.
+        while let Ok(command) = rx.try_recv() {
+            if let Command::UploadLimit { id } = command {
+                app.engine_event(Event::UploadLimit {
+                    id,
+                    result: Ok(1 << 20),
+                });
+            }
+        }
+        app.engine_event(Event::Rooms(RoomList {
+            rooms: vec![RoomSummary {
+                id: "!r:example".into(),
+                name: "general".into(),
+                encrypted: true,
+                ..Default::default()
+            }],
+            children: Default::default(),
+        }));
+        while rx.try_recv().is_ok() {}
+        let file = |name: &str| crate::media::LocalFile {
+            name: name.into(),
+            size: 3,
+            origin: crate::media::NativeSource::Clipboard(b"abc".to_vec().into()),
+        };
+        let _ = app.update(Msg::Files(
+            "!r:example".into(),
+            vec![file("a.png"), file("b.txt")],
+        ));
+        app.editor = text_editor::Content::with_text("look");
+        let _ = app.update(Msg::Send);
+        let Ok(crate::backend::Command::Upload {
+            id,
+            encrypt,
+            cancel,
+            ..
+        }) = backend.try_recv()
+        else {
+            panic!("expected an upload")
+        };
+        assert!(encrypt);
+        app.engine_event(Event::UploadProgress { id, fraction: 0.5 });
+        assert_eq!(
+            app.outbox.rooms["!r:example"][0].status_label(),
+            "Upload 50%"
+        );
+        let content = serde_json::json!({"msgtype": "m.image", "body": "a.png",
+            "file": {"url": "mxc://example/a"}, "info": {"size": 3}});
+        app.engine_event(Event::Uploaded {
+            id,
+            result: Ok(content),
+        });
+        let Ok(Command::SendMedia {
+            id: send,
+            room,
+            content,
+            reply_to,
+        }) = rx.try_recv()
+        else {
+            panic!("expected the attachment message")
+        };
+        assert_eq!(room, "!r:example");
+        assert_eq!(reply_to, None);
+        assert_eq!(
+            (&content["body"], &content["filename"]),
+            (&serde_json::json!("look"), &serde_json::json!("a.png")),
+            "the caption goes with the first file"
+        );
+        drop(cancel);
+        app.engine_event(Event::Done {
+            id: send,
+            result: Ok(()),
+        });
+        assert_eq!(app.outbox.rooms["!r:example"].len(), 1);
+        assert!(app.editor.text().trim().is_empty());
+
+        // The second file: cancelled mid-upload, so a late result is ignored.
+        let Ok(crate::backend::Command::Upload { id, cancel, .. }) = backend.try_recv() else {
+            panic!("expected the second upload")
+        };
+        let attachment = app.outbox.rooms["!r:example"][0].id;
+        app.cancel_upload("!r:example", attachment, id);
+        assert!(cancel.is_closed(), "the engine sees the cancel");
+        app.engine_event(Event::Uploaded {
+            id,
+            result: Ok(serde_json::json!({"msgtype": "m.file", "body": "b.txt",
+                "file": {"url": "mxc://example/b"}})),
+        });
+        assert!(rx.try_recv().is_err(), "a cancelled upload never sends");
+        assert_eq!(
+            app.outbox.rooms["!r:example"][0].status_label(),
+            "Cancelled · retry"
+        );
     }
 }

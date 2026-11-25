@@ -12,6 +12,7 @@ mod browser;
 mod keyring;
 #[cfg(test)]
 mod live_test;
+mod media;
 mod messaging;
 mod rooms;
 mod session;
@@ -168,6 +169,18 @@ pub enum Command {
         id: i64,
         public: bool,
     },
+    /// The homeserver's upload size limit, as [`Event::UploadLimit`].
+    UploadLimit {
+        id: i64,
+    },
+    /// Send an attachment message whose content an upload produced (with
+    /// the caption fields the App added). Done once the homeserver has it.
+    SendMedia {
+        id: i64,
+        room: String,
+        content: serde_json::Value,
+        reply_to: Option<String>,
+    },
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -204,6 +217,21 @@ pub enum Event {
     },
     /// The account's read receipt preference.
     ReadSharing(bool),
+    /// How much of an upload (`backend::Command::Upload`) has been sent.
+    UploadProgress {
+        id: i64,
+        fraction: f64,
+    },
+    /// An upload finished: the attachment content to send, like gomuks's
+    /// upload descriptor.
+    Uploaded {
+        id: i64,
+        result: Result<serde_json::Value, Failure>,
+    },
+    UploadLimit {
+        id: i64,
+        result: Result<u64, Failure>,
+    },
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -351,6 +379,9 @@ pub struct Message {
     pub edit_id: Option<String>,
     /// Read receipts on this event: (user, timestamp).
     pub receipts: Vec<(String, i64)>,
+    /// An attachment's content (`msgtype`, `url` or `file`, `info`), for
+    /// `media::Media::parse`.
+    pub media: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -401,11 +432,18 @@ pub enum Failure {
     Failed,
 }
 
-pub async fn run(commands: Receiver<Command>, events: Sender<Event>) -> Result<(), String> {
+/// `backend` carries the App's gomuks-shaped transfer commands (uploads,
+/// inline previews, downloads), which this engine answers too.
+pub async fn run(
+    commands: Receiver<Command>,
+    backend: Receiver<crate::backend::Command>,
+    events: Sender<Event>,
+) -> Result<(), String> {
     run_in(
         session::profile_root()?,
         browser::system(),
         commands,
+        backend,
         events,
     )
     .await
@@ -417,6 +455,7 @@ pub async fn run_in(
     root: PathBuf,
     opener: Opener,
     commands: Receiver<Command>,
+    backend: Receiver<crate::backend::Command>,
     events: Sender<Event>,
 ) -> Result<(), String> {
     // reqwest 0.13 is built without a crypto provider (see Cargo.toml).
@@ -431,6 +470,7 @@ pub async fn run_in(
         browser: None,
         browser_id: None,
         live: None,
+        sources: Default::default(),
     };
     match session::restore(&engine.profile).await {
         Ok(Some(client)) => engine.go_live(client).await,
@@ -447,6 +487,7 @@ pub async fn run_in(
                 Err(_) => break,
             },
             Ok(notice) = internal.recv() => engine.notice(notice).await,
+            Ok(transfer) = backend.recv() => engine.transfer(transfer).await,
         }
     }
     engine.shutdown().await;
@@ -479,6 +520,8 @@ struct Engine {
     browser: Option<tokio::task::JoinHandle<()>>,
     browser_id: Option<i64>,
     live: Option<Live>,
+    /// Attachments seen in timelines, for previews and downloads.
+    sources: Arc<media::Sources>,
 }
 
 enum Key {
@@ -518,12 +561,14 @@ impl Engine {
         let timelines = Arc::new(timeline::Timelines::new(
             client.clone(),
             self.events.clone(),
+            self.sources.clone(),
         ));
         let verifier = verify::Verifier::new(client.clone(), self.events.clone());
         let mut tasks = Tasks::default();
         tasks.spawn(account_updates(client.clone(), self.events.clone()));
         tasks.spawn(rooms::updates(client.clone(), self.events.clone()));
         tasks.spawn(messaging::read_sharing(client.clone(), self.events.clone()));
+        tasks.spawn(timeline::resume_after_errors(client.clone()));
         tasks.spawn(sync_status(sync.clone(), self.events.clone()));
         tasks.spawn(session_changes(
             client.clone(),
@@ -768,8 +813,9 @@ impl Engine {
                 .await
             }
             Command::Context { id, room, event } => {
+                let sources = self.sources.clone();
                 self.job(id, move |client, _, events| async move {
-                    let messages = messaging::context(&client, &room, &event).await?;
+                    let messages = messaging::context(&client, &room, &event, &sources).await?;
                     let _ = events
                         .send(Event::Context {
                             room,
@@ -787,6 +833,85 @@ impl Engine {
                 })
                 .await
             }
+            Command::UploadLimit { id } => {
+                let result = match &self.live {
+                    Some(live) => {
+                        let client = live.client.clone();
+                        let events = self.events.clone();
+                        tokio::spawn(async move {
+                            let result = media::upload_limit(&client).await;
+                            let _ = events.send(Event::UploadLimit { id, result }).await;
+                        });
+                        return;
+                    }
+                    None => Err(Failure::Unavailable),
+                };
+                self.emit(Event::UploadLimit { id, result }).await;
+            }
+            Command::SendMedia {
+                id,
+                room,
+                content,
+                reply_to,
+            } => {
+                self.job(id, move |_, timelines, _| async move {
+                    timelines.send_media(&room, content, reply_to).await
+                })
+                .await
+            }
+        }
+    }
+
+    /// The App's transfer commands, which go to the gomuks backend on that
+    /// engine. Calls (`Voice`) aren't on this engine yet.
+    async fn transfer(&self, command: crate::backend::Command) {
+        use crate::backend::Command as Transfer;
+        let live = self.live.as_ref().map(|l| l.client.clone());
+        let (sources, events) = (self.sources.clone(), self.events.clone());
+        match command {
+            Transfer::Inline { source, result } => {
+                tokio::spawn(async move {
+                    let image = match live {
+                        Some(client) => media::inline(client, sources, source).await,
+                        None => None,
+                    };
+                    let _ = result.send(image).await;
+                });
+            }
+            Transfer::Upload {
+                id,
+                cancel,
+                file,
+                encrypt,
+                limit,
+            } => {
+                tokio::spawn(async move {
+                    let result = match live {
+                        Some(client) => {
+                            media::upload(client, id, file, encrypt, limit, cancel, events.clone())
+                                .await
+                        }
+                        None => Err(Failure::Unavailable),
+                    };
+                    let _ = events.send(Event::Uploaded { id, result }).await;
+                });
+            }
+            Transfer::Download {
+                id,
+                media,
+                destination,
+            } => {
+                tokio::spawn(async move {
+                    let result = match live {
+                        Some(client) => media::download(client, sources, media, destination).await,
+                        None => Err(Failure::Unavailable),
+                    };
+                    let _ = events.send(Event::Done { id, result }).await;
+                });
+            }
+            Transfer::Rpc(_) => {}
+            #[cfg(target_os = "linux")]
+            Transfer::Voice { .. } => {}
         }
     }
 

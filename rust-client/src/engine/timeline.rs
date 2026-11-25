@@ -3,7 +3,7 @@
 //! The Timeline aggregates edits, redactions and local echoes itself. Each
 //! batch of diffs produces a full snapshot of the room's loaded messages; the
 //! UI keeps a bounded window of it, so this stays cheap at today's sizes.
-use super::{Delivery, Event, Failure, Kind, Message, Reply, TimelineSnapshot};
+use super::{Delivery, Event, Failure, Kind, Message, Reply, TimelineSnapshot, media::Sources};
 use async_channel::Sender;
 use futures_util::{FutureExt, StreamExt};
 use matrix_sdk::{
@@ -11,10 +11,17 @@ use matrix_sdk::{
     room::edit::EditedContent,
     ruma::{
         EventId, OwnedEventId, OwnedRoomId, RoomId,
-        events::room::message::{
-            MessageType, RoomMessageEventContent, RoomMessageEventContentWithoutRelation,
+        events::{
+            AnyMessageLikeEventContent,
+            room::{
+                MediaSource,
+                message::{
+                    MessageType, RoomMessageEventContent, RoomMessageEventContentWithoutRelation,
+                },
+            },
         },
     },
+    send_queue::{LocalEcho, LocalEchoContent, RoomSendQueueUpdate},
 };
 use matrix_sdk_ui::{
     Timeline,
@@ -29,7 +36,7 @@ use std::{
     sync::{Arc, Mutex as Shared},
     time::Duration,
 };
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::{Mutex, Notify, broadcast};
 
 /// How many events one "Earlier messages" request loads, like gomuks.
 const PAGE: u16 = 50;
@@ -53,14 +60,16 @@ impl Drop for Open {
 pub struct Timelines {
     client: Client,
     events: Sender<Event>,
+    sources: Arc<Sources>,
     open: Mutex<HashMap<OwnedRoomId, Arc<Open>>>,
 }
 
 impl Timelines {
-    pub fn new(client: Client, events: Sender<Event>) -> Self {
+    pub fn new(client: Client, events: Sender<Event>, sources: Arc<Sources>) -> Self {
         Self {
             client,
             events,
+            sources,
             open: Default::default(),
         }
     }
@@ -85,6 +94,7 @@ impl Timelines {
             start.clone(),
             refresh.clone(),
             self.events.clone(),
+            self.sources.clone(),
         ));
         let entry = Arc::new(Open {
             timeline,
@@ -184,6 +194,75 @@ impl Timelines {
         Ok(())
     }
 
+    /// Send an attachment message and wait for the homeserver's answer. It
+    /// goes through the room's send queue like text, so it shows as a local
+    /// echo meanwhile. On failure it leaves the queue: the App's attachment
+    /// tray offers the retry.
+    pub async fn send_media(
+        &self,
+        room: &str,
+        content: serde_json::Value,
+        reply_to: Option<String>,
+    ) -> Result<(), Failure> {
+        let open = self.get(room).await?;
+        let content: RoomMessageEventContent =
+            serde_json::from_value(content).map_err(|_| Failure::Failed)?;
+        let url = media_uri(&content.msgtype).ok_or(Failure::Failed)?;
+        let joined = RoomId::parse(room)
+            .ok()
+            .and_then(|id| self.client.get_room(&id))
+            .ok_or(Failure::Unavailable)?;
+        let queue = joined.send_queue();
+        let (_, mut updates) = queue.subscribe().await.map_err(|_| Failure::Failed)?;
+        let handle = match reply_to {
+            Some(target) => {
+                let target = EventId::parse(target).map_err(|_| Failure::Unavailable)?;
+                let mut reply = RoomMessageEventContentWithoutRelation::new(content.msgtype);
+                reply.mentions = content.mentions;
+                open.timeline.send_reply(reply, target).await
+            }
+            None => open.timeline.send(content.into()).await,
+        }
+        .map_err(|_| Failure::Failed)?;
+        // SendHandle doesn't expose its transaction ID; the local echo with
+        // our upload's URI is ours.
+        let mut ours = None;
+        loop {
+            let update = match updates.recv().await {
+                Ok(update) => update,
+                Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(broadcast::error::RecvError::Closed) => return Err(Failure::Failed),
+            };
+            match update {
+                RoomSendQueueUpdate::NewLocalEvent(echo) if ours.is_none() => {
+                    if echo_uri(&echo).as_deref() == Some(url.as_str()) {
+                        ours = Some(echo.transaction_id);
+                    }
+                }
+                RoomSendQueueUpdate::SentEvent { transaction_id, .. }
+                    if ours.as_ref() == Some(&transaction_id) =>
+                {
+                    return Ok(());
+                }
+                RoomSendQueueUpdate::SendError { transaction_id, .. }
+                    if ours.as_ref() == Some(&transaction_id) =>
+                {
+                    let _ = handle.abort().await;
+                    // Any error disables the room's queue; nothing of ours
+                    // is left in it now.
+                    queue.set_enabled(true);
+                    return Err(Failure::Unreachable);
+                }
+                RoomSendQueueUpdate::CancelledLocalEvent { transaction_id }
+                    if ours.as_ref() == Some(&transaction_id) =>
+                {
+                    return Err(Failure::Cancelled);
+                }
+                _ => {}
+            }
+        }
+    }
+
     fn item(event: &str) -> Result<TimelineEventItemId, Failure> {
         Ok(TimelineEventItemId::EventId(
             EventId::parse(event).map_err(|_| Failure::Unavailable)?,
@@ -213,6 +292,55 @@ impl Timelines {
     }
 }
 
+fn media_uri(msgtype: &MessageType) -> Option<String> {
+    let source = match msgtype {
+        MessageType::Image(c) => &c.source,
+        MessageType::File(c) => &c.source,
+        MessageType::Audio(c) => &c.source,
+        MessageType::Video(c) => &c.source,
+        _ => return None,
+    };
+    Some(match source {
+        MediaSource::Plain(uri) => uri.to_string(),
+        MediaSource::Encrypted(file) => file.url.to_string(),
+    })
+}
+
+fn echo_uri(echo: &LocalEcho) -> Option<String> {
+    let LocalEchoContent::Event {
+        serialized_event, ..
+    } = &echo.content
+    else {
+        return None;
+    };
+    match serialized_event.deserialize().ok()? {
+        AnyMessageLikeEventContent::RoomMessage(c) => media_uri(&c.msgtype),
+        _ => None,
+    }
+}
+
+/// Any send error disables the room's send queue until someone re-enables
+/// it. After a network error, try again after a pause; the queue still holds
+/// the request and resends it under the same transaction ID.
+pub async fn resume_after_errors(client: Client) {
+    let mut errors = client.send_queue().subscribe_errors();
+    loop {
+        match errors.recv().await {
+            Ok(error) if error.is_recoverable => {
+                let client = client.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    if let Some(room) = client.get_room(&error.room_id) {
+                        room.send_queue().set_enabled(true);
+                    }
+                });
+            }
+            Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => {}
+            Err(broadcast::error::RecvError::Closed) => return,
+        }
+    }
+}
+
 async fn forward(
     room: String,
     me: String,
@@ -220,12 +348,13 @@ async fn forward(
     start: Start,
     refresh: Arc<Notify>,
     events: Sender<Event>,
+    sources: Arc<Sources>,
 ) {
     let (mut items, mut stream) = timeline.subscribe().await;
     let mut rows = Rows::default();
     loop {
         let marker = start.lock().unwrap().clone();
-        let snapshot = snapshot(&room, &me, &items, &mut rows, marker.as_deref());
+        let snapshot = snapshot(&room, &me, &items, &mut rows, marker.as_deref(), &sources);
         if events.send(Event::Timeline(snapshot)).await.is_err() {
             return;
         }
@@ -277,6 +406,7 @@ fn snapshot(
     items: &Vector<Arc<TimelineItem>>,
     rows: &mut Rows,
     start: Option<&str>,
+    sources: &Sources,
 ) -> TimelineSnapshot {
     TimelineSnapshot {
         room: room.to_owned(),
@@ -289,25 +419,30 @@ fn snapshot(
             .iter()
             .filter_map(|item| {
                 let event = item.as_event()?;
-                message(event, rows.get(&item.unique_id().0), me)
+                message(event, rows.get(&item.unique_id().0), me, sources)
             })
             .collect(),
     }
 }
 
-fn message(item: &EventTimelineItem, row: i64, me: &str) -> Option<Message> {
+fn message(item: &EventTimelineItem, row: i64, me: &str, sources: &Sources) -> Option<Message> {
     let TimelineItemContent::MsgLike(content) = item.content() else {
         return None;
     };
     let mut text = false;
     let mut mentions = None;
+    let mut media = None;
     let (kind, body, edited) = match &content.kind {
         MsgLikeKind::Message(m) => {
             let kind = match m.msgtype() {
                 MessageType::Image(_)
                 | MessageType::File(_)
                 | MessageType::Audio(_)
-                | MessageType::Video(_) => Kind::Attachment,
+                | MessageType::Video(_) => {
+                    sources.remember(m.msgtype());
+                    media = serde_json::to_value(m.msgtype()).ok();
+                    Kind::Attachment
+                }
                 _ => Kind::Text,
             };
             text = matches!(m.msgtype(), MessageType::Text(_));
@@ -380,5 +515,6 @@ fn message(item: &EventTimelineItem, row: i64, me: &str) -> Option<Message> {
                 )
             })
             .collect(),
+        media,
     })
 }

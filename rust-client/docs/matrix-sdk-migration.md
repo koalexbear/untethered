@@ -280,6 +280,40 @@ On this branch, matrix-sdk 0.19.1, Synapse 1.166.0:
   passed 10 times in a row (`UNTETHERED_QA_ONLY=round-trip` runs only that
   test), then the full script passed with both live tests.
 
+## Step 4: attachments and the send queue
+
+The App keeps its attachment tray (`transfers.rs`, `media.rs`) and still
+sends the gomuks backend's transfer commands (upload, inline preview,
+download) and the `get_media_config` RPC. On the new engine, `boot_engine`
+hands those commands to the engine instead of a closed channel, and
+`src/engine/media.rs` answers them. No view code changed: attachment posts
+get the same file card, inline preview and Save button as on gomuks.
+
+| Feature | Implementation | How it was verified |
+| --- | --- | --- |
+| Upload | Reads the file (path, portal or clipboard paste) and checks its size again. The MIME type comes from the content for images and from the name otherwise. `Encryption::upload_encrypted_file` in encrypted rooms, `Media::upload` elsewhere; progress in whole percents from the request's send-progress observable; dropping the App's lease cancels it. Images get `w`/`h` (after EXIF rotation) and, above 800×600, a JPEG thumbnail uploaded the same way. The result is the content gomuks's `/_gomuks/upload` returns | The gomuks peer decrypted the image, its thumbnail and the file, byte for byte |
+| Sending | `send_message` with `base_content` becomes `Command::SendMedia`: the content goes through the room's send queue via the Timeline (`send`, or `send_reply` for replies), so it shows as a local echo. The command ends when the send queue reports the event sent; on a send error the event leaves the queue and the tray offers the retry | As above; the caption went with the first file and left the composer |
+| Received attachments | Timeline items carry their content (`Message::media`), so posts get a `media::Media`. Each attachment's `MediaSource`, with the keys of an encrypted file, is remembered by mxc URI, because the App's `Media` carries only the URI | The peer's encrypted image showed inline and saved byte for byte |
+| Inline previews | Encrypted: the file or its thumbnail, decrypted, through the SDK media cache. Plain: the homeserver's 800×600 thumbnail, or the file if there is none | Both, in the encrypted room and an unencrypted one |
+| Downloads | `Media::get_media_content` without the cache, written to a temporary file beside the destination, then renamed | Byte for byte, encrypted and plain |
+| Upload limit | `Client::load_or_fetch_max_upload_size` | Unit test |
+| Send queue after errors | matrix-sdk disables a room's send queue after any send error, and nothing turned it back on: one network error stopped sending in that room until a restart. After a recoverable error the engine now re-enables the queue 5 seconds later, and the queue resends under the same transaction ID | Not tested live; it needs a network failure mid-send |
+
+### Things worth knowing (step 4)
+
+- **Memory:** previews and downloads load the whole file into memory. The
+  App asks for a preview only when the event claims at most 4 MiB, and the
+  engine discards anything larger after downloading it, but a sender can lie
+  about the size; gomuks capped the stream instead. Downloads are bounded by
+  the 64 MiB upload limit only in practice.
+- **Failed text messages:** an unrecoverable send error (the homeserver
+  refuses the event) leaves a text message in the queue as "Failed to send",
+  and it holds back later messages in that room until a restart. Failed
+  messages need Retry and Remove controls.
+- **Matching sends:** `SendHandle` doesn't expose its transaction ID in
+  0.19.1, so an attachment send finds its local echo by the upload's mxc URI.
+- **Not sent:** a blurhash, and durations or sizes for audio and video.
+
 ## (a) gomuks calls and their matrix-sdk equivalents
 
 Status: **Done** = implemented on the new engine; **Available**
@@ -293,7 +327,7 @@ from matrix-sdk/matrix-sdk-ui 0.19.1. Those marked *(0.20)* exist only in
 | --- | --- | --- | --- |
 | `create_room` | Space and channel setup (`community.rs`) | `Client::create_room(create_room::v3::Request)` → `Room`; space edges with `Room::send_state_event(SpaceChildEventContent)` or `SpaceService::add_child_to_space` | Available |
 | `get_event_context` | Opening a reply's original or a mention beyond loaded history (`replies.rs`) | `Room::event_with_context`; better, a second `Timeline` with `TimelineFocus::Event` that paginates both ways | Done (`event_with_context`) |
-| `get_media_config` | Upload size limit (`account.rs`, `transfers.rs`) | `Client::load_or_fetch_max_upload_size()` (cached) | Available |
+| `get_media_config` | Upload size limit (`account.rs`, `transfers.rs`) | `Client::load_or_fetch_max_upload_size()` (cached) | Done |
 | `get_room_state` | Members and power levels (`main.rs`, `moderation.rs`, `permissions.rs`), call memberships (`desktop_call.rs`, `incoming.rs`), community setup | `Room::members`/`sync_members`, `Room::power_levels`, `get_state_events_static::<T>()` or raw `get_state_events`, and `Room::subscribe_to_state_events` *(0.20)*. `Posting::ingest` and `Room::voice_state` take JSON today and need typed inputs | Available |
 | `get_rtc_transports` | "Check call server support" (`main.rs`), call setup (`desktop_call.rs`) | gomuks calls the MSC4143 `/rtc/transports` endpoint: `client.send(ruma::api::client::rtc::transports::…::Request)`; the well-known variant is `Client::rtc_foci()` | Available |
 | `get_state` | Own user and device ID (`desktop_call.rs`), refresh after verification (`main.rs`) | `Client::user_id`/`device_id`, `Encryption::get_own_device`, `verification_state()`, `recovery().state()` | Done (as `Event::Account`) |
@@ -322,8 +356,8 @@ endpoint, which is covered under recommendations (b).
 
 | gomuks endpoint | Where | matrix-sdk equivalent | Status |
 | --- | --- | --- | --- |
-| `POST /_gomuks/upload` | Desktop uploads with progress and encryption (`backend/native.rs`) | `Timeline::send_attachment` (encrypts in encrypted rooms, local echo, retry); progress through `EventSendState::NotSentYet { progress }`; lower level `Encryption::upload_encrypted_file`, `Media::upload` | Available |
-| `GET /_gomuks/media/…` | Inline thumbnails and downloads (`backend/native.rs`) | `Media::get_media_content(&MediaRequestParameters { source, format }, use_cache)` with the SDK media store. `media::Media` must carry the event's `MediaSource`, including the `EncryptedFile` keys; gomuks looks those up by mxc in its own database | Available; needs a model change |
+| `POST /_gomuks/upload` | Desktop uploads with progress and encryption (`backend/native.rs`) | `Encryption::upload_encrypted_file` / `Media::upload` with their send-progress observables, plus a thumbnail for large images; `Timeline::send_attachment` would also do it, but would bypass the App's attachment tray | Done (`engine/media.rs`) |
+| `GET /_gomuks/media/…` | Inline thumbnails and downloads (`backend/native.rs`) | `Media::get_media_content(&MediaRequestParameters { source, format }, use_cache)`. gomuks looks an encrypted file's keys up by mxc in its database; the engine remembers each attachment's `MediaSource` from timeline items | Done |
 
 ### Frames
 
@@ -333,7 +367,7 @@ endpoint, which is covered under recommendations (b).
 | `events_decrypted` | Late decryption | The Timeline replaces undecryptable items in place when keys arrive, including from key backup | Done (snapshots pick it up) |
 | `send_complete` | Local echo confirmation or failure | `EventSendState` on timeline items; `Client::send_queue()` for retry and unwedging | Done ("Sending…"/"Failed to send") |
 | `client_state` | Sign-in, verification, recovery availability | `Event::Account` from `verification_state()` and `recovery().state_stream()` | Done |
-| `upload_progress` | Attachment progress | `MediaUploadProgress` inside `EventSendState::NotSentYet` | Available |
+| `upload_progress` | Attachment progress | `Event::UploadProgress` from the upload request's send progress | Done |
 | `response` / `error` | Request completion | `Event::Done { id, result: Result<(), Failure> }`; `Failure` is a small enum that never carries server text | Done |
 
 ## (b) Recommendations

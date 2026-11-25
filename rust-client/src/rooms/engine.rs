@@ -121,9 +121,15 @@ fn post(m: Message, time: i64) -> Post {
     let stamp = DateTime::from_timestamp_millis(m.time)
         .unwrap_or_default()
         .with_timezone(&Local);
+    let media = m
+        .media
+        .as_ref()
+        .filter(|_| m.kind == Kind::Attachment)
+        .and_then(crate::media::Media::parse);
     let mut body = match m.kind {
         Kind::Text | Kind::Sticker => m.body,
-        // Media moves to the SDK in a later step; show what it is meanwhile.
+        // The file card shows the attachment; the body is its name or caption.
+        Kind::Attachment if media.is_some() => m.body,
         Kind::Attachment => format!("Attachment · {}", m.body),
         Kind::Redacted => "Message removed".into(),
         Kind::Undecryptable => "Waiting for encryption keys…".into(),
@@ -156,7 +162,7 @@ fn post(m: Message, time: i64) -> Post {
         revision,
         event_id,
         reply: m.reply_to.map(|r| r.event_id),
-        media: None,
+        media,
         sender: m.sender,
         body,
         time,
@@ -205,6 +211,7 @@ mod tests {
             mentions: None,
             edit_id: None,
             receipts: Vec::new(),
+            media: None,
         }
     }
 
