@@ -3196,7 +3196,8 @@ impl App {
                     )
                     .push(
                         column![
-                            caption("RECOVERY KEY OR PASSPHRASE"),
+                            // Not the placeholder's words: tests tap "passphrase" to focus the field.
+                            caption("RECOVERY KEY"),
                             text_input("Recovery key or passphrase", &self.recovery)
                                 .on_input(Msg::Recovery)
                                 .padding(10)
