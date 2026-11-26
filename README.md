@@ -141,7 +141,9 @@ or a Windows Run key entry that starts Untethered in the tray. Close to tray is
 kept in the profile directory (`desktop.json`); the autostart entry is its own
 record. On Linux the icon is a StatusNotifierItem: KDE Plasma and most panels
 show it, GNOME needs the AppIndicator extension. On a desktop without a tray,
-closing the window quits. Windows has no calls or notifications yet, so there
+closing the window quits. Untethered runs once per profile: launching it again
+shows the running window instead of starting a second copy, and a start at
+sign-in leaves a running one alone. Windows has no calls or notifications yet, so there
 the menu's Mute, Deafen and Do Not Disturb stay disabled.
 [Live test on KWin and Plasma](scripts/tray.md).
 

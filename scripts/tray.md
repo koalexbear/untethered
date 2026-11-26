@@ -55,7 +55,11 @@ the tray retries give up (about 10 s). With kded6's watcher, the same start
 shows no window until **Activate**, which opens it focused; after
 `kdotool windowminimize`, **Activate** must bring it back focused, as a new
 window (Wayland can't restore or raise a window without an activation
-token), with only one Untethered window left.
+token), with only one Untethered window left. Finally, with the window closed
+to the tray, starting the client again on the same profile must exit 0 and
+bring the running window back focused; a `--start-minimized` start must leave
+it alone; after `kdotool windowminimize`, starting it again must bring it back
+as a new window. One process, one window and one tray item throughout.
 
 ## Recorded result
 
@@ -67,3 +71,9 @@ missed the two-way audio window after Answer (then 15 s; now 30 s with the
 measurements printed on failure). Not covered: GNOME's AppIndicator
 extension and Windows' notification area (the Windows build is only
 cross-compiled).
+
+Later on 2026-11-26, with single-instance launching: the edge cases passed
+again, and each second start handed over and exited 0 in under 0.1 s. Not
+covered live: a start while the running one quits (unit tests in
+`rust-client/src/instance.rs`), and Windows, where the second start lets the
+running one take the foreground (`AllowSetForegroundWindow`).

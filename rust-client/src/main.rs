@@ -26,6 +26,8 @@ mod hotkeys;
 #[cfg(target_os = "linux")]
 mod incoming;
 mod inline;
+#[cfg(not(target_arch = "wasm32"))]
+mod instance;
 mod media;
 mod mentions;
 mod moderation;
@@ -437,7 +439,11 @@ struct App {
     tray: tray::Tray,
 }
 impl App {
-    fn boot() -> (Self, Task<Msg>) {
+    fn boot(
+        #[cfg(not(target_arch = "wasm32"))] launches: Option<
+            async_channel::Receiver<instance::Launch>,
+        >,
+    ) -> (Self, Task<Msg>) {
         #[allow(unused_mut)]
         let (mut app, task) = Self::boot_engine();
         // Portal users await this too; starting it here keeps it off their path.
@@ -445,7 +451,7 @@ impl App {
         let task = Task::batch([Task::future(app_id::portal_ready()).discard(), task]);
         // The window, unless this is a start at sign-in, and the tray icon.
         #[cfg(not(target_arch = "wasm32"))]
-        let task = Task::batch([task, app.boot_tray()]);
+        let task = Task::batch([task, app.boot_tray(launches)]);
         (app, task)
     }
     fn new(commands: Sender<backend::Command>) -> Self {
@@ -1903,14 +1909,31 @@ fn main() -> iced::Result {
     if let Some(seed) = std::env::var_os("UNTETHERED_QA_SEED") {
         std::process::exit(engine::qa::seed(&seed.to_string_lossy()));
     }
+    // One Untethered per profile: launching it again shows the running
+    // window (instance.rs). Kept until the app exits.
+    #[cfg(not(target_arch = "wasm32"))]
+    let instance = match instance::start(std::env::args().any(|a| a == tray::HIDDEN_FLAG)) {
+        instance::Start::First(instance) => Some(instance),
+        instance::Start::Handed => {
+            eprintln!("Untethered is running already.");
+            return Ok(());
+        }
+        instance::Start::Unguarded => None,
+    };
+    #[cfg(not(target_arch = "wasm32"))]
+    let launches = instance.as_ref().map(|i| i.launches.clone());
     #[cfg(not(target_arch = "wasm32"))]
     fonts::configure();
     // On the desktop Untethered keeps running in the tray with no window
     // (tray.rs), which an iced daemon allows; it opens the window itself.
     #[cfg(not(target_arch = "wasm32"))]
-    let app = iced::daemon(App::boot, App::update, App::window_view)
-        .title(App::window_title)
-        .theme(Theme::Dark);
+    let app = iced::daemon(
+        move || App::boot(launches.clone()),
+        App::update,
+        App::window_view,
+    )
+    .title(App::window_title)
+    .theme(Theme::Dark);
     #[cfg(target_arch = "wasm32")]
     let app = iced::application(App::boot, App::update, App::view)
         .title(App::title)

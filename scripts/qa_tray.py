@@ -360,7 +360,8 @@ def edge_cases(root):
     """No homeserver needed: the signed-out preview on a private KWin.
     Without a tray host closing quits and a start at sign-in falls back to
     the window; with one, a start at sign-in shows no window until Activate,
-    and Activate brings back a minimised window."""
+    and Activate brings back a minimised window. Launching Untethered again
+    shows the running one's window instead of starting a second copy."""
     import tempfile
     from contextlib import ExitStack
     release = root / "rust-client/target/release/untethered-iced"
@@ -380,6 +381,11 @@ def edge_cases(root):
         return kde
     def window(kde):
         return kde.window("^Untethered")
+    def focused(kde):
+        win = window(kde)
+        return win if win and kde.command("kdotool", "getactivewindow", check=False).stdout.strip() == win else None
+    def windows(kde):
+        return kde.command("kdotool", "search", "--title", "^Untethered", check=False).stdout.split()
     with ExitStack() as stack:
         kde = session(stack, False)
         win = wait_for("window", lambda: window(kde), 30)
@@ -399,19 +405,46 @@ def edge_cases(root):
         tray = Tray(kde)
         time.sleep(3)
         assert not window(kde), "a start at sign-in showed its window"
-        def focused():
-            win = window(kde)
-            return win if win and kde.command("kdotool", "getactivewindow", check=False).stdout.strip() == win else None
         tray.activate()
-        win = wait_for("window opened and focused by Activate", focused, 15)
+        win = wait_for("window opened and focused by Activate", lambda: focused(kde), 15)
         kde.command("kdotool", "windowminimize", win)
         time.sleep(1)
         tray.activate()
         # Wayland can't restore a minimised window, so it comes back as a new one.
-        wait_for("window back in front", lambda: focused() not in (None, win), 10)
-        assert len(kde.command("kdotool", "search", "--title", "^Untethered").stdout.split()) == 1
+        wait_for("window back in front", lambda: focused(kde) not in (None, win), 10)
+        assert len(windows(kde)) == 1
         print("Tray host, start at sign-in: no window until Activate; Activate also brings back a minimised window, focused.",
               flush=True)
+        tray.click("Quit")
+        assert kde.native.wait(timeout=15) == 0
+    with ExitStack() as stack:
+        kde = session(stack, True)
+        tray = Tray(kde)
+        win = wait_for("window", lambda: window(kde), 30)
+        binary, child_env, _ = kde.native_args
+        def launch(*args):
+            """Start Untethered again on the same profile: it must hand over and exit."""
+            started = time.monotonic()
+            r = sp.run([*binary, *args], env=child_env, capture_output=True, text=True, timeout=30)
+            assert r.returncode == 0 and "running already" in r.stderr, (r.returncode, r.stderr[-2000:])
+            assert kde.native.poll() is None and len(tray.items()) == 1, "the running Untethered must stay the only one"
+            return time.monotonic() - started
+        time.sleep(2)
+        kde.command("kdotool", "windowclose", win)
+        wait_for("window closed to the tray", lambda: not window(kde), 10)
+        took = launch()
+        win = wait_for("window back and focused after launching again", lambda: focused(kde), 15)
+        assert len(windows(kde)) == 1
+        launch("--start-minimized")
+        time.sleep(2)
+        assert windows(kde) == [win], "a start at sign-in must leave the running window alone"
+        kde.command("kdotool", "windowminimize", win)
+        time.sleep(1)
+        launch()
+        wait_for("minimised window back in front after launching again", lambda: focused(kde) not in (None, win), 10)
+        assert len(windows(kde)) == 1
+        print(f"Launching again: the running Untethered showed its window (the launch exited 0 after {took:.1f} s); "
+              "a start at sign-in left it alone; one process, one window, one tray item.", flush=True)
         tray.click("Quit")
         assert kde.native.wait(timeout=15) == 0
 
