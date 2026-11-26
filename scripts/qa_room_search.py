@@ -3,10 +3,10 @@ import re
 from urllib.parse import quote
 import qa_events
 from qa_native_paste import wait_for
-from qa_ui import CHAT_X
+from qa_ui import CHAT_X, line_words
 
 
-def check_room_search(tmp,hs,page,room,native,hdr,http,messages,restart,words,locate,click,x,paths):
+def check_room_search(tmp,hs,page,room,native,hdr,http,messages,restart,words,locate,click,x,paths,ui):
     native_id="@"+native["username"]+":test.invalid"
     other=page.evaluate("""async uid=>(await window.mxMatrixClientPeg.get().createRoom({
         name:"zz-search-control",preset:"private_chat",invite:[uid],initial_state:[{type:"m.room.encryption",
@@ -57,7 +57,11 @@ def check_room_search(tmp,hs,page,room,native,hdr,http,messages,restart,words,lo
     print("Local coverage: 153 readable messages in the room. Both encrypted rooms decrypted; 150 newer messages; retired wording absent; "
           "one current-room result for 'saffron comet', no homeserver search or event fetch.",flush=True)
     click(hit)
-    locate("exact edited reply highlighted with context",lambda ws:point(ws,"launch") and point(ws,"edited")
+    def edited(ws,w):
+        # The small grey "(edited)" after the text needs its own reading.
+        at=point(ws,w)
+        return at and any(v=="edited" for v,_,_ in line_words(ui.image(),*at))
+    locate("exact edited reply highlighted with context",lambda ws:edited(ws,"launch")
            and point(ws,"beacon") and point(ws,"briefing") and point(ws,"match"))
     assert [p for p in paths if "/context/" in p]==[f"/_matrix/client/v3/rooms/{room}/context/{reply}"],paths
     print(f"Opened base reply {reply} (not edit {edit}); screen showed 'Saffron comet launch' and 'Context beacon'.",flush=True)

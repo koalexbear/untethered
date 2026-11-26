@@ -197,7 +197,7 @@ def test_replies(tmp,hs,root,backend,seed,http,port,*,reactions=False,room_searc
                 native_life.close()
                 win=launch()
             check_room_search(tmp,hs,page,room,native,hdr,http,messages,restart_native,words,locate,click,
-                              lambda *args:x(*[win if arg=="WIN" else arg for arg in args]),paths)
+                              lambda *args:x(*[win if arg=="WIN" else arg for arg in args]),paths,ui)
             return
         if reactions:
             from qa_reactions import check_reactions

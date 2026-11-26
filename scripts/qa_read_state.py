@@ -1,4 +1,5 @@
 """Real read-marker and marked-unread account data; one recipient, two devices."""
+import io
 import sqlite3
 import subprocess as sp
 import time
@@ -7,11 +8,12 @@ from pathlib import Path
 from urllib.parse import quote
 
 import requests
+from PIL import Image
 import qa_events
 from qa_events import use_profile
 from qa_native_paste import child,isolated_env,start_display,wait_for
 from qa_replies import screen_words
-from qa_ui import CHAT_X
+from qa_ui import CHAT_X, line_words
 
 
 def check_read_state(stack,tmp,hs,backend,room,me,hdr,http,web,peer,web_words):
@@ -150,7 +152,12 @@ def check_read_state(stack,tmp,hs,backend,room,me,hdr,http,web,peer,web_words):
     edit=peer.evaluate("""async ([r,id])=>(await window.mxMatrixClientPeg.get().sendEvent(r,'m.room.message',{
       msgtype:'m.text',body:'* Revised honey','m.new_content':{msgtype:'m.text',body:'Revised honey'},
       'm.relates_to':{rel_type:'m.replace',event_id:id}})).event_id""",[room,base])
-    find("the newest message has an applied edit",lambda ws:phrase(ws,"revised","honey") and word(ws,"edited"))
+    def edited(ws):
+        # The small grey "(edited)" after the text needs its own reading.
+        at=phrase(ws,"revised","honey")
+        im=Image.open(io.BytesIO(sp.check_output(["import","-window",win,"png:-"],env=env,timeout=6))).convert("RGB")
+        return at and any(v=="edited" for v,_,_ in line_words(im,*at))
+    find("the newest message has an applied edit",edited)
     hold(again)
     x("windowfocus","--sync",win);exact(edit)
     x("windowfocus","--sync",other_window)

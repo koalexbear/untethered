@@ -100,6 +100,15 @@ def sidebar_words(im, origin=(0, 0)):
     return [(w, ox + RAIL + x, oy + y) for w, x, y in tesseract(side, scale=4)]
 
 
+def line_words(im, x, y, width=260, height=24):
+    """Cleaned words on the text line around the word centred at (x, y), up
+    to `width` px to its right, OCR'd at four times their size. For small grey
+    labels after a message such as "(edited)" (11 px, #949ba4), which the
+    whole-window passes misread ("ecitea")."""
+    box = (max(0, x - 60), max(0, y - height // 2), min(im.width, x + width), min(im.height, y + height // 2))
+    return [(clean(w), box[0] + wx, box[1] + wy) for w, wx, wy in tesseract(im.crop(box), 7, scale=4)]
+
+
 def _mask(im, color):
     bands = [band.point(lambda v, c=c: 255 if v == c else 0) for band, c in zip(im.split(), color)]
     return ImageChops.darker(ImageChops.darker(bands[0], bands[1]), bands[2])
