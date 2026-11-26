@@ -325,7 +325,9 @@ async fn forward(
     let mut rows = Rows::default();
     loop {
         let marker = start.lock().unwrap().clone();
-        let snapshot = snapshot(&room, &me, &items, &mut rows, marker.as_deref(), &sources);
+        let latest = timeline.latest_event_id().await.map(|e| e.to_string());
+        let mut snapshot = snapshot(&room, &me, &items, &mut rows, marker.as_deref(), &sources);
+        snapshot.latest_event = latest;
         if events.send(Event::Timeline(snapshot)).await.is_err() {
             return;
         }
@@ -393,6 +395,7 @@ fn snapshot(
                 message(event, rows.get(&item.unique_id().0), me, sources)
             })
             .collect(),
+        latest_event: None,
     }
 }
 

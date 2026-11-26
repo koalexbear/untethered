@@ -327,6 +327,7 @@ impl App {
             Event::Timeline(t) => {
                 if let Some(r) = self.live.list.get_mut(&t.room) {
                     r.apply_engine(t.messages, t.start_reached);
+                    r.read.set_latest(t.latest_event);
                 }
             }
             Event::Done { id, result } => self.engine_done(id, result),
@@ -931,10 +932,17 @@ mod tests {
                 receipts: vec![("@you:example".into(), 1)],
                 media: None,
             }],
+            // An edit of "hello" came last; it has no message of its own.
+            latest_event: Some("$edit".into()),
         }));
         app.engine_event(Event::Done { id, result: Ok(()) });
         let r = &app.live.list[&room];
         assert!(r.end && r.posts().next().unwrap().body == "hello");
+        assert_eq!(
+            r.read.target(),
+            Some("$edit"),
+            "reading marks the edit read"
+        );
         let post = r.posts().next().unwrap();
         assert!(post.reactable && post.chips["👍"].count == 1 && post.chips["👍"].mine().is_none());
         assert!(

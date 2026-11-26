@@ -540,6 +540,10 @@ pub struct TimelineSnapshot {
     /// Messages in timeline order, oldest first.
     pub messages: Vec<Message>,
     pub start_reached: bool,
+    /// The latest remote event, also when it has no message of its own (an
+    /// edit, a reaction): what reading the room marks read.
+    #[serde(default)]
+    pub latest_event: Option<String>,
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]

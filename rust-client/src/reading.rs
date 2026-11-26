@@ -15,6 +15,9 @@ pub struct State {
     pub highlights: u64,
     pub fully_read: Option<String>,
     timeline: BTreeMap<i64, String>,
+    /// The engine's latest remote event, which may be an edit or reaction
+    /// that has no message of its own.
+    latest: Option<String>,
     preview: Option<String>,
     attempted: Option<String>,
     // One current main-timeline receipt per reader, even across re-pagination.
@@ -37,10 +40,15 @@ impl State {
             }
         }
     }
+    pub fn set_latest(&mut self, latest: Option<String>) {
+        self.latest = latest;
+    }
+    /// What reading the room marks read: its latest event, also when that is
+    /// an edit of the last message (which has no row of its own).
     pub fn target(&self) -> Option<&str> {
-        self.timeline
-            .last_key_value()
-            .map(|(_, e)| e.as_str())
+        self.latest
+            .as_deref()
+            .or_else(|| self.timeline.last_key_value().map(|(_, e)| e.as_str()))
             .or(self.preview.as_deref())
     }
     pub fn seen(&self, me: &str) -> BTreeMap<&str, Vec<&str>> {
