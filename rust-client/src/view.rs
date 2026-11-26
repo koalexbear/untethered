@@ -2637,33 +2637,32 @@ impl App {
                     && edit.pending.is_none()
                     && !draft.trim().is_empty()
                     && draft != p.text();
-                message = message
-                    .extend(self.completion_popup(crate::autocomplete::Field::Edit))
-                    .push(input)
-                    .push(
-                        row![
-                            text("Escape to").size(12).color(BODY),
-                            button(text("cancel").size(12))
-                                .padding(0)
-                                .style(plain(LINK, color!(0x5fc5ff)))
-                                .on_press_maybe(edit.pending.is_none().then_some(Msg::CancelEdit)),
-                            text("·").size(12).color(BODY),
-                            text("Enter to").size(12).color(BODY),
-                            button(
-                                text(if edit.pending.is_some() {
-                                    "saving…"
-                                } else {
-                                    "save edit"
-                                })
-                                .size(12)
-                            )
+                let input =
+                    self.with_completion_slot(crate::autocomplete::Field::Edit, input.into());
+                message = message.push(input).push(
+                    row![
+                        text("Escape to").size(12).color(BODY),
+                        button(text("cancel").size(12))
                             .padding(0)
                             .style(plain(LINK, color!(0x5fc5ff)))
-                            .on_press_maybe(can_save.then_some(Msg::SaveEdit))
-                        ]
-                        .spacing(4)
-                        .align_y(Center),
-                    );
+                            .on_press_maybe(edit.pending.is_none().then_some(Msg::CancelEdit)),
+                        text("·").size(12).color(BODY),
+                        text("Enter to").size(12).color(BODY),
+                        button(
+                            text(if edit.pending.is_some() {
+                                "saving…"
+                            } else {
+                                "save edit"
+                            })
+                            .size(12)
+                        )
+                        .padding(0)
+                        .style(plain(LINK, color!(0x5fc5ff)))
+                        .on_press_maybe(can_save.then_some(Msg::SaveEdit))
+                    ]
+                    .spacing(4)
+                    .align_y(Center),
+                );
             } else if caption {
                 let mut spans = vec![span(p.text()).color(BODY)];
                 if p.revision.is_some() {

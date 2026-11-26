@@ -551,6 +551,42 @@ impl App {
         operation::focus(p.field.id())
     }
 
+    /// Mention `user` at the composer's cursor, as a menu's or profile's
+    /// Mention action does: the same pill a pick from the popup makes.
+    #[allow(dead_code)] // For M4's user menu and M5's profile card.
+    pub fn mention(&mut self, user: &str) -> Task<Msg> {
+        let room = self.selected.clone();
+        let Some(r) = self.rooms().list.get(&room) else {
+            return Task::none();
+        };
+        let name = self
+            .completion
+            .rosters
+            .get(&room)
+            .and_then(|m| m.get(user))
+            .map(|m| m.name.clone())
+            .filter(|n| !n.trim().is_empty())
+            .unwrap_or_else(|| r.display(user).to_owned());
+        let label = format!("@{name}");
+        self.editor
+            .perform(Action::Edit(Edit::Paste(Arc::new(format!("{label} ")))));
+        let pills = self
+            .completion
+            .pills
+            .entry((Field::Composer, room))
+            .or_default();
+        pills.retain(|old| old.label != label);
+        pills.push(Pill {
+            label,
+            target: Target::User {
+                id: user.to_owned(),
+                name,
+            },
+        });
+        self.edited(Field::Composer, None);
+        operation::focus(Field::Composer.id())
+    }
+
     /// Servers that can route a visitor to `room`: ours, and the room's
     /// own if its ID names one.
     fn via(&self, room: &str) -> Vec<String> {
@@ -806,6 +842,19 @@ mod tests {
                 .pills(Field::Composer, &app.selected)
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn a_mention_action_inserts_the_same_pill() {
+        let mut app = signed_in();
+        typing(&mut app, "hi ");
+        let _ = app.mention("@mira:example.org");
+        typing(&mut app, "there");
+        let text = app.editor.text();
+        let pills = app.completion.pills(Field::Composer, &app.selected);
+        let parts = pills::split(&text, &pills);
+        assert_eq!(text, "hi @Mira there");
+        assert_eq!(pills::user_ids(&parts), ["@mira:example.org"]);
     }
 
     #[test]

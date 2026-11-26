@@ -162,14 +162,15 @@ impl App {
     }
 
     /// The timeline with the composer's popup and emoji picker floating over
-    /// its bottom edge, so opening them doesn't move the messages.
+    /// its bottom edge, so opening them doesn't move the messages. The layers
+    /// are always there, empty when closed: Iced keeps widget state by
+    /// position, and a timeline that moved into a new parent would lose its
+    /// scroll position, the picker its focused search field.
     pub(super) fn with_composer_overlays<'a>(&'a self, timeline: El<'a>) -> El<'a> {
-        let popup = self.completion_popup(Field::Composer);
-        let picker = self.composer_picker();
-        if popup.is_none() && picker.is_none() {
-            return timeline;
-        }
-        let float = |content: El<'a>, x: alignment::Horizontal| -> El<'a> {
+        let float = |content: Option<El<'a>>, x: alignment::Horizontal| -> El<'a> {
+            let Some(content) = content else {
+                return Space::new().into();
+            };
             container(content)
                 .width(Fill)
                 .height(Fill)
@@ -185,10 +186,23 @@ impl App {
         };
         Stack::new()
             .push(timeline)
-            .extend(popup.map(|p| float(p, alignment::Horizontal::Left)))
-            .extend(picker.map(|p| float(p, alignment::Horizontal::Right)))
+            .push(float(
+                self.completion_popup(Field::Composer),
+                alignment::Horizontal::Left,
+            ))
+            .push(float(self.composer_picker(), alignment::Horizontal::Right))
             .width(Fill)
             .height(Length::Fill)
             .into()
+    }
+
+    /// A message editor with the slot for its popup above it. The slot is
+    /// always there so the editor keeps its place, and with it its focus.
+    pub(super) fn with_completion_slot<'a>(&'a self, field: Field, editor: El<'a>) -> El<'a> {
+        let slot: El = match self.completion_popup(field) {
+            Some(popup) => container(popup).padding(Padding::ZERO.bottom(4)).into(),
+            None => Space::new().into(),
+        };
+        Column::new().push(slot).push(editor).into()
     }
 }

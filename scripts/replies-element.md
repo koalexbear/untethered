@@ -45,3 +45,22 @@ to remove its own reaction. The test checks which annotation was redacted
 and compares the surviving event ID and sender to Element’s original
 annotation. A second restart/reload must still show 1 on both clients;
 Untethered offers **Add your reaction**, while Element’s chip remains selected.
+
+## Composer autocomplete
+
+Run the same command with `--composer-mentions`. Element's account is
+renamed **Mira** before the native client starts. In the native composer the
+fixture types `Ping @mi` and **Tab**, `see #med` and **Enter**, `party :tad`
+and **Tab**, then `then :wave: done`, and checks that each popup listed the
+expected row. Element must decrypt exactly that body with Mira's name, the
+room's `matrix.to` link (`via` the native user's server), 🎉 and 👋, an
+`m.mentions` of Mira's ID only, and both links in `formatted_body`; its tile
+must be highlighted with two pills.
+
+The native inline editor then appends `for @mi` + **Tab** to a message that
+mentioned nobody. The replacement's new content carries the pill and
+Mira's ID, and so does its outer `m.mentions`, because the mention is new;
+Element highlights the original tile. Finally a native reply to an Element
+message types `*literal* @mi` + **Tab**: the body and `formatted_body` keep the
+asterisks literal around the pill. Set `COMPOSER_QA_SHOTS=<dir>` to keep
+screenshots of the popups.
