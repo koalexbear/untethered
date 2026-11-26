@@ -28,13 +28,12 @@ def browser_roundtrip(tmp,hs,browser,fixture,element,room,alice,bob,hdr,uploads,
         y=(bottom[0]+bottom[-1])//2
         with page.expect_file_chooser(timeout=8000) as picker:page.mouse.click(356,y,delay=85)
         picker.value.set_files([str(p) for p in paths])
+        # Off the button: its "Attach files" tooltip covers the start of the
+        # size-limit notice.
+        page.mouse.move(900,300)
     def skipped(ws):
         line={t for t,x,y in ws if x>CHAT_X and y>440}
-        if not {"65537","65536-byte"}<=line:return False
-        if "oversize.bin" in line:return True
-        # The notice's file name is small; read its line at four times its size.
-        y=next(y for t,x,y in ws if t=="65537" and x>CHAT_X and y>440)
-        return any(w=="oversize.bin" for w,_,_ in line_words(image(),CHAT_X+80,y,width=700))
+        return {"oversize.bin","65537","65536-byte"}<=line
     caption="Browser boundary proof"
     # The composer's grey "Message #media-proof" placeholder needs a 4x
     # reading; the whole-page passes make it "roams media-proat".
