@@ -14,6 +14,7 @@ from qa_kwin_element import element_server,login_element
 from qa_native_paste import child,isolated_env,start_display,wait_for
 from qa_room_alerts import NotificationDesktop
 from qa_ui import CHAT_X,Ui,read
+from qa_web_login import gomuks_page
 
 
 def check_browser_alerts(tmp,hs,web,backend,seed,http,*,dnd=False,reading=False,spaces=False):
@@ -75,7 +76,7 @@ def check_browser_alerts(tmp,hs,web,backend,seed,http,*,dnd=False,reading=False,
               }
             });
           }}""")
-        page.goto(web,wait_until="commit")
+        page.goto(gomuks_page(web),wait_until="commit")
         page.wait_for_function("document.title.includes('Preview')",timeout=45000)
         page.mouse.click(1095,73);page.wait_for_function("document.title.includes('Account')")
         for y,field in [(333,"server"),(391,"username"),(447,"password")]:

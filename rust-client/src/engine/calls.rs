@@ -63,9 +63,34 @@ async fn forward(raw: Raw<Value>, room: &Room, events: &async_channel::Sender<su
     }
     let id = room.room_id().to_string();
     event["room_id"] = id.clone().into();
+    #[cfg(debug_assertions)]
+    qa_log(&event);
     let _ = events
         .send(super::Event::CallActivity { room: id, event })
         .await;
+}
+
+/// Call fixtures (debug builds): every decrypted ring and decline this
+/// device sees, sent or received, one JSON object per line in
+/// `UNTETHERED_QA_CALL_EVENTS`. gomuks's database gave them the same.
+#[cfg(debug_assertions)]
+fn qa_log(event: &Value) {
+    use std::io::Write;
+    let Some(path) = std::env::var_os("UNTETHERED_QA_CALL_EVENTS") else {
+        return;
+    };
+    if !matches!(event["type"].as_str(), Some(RING | DECLINE)) {
+        return;
+    }
+    let line = json!({"room_id": event["room_id"], "event_id": event["event_id"],
+        "sender": event["sender"], "type": event["type"], "content": event["content"]});
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        let _ = writeln!(file, "{line}");
+    }
 }
 
 /// The room's state from the homeserver, as Matrix state events.
@@ -338,9 +363,15 @@ impl CallSignal for SdkSignal {
             ) else {
                 continue;
             };
-            if let Ok(Some(found)) = encryption.get_device(&user, device).await {
-                devices.push(found);
+            let mut found = encryption.get_device(&user, device).await.ok().flatten();
+            if found.is_none() {
+                // A device this client hasn't heard of yet, such as a new
+                // device of someone who just joined: ask the server for that
+                // user's keys once, as gomuks did before encrypting.
+                let _ = encryption.request_user_identity(&user).await;
+                found = encryption.get_device(&user, device).await.ok().flatten();
             }
+            devices.extend(found);
         }
         if devices.is_empty() {
             return Err("The other devices' encryption keys are unknown.");

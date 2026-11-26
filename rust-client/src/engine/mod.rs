@@ -1,8 +1,9 @@
-//! matrix-rust-sdk engine, selected with `UNTETHERED_ENGINE=matrix-sdk`.
+//! matrix-rust-sdk engine, the default since step 8. `UNTETHERED_ENGINE=gomuks`
+//! (or `?engine=gomuks` on the web) still starts gomuks for one release.
 //!
 //! It owns a `matrix_sdk::Client` on the Iced tokio runtime, accepts typed
 //! [`Command`]s and emits typed [`Event`]s, mirroring the channel shape of
-//! `crate::backend` without a JSON boundary. gomuks stays the default engine.
+//! `crate::backend` without a JSON boundary.
 //! `docs/matrix-sdk-migration.md` tracks what moves over next.
 // In the browser the SDK's types are neither Send nor Sync, and the engine's
 // shared state (Arc) is only shared between tasks on one thread.
@@ -21,6 +22,8 @@ mod keyring;
 mod live_test;
 mod media;
 mod messaging;
+#[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
+pub mod qa;
 mod rooms;
 mod rt;
 mod search;
@@ -51,24 +54,32 @@ pub const ENV: &str = "UNTETHERED_ENGINE";
 /// Events per room in the sliding sync room list.
 const ROOM_LIST_TIMELINE: u32 = 20;
 
-/// Whether this page uses matrix-sdk instead of gomuks: `?engine=matrix-sdk`
-/// picks it and the page remembers that; `?engine=gomuks` goes back.
+/// Shown on the sign-in screen when gomuks data is here but no matrix-sdk
+/// session (docs/matrix-sdk-migration.md, "Existing gomuks profiles").
+#[cfg(not(target_arch = "wasm32"))]
+const UPGRADE: &str = "Untethered now uses a new Matrix engine. Sign in once more: this is a new device, and your recovery key restores your encrypted history. Afterwards you can remove the old session under Devices. To go back for now, start Untethered with UNTETHERED_ENGINE=gomuks.";
+#[cfg(target_arch = "wasm32")]
+const UPGRADE: &str = "Untethered now uses a new Matrix engine. Sign in once more: this is a new device, and your recovery key restores your encrypted history. Afterwards you can remove the old session under Devices. To go back for now, open this page with ?engine=gomuks.";
+
+/// Whether this page uses matrix-sdk: the default. `?engine=gomuks` picks
+/// gomuks and the page remembers that; `?engine=matrix-sdk` goes back.
 #[cfg(target_arch = "wasm32")]
 pub fn selected() -> bool {
     web::selected()
 }
 
-/// Whether this launch uses matrix-sdk instead of gomuks.
+/// Whether this launch uses matrix-sdk: the default unless
+/// `UNTETHERED_ENGINE=gomuks`.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn selected() -> bool {
     match std::env::var(ENV).as_deref() {
-        Ok("matrix-sdk") => true,
-        Ok("gomuks") | Ok("") | Err(_) => false,
+        Ok("gomuks") => false,
+        Ok("matrix-sdk") | Ok("") | Err(_) => true,
         Ok(other) => {
             eprintln!(
-                "Unknown {ENV}={other:?}; using gomuks. Set {ENV}=matrix-sdk to try the new engine."
+                "Unknown {ENV}={other:?}; using matrix-sdk. Set {ENV}=gomuks for the previous engine."
             );
-            false
+            true
         }
     }
 }
@@ -724,7 +735,12 @@ async fn run_with(
     };
     match session::restore(&engine.profile).await {
         Ok(Some(client)) => engine.go_live(client).await,
-        Ok(None) => engine.emit(Event::Account(Account::default())).await,
+        Ok(None) => {
+            engine.emit(Event::Account(Account::default())).await;
+            if session::gomuks_data(&engine.profile).await {
+                engine.emit(Event::Status(UPGRADE.into())).await;
+            }
+        }
         Err(why) => {
             engine.emit(Event::Account(Account::default())).await;
             engine.emit(Event::Status(why.into())).await;

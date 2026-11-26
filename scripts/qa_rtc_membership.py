@@ -24,7 +24,7 @@ def test(tmp, hs, root, backend, seed, http):
     (tmp/"rtc.json").write_text(json.dumps({"room": room, "service": service}))
     user = "@"+native["username"]+":test.invalid"
     env = {**os.environ, "UNTETHERED_RTC_QA": str(tmp), "UNTETHERED_PROFILE": str(tmp/"seed"),
-           "UNTETHERED_BACKEND": str(backend)}
+           "UNTETHERED_BACKEND": str(backend), "UNTETHERED_ENGINE": "gomuks"}
     with element_server(hs) as web, sync_playwright() as pw:
         browser = pw.chromium.launch(executable_path=os.environ.get("CHROMIUM") or shutil.which("chromium"))
         try:

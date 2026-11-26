@@ -124,6 +124,12 @@ mod store {
         pub fn has_session(&self) -> bool {
             self.session().exists()
         }
+        /// gomuks keeps its database beside `matrix-sdk/` in the profile.
+        pub async fn gomuks_data(&self) -> bool {
+            self.dir
+                .parent()
+                .is_some_and(|root| root.join("data/gomuks.db").exists())
+        }
         pub fn read(&self) -> Option<Value> {
             serde_json::from_slice(&fs::read(self.session()).ok()?).ok()
         }
@@ -201,6 +207,11 @@ mod store {
     /// Every IndexedDB database this client creates starts with this.
     const PREFIX: &str = "untethered-sdk-";
 
+    #[wasm_bindgen::prelude::wasm_bindgen(module = "/web/engine.js")]
+    extern "C" {
+        async fn opfs_in_use() -> bool;
+    }
+
     pub struct Profile {
         saved: Mutex<Option<String>>,
         /// The current store's database name prefix.
@@ -226,6 +237,11 @@ mod store {
         }
         pub fn has_session(&self) -> bool {
             self.saved.lock().is_ok_and(|s| s.is_some())
+        }
+        /// gomuks's browser database lives in the origin private file
+        /// system, which this engine doesn't use.
+        pub async fn gomuks_data(&self) -> bool {
+            opfs_in_use().await
         }
         pub fn read(&self) -> Option<Value> {
             serde_json::from_str(self.saved.lock().ok()?.as_deref()?).ok()
@@ -315,6 +331,11 @@ pub use store::profile_root;
 
 fn passphrase() -> String {
     Profile::passphrase()
+}
+
+/// Whether gomuks has data in this profile (signed in before the switch).
+pub async fn gomuks_data(profile: &Profile) -> bool {
+    profile.gomuks_data().await
 }
 
 /// Remove the saved session, its secret and every SDK store. The device
@@ -487,4 +508,19 @@ pub async fn recover(client: &Client, secret: &str) -> Result<(), Failure> {
         rt::sleep(Duration::from_millis(200)).await;
     }
     Ok(())
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn gomuks_data_is_its_database_beside_the_engine() {
+        let root = tempfile::tempdir().unwrap();
+        let profile = Profile::open(root.path().to_owned()).unwrap();
+        assert!(!gomuks_data(&profile).await);
+        std::fs::create_dir_all(root.path().join("data")).unwrap();
+        std::fs::write(root.path().join("data/gomuks.db"), b"").unwrap();
+        assert!(gomuks_data(&profile).await);
+    }
 }

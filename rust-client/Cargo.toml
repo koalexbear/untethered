@@ -85,3 +85,42 @@ js-sys = "0.3"
 
 [profile.dev]
 debug = 0
+
+# Unoptimized, the matrix-sdk engine's store key derivation (200,000 PBKDF2
+# rounds per store), Olm/Megolm and SQLite take many seconds: a debug client
+# needed most of a minute to sign in. The call fixtures run debug builds for
+# their QA hooks, so optimize just these dependencies.
+[profile.dev.package.sha2]
+opt-level = 3
+[profile.dev.package.pbkdf2]
+opt-level = 3
+[profile.dev.package.hmac]
+opt-level = 3
+[profile.dev.package.blake3]
+opt-level = 3
+[profile.dev.package.chacha20poly1305]
+opt-level = 3
+[profile.dev.package.chacha20]
+opt-level = 3
+[profile.dev.package.poly1305]
+opt-level = 3
+[profile.dev.package.aes]
+opt-level = 3
+[profile.dev.package.ctr]
+opt-level = 3
+[profile.dev.package.cbc]
+opt-level = 3
+[profile.dev.package.hkdf]
+opt-level = 3
+[profile.dev.package.curve25519-dalek]
+opt-level = 3
+[profile.dev.package.ed25519-dalek]
+opt-level = 3
+[profile.dev.package.x25519-dalek]
+opt-level = 3
+[profile.dev.package.vodozemac]
+opt-level = 3
+[profile.dev.package.matrix-sdk-store-encryption]
+opt-level = 3
+[profile.dev.package.libsqlite3-sys]
+opt-level = 3

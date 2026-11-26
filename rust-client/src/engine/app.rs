@@ -132,6 +132,10 @@ impl App {
                 self.command(|id| Command::ShareReads { id, public }, request);
             }
             Request::MediaConfig => self.command(|id| Command::UploadLimit { id }, request),
+            Request::Members(room) => {
+                let room = room.clone();
+                self.command(|id| Command::RoomState { id, room }, request);
+            }
             // transfers.rs sends an uploaded attachment's content this way.
             Request::MediaSend(room, _) if cmd == "send_message" => {
                 let room = room.clone();
@@ -157,7 +161,6 @@ impl App {
     /// reads stay quiet; anything the user asked for says why nothing happened.
     pub(crate) fn engine_unsupported(&mut self, request: Request) {
         match request {
-            Request::Members(_) => {}
             // A retry by transaction ID; this engine never hands one out.
             Request::MediaSend(room, id) => self.fail_file(
                 &room,
@@ -618,7 +621,21 @@ impl App {
             (Request::Posting(_), Err(_)) => self.status = POSTING_FAILED.into(),
             (Request::Setup(Step::Check), Ok(state)) => self.setup_checked(state),
             (Request::Setup(step), Err(_)) => self.setup_error(step),
+            (Request::Members(room), Ok(state)) => self.members_loaded(&room, state),
             _ => {}
+        }
+    }
+
+    /// Display names of a room's members, read when it opens as gomuks's room
+    /// state was: people who haven't written yet get their names too, for
+    /// example in a voice room's participant list.
+    fn members_loaded(&mut self, room: &str, state: RoomState) {
+        if let Some(r) = self.live.list.get_mut(room) {
+            for (user, member) in state.members {
+                if !member.name.is_empty() {
+                    r.members.entry(user).or_insert(member.name);
+                }
+            }
         }
     }
 
@@ -815,6 +832,29 @@ mod tests {
             panic!("expected pagination")
         };
         assert_eq!(room, "!r:example");
+        // ...and its members, so people who haven't written yet have names.
+        let Ok(Command::RoomState {
+            id: members,
+            room: asked,
+        }) = rx.try_recv()
+        else {
+            panic!("expected the room's members")
+        };
+        assert_eq!(asked, room);
+        let mut state = RoomState::default();
+        state.members.insert(
+            "@quiet:example".into(),
+            crate::moderation::Member {
+                kind: crate::moderation::Kind::Joined,
+                name: "Quiet One".into(),
+                event: "$member".into(),
+            },
+        );
+        app.engine_event(Event::RoomState {
+            id: members,
+            result: Ok(state),
+        });
+        assert_eq!(app.live.list[&room].members["@quiet:example"], "Quiet One");
         app.engine_event(Event::Timeline(TimelineSnapshot {
             room: room.clone(),
             start_reached: true,

@@ -1,6 +1,19 @@
-// The matrix-sdk engine's browser storage lock. Like gomuks's profile lock,
-// one tab (or worker) per origin owns the IndexedDB stores; the lock is held
-// until it closes. Nothing here touches the DOM, so workers can import it.
+// Browser helpers for the matrix-sdk engine (src/engine/web.rs, session.rs).
+// Nothing here touches the DOM, so the engine's worker can import it.
+
+// gomuks's browser database is SQLite in the origin private file system,
+// which the matrix-sdk engine doesn't use: any entry there is gomuks's.
+export async function opfs_in_use() {
+    try {
+        const root = await globalThis.navigator?.storage?.getDirectory?.();
+        if (!root) return false;
+        for await (const _ of root.keys()) return true;
+    } catch {}
+    return false;
+}
+
+// Like gomuks's profile lock, one tab per origin owns the IndexedDB stores;
+// the lock is held until the page closes.
 export function engine_lock(name, waiting) {
     return new Promise((granted, refused) => {
         const locks = globalThis.navigator?.locks;

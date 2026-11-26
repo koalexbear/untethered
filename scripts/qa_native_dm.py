@@ -1,5 +1,6 @@
 """Two actual Iced clients on different links: invitations, cleanup and relay-only media."""
 import json
+import os
 import re
 import sqlite3
 import subprocess as sp
@@ -23,6 +24,10 @@ def check_native_dm(stack,tmp,hs,name,jwt,root,backend,room,users,headers,secret
     relay=secret is not None
     dirs=(tmp,tmp/"peer")
     dbs=[d/"seed/data/gomuks.db" for d in dirs]
+    # matrix-sdk clients: device IDs from their sessions, and the call events
+    # they decrypted from their QA log (engine/calls.rs) instead of gomuks's database.
+    sdk=os.environ.get("UNTETHERED_QA_ENGINE")=="matrix-sdk"
+    events_log=[d/"call-events.jsonl" for d in dirs]
     api=hs+"/_matrix/client/v3/rooms/"+quote(room,safe="")
     ports=[urlsplit(s).port for s in (hs,"https://"+name,jwt)]+[18820]
     links=list(relay_links(stack,ports).values()) if relay else []
@@ -31,8 +36,12 @@ def check_native_dm(stack,tmp,hs,name,jwt,root,backend,room,users,headers,secret
     if relay:
         for h in headers:http("POST",hs+"/_matrix/client/v3/createRoom",headers=h,json={"name":"Sidechat","preset":"private_chat"})
     for i,d in enumerate(dirs):
-        with closing(sqlite3.connect(dbs[i].as_uri()+"?mode=ro",uri=True)) as db:
-            [(u,dev)]=db.execute("SELECT user_id,device_id FROM account")
+        if sdk:
+            session=json.loads((d/"seed/matrix-sdk/session.json").read_text())["session"]
+            u,dev=session["user_id"],session["device_id"]
+        else:
+            with closing(sqlite3.connect(dbs[i].as_uri()+"?mode=ro",uri=True)) as db:
+                [(u,dev)]=db.execute("SELECT user_id,device_id FROM account")
         assert u==users[i]
         ids.append(f"{u}:{dev}")
         env=isolated_env(d,backend,"x11")
@@ -48,6 +57,7 @@ def check_native_dm(stack,tmp,hs,name,jwt,root,backend,room,users,headers,secret
                 return sock.is_socket() and "Out1" in sp.run(["pactl","list","short","sinks"],env=env,capture_output=True,text=True).stdout
             wait_for("private audio server",ready)
         env["UNTETHERED_QA_ICE_STATS"]="1"
+        if sdk:env["UNTETHERED_QA_CALL_EVENTS"]=str(events_log[i])
         logs.append(d/"ice.log")
         desks.append(Desktop(stack,root,env,i,prefix=links[i].prefix if relay else [],room="media-proof",
                              log=stack.enter_context(logs[i].open("w"))))
@@ -72,6 +82,10 @@ def check_native_dm(stack,tmp,hs,name,jwt,root,backend,room,users,headers,secret
         return {e["sender"]+":"+e["content"]["device_id"]:e["event_id"] for e in
                 http("GET",api+"/state",headers=headers[0]).json() if e["type"]==MEMBER and e["content"].get("application")=="m.call"}
     def messages(i,kind):
+        if sdk:
+            lines=events_log[i].read_text().splitlines() if events_log[i].exists() else []
+            return {e["event_id"]:(e["sender"],e["content"]) for e in map(json.loads,lines)
+                    if e["room_id"]==room and e["type"]==kind and e["event_id"].startswith("$")}
         with closing(sqlite3.connect(dbs[i].as_uri()+"?mode=ro",uri=True)) as db:
             return {eid:(u,json.loads(c)) for eid,u,c in db.execute("SELECT event_id,sender,decrypted FROM event "
                 "WHERE room_id=? AND type='m.room.encrypted' AND decrypted_type=? AND event_id LIKE '$%'",(room,kind))}

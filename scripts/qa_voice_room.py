@@ -75,10 +75,19 @@ class Desktop:
         cores=client_cores(i)
         binary=os.getenv("UNTETHERED_QA_CLIENT") or root/"rust-client/target/debug/untethered-iced"
         self.client=stack.enter_context(child([*prefix,"taskset","-c",",".join(map(str,cores)),binary],env,stderr=log))
-        def ready():
+        def window():
             assert self.client.poll() is None,f"client {i+1} exited"
-            return self.cmd("xdotool","search","--onlyvisible","--name","Untethered.*"+re.escape(room),check=False).strip()
-        self.win=wait_for(f"client {i+1} synced {room}",ready,35).splitlines()[0]
+            return self.cmd("xdotool","search","--onlyvisible","--name","Untethered",check=False).strip()
+        self.win=wait_for(f"client {i+1} window",window,35).splitlines()[0]
+        def synced():
+            assert self.client.poll() is None,f"client {i+1} exited"
+            if room in self.cmd("xdotool","getwindowname",self.win):return True
+            # matrix-sdk shows its stored rooms before the first sync and may
+            # open another one first; open this room from the sidebar.
+            spot=next(((x,y) for w,x,y in self.words() if w==room.lower() and x<CHAT_X),None)
+            if spot:self.press(*spot)
+            return False
+        wait_for(f"client {i+1} synced {room}",synced,35)
         self.cmd("xdotool","windowmove",self.win,"0","0")
         self.cmd("xdotool","windowsize",self.win,"1180","760")
 

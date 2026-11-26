@@ -55,8 +55,10 @@ def isolated_env(tmp,backend,platform):
         folder = tmp/k
         folder.mkdir(mode=0o700)
         env[k] = str(folder)
+    # These fixtures prepare gomuks profiles, and with UNTETHERED_QA_ENGINE=matrix-sdk
+    # matrix-sdk ones too (test-media-interop.seed); matrix-sdk is the client's default.
     env.update(XDG_SESSION_TYPE=platform, DBUS_SESSION_BUS_ADDRESS="unix:path="+env["XDG_RUNTIME_DIR"]+"/bus", UNTETHERED_BACKEND=str(backend),
-               UNTETHERED_PROFILE=str(tmp/"seed"))
+               UNTETHERED_PROFILE=str(tmp/"seed"), UNTETHERED_ENGINE=os.environ.get("UNTETHERED_QA_ENGINE", "gomuks"))
     return env
 
 

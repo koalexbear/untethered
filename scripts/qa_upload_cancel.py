@@ -24,6 +24,8 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from PIL import Image
 from playwright.sync_api import sync_playwright
 
+from qa_web_login import gomuks_page
+
 SIZE = 16 * 1024 * 1024
 
 
@@ -143,7 +145,7 @@ def test(tmp, hs, port, web, backend, root, seed):
             assert len(uploads)==index+2 and uploads[-1]["received"]==SIZE
             assert media_count()==len(e)==index//2+1 and all(x["type"]=="m.room.encrypted" for x in e)
             print(f"{label} Retry: 1 completed media upload and exactly 1 new encrypted room event.",flush=True)
-        env={**os.environ,"UNTETHERED_UPLOAD_QA":str(tmp),"UNTETHERED_PROFILE":str(tmp/"seed"),"UNTETHERED_BACKEND":str(backend)}
+        env={**os.environ,"UNTETHERED_UPLOAD_QA":str(tmp),"UNTETHERED_PROFILE":str(tmp/"seed"),"UNTETHERED_BACKEND":str(backend),"UNTETHERED_ENGINE":"gomuks"}
         proc=subprocess.Popen(["cargo","test","--locked","-j3","--manifest-path","rust-client/Cargo.toml",
                                "throttled_encrypted_upload_cancel_retry","--","--ignored","--nocapture"],cwd=root,env=env)
         try:
@@ -178,7 +180,7 @@ def test(tmp, hs, port, web, backend, root, seed):
             browser=pw.chromium.launch(executable_path=os.environ.get("CHROMIUM","/usr/bin/chromium"),
                                        args=["--enable-unsafe-swiftshader","--ignore-gpu-blocklist"])
             page=browser.new_page(viewport={"width":1180,"height":760})
-            page.goto(web);page.wait_for_function("document.title.includes('Preview')",timeout=35000)
+            page.goto(gomuks_page(web));page.wait_for_function("document.title.includes('Preview')",timeout=35000)
             page.mouse.click(1095,73);page.wait_for_function("document.title.includes('Account')")
             for y,key in [(299,"server"),(381,"username"),(464,"password")]:
                 page.mouse.click(510,y);page.keyboard.type(fixture[key],delay=5)

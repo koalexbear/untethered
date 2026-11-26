@@ -13,11 +13,12 @@ notifications, moderation, permissions and spaces → call signaling → web
 build → remove gomuks. Throughout, the UI keeps reading
 `rooms::{Rooms, Room, Post}`; that model is the seam.
 
-## Status: steps 1 to 7 are in
+## Status: steps 1 to 8 are in; matrix-sdk is the default
 
-The native and web clients have a second engine built on `matrix-sdk` and
-`matrix-sdk-ui` **0.20.0**. gomuks stays the default. In the browser the
-engine runs in a Web Worker on IndexedDB stores (see
+The native and web clients run on `matrix-sdk` and `matrix-sdk-ui`
+**0.20.0** by default since [step 8](#step-8-matrix-sdk-by-default). gomuks is
+still built in for one release, as the way back. In the browser the engine
+runs in a Web Worker on IndexedDB stores (see
 [step 7](#step-7-the-web-client-on-the-sdk)).
 
 **0.20.0 since step 4.** Steps 1 to 3 stayed on 0.19.1 because 0.20.0 failed
@@ -28,21 +29,20 @@ round trip 10 times in a row, then the full acceptance script. The upgrade
 needed four small API changes. The call port needs APIs that only 0.20 has.
 
 ```sh
-UNTETHERED_ENGINE=matrix-sdk bash scripts/rust-client.sh
+UNTETHERED_ENGINE=gomuks bash scripts/rust-client.sh
 ```
 
-Any other value, or no value, starts gomuks. An unknown value also prints a
-warning. The variable is read at startup, so one binary can run either
-engine for side-by-side testing.
+starts gomuks instead. Any other value, or no value, starts matrix-sdk; an
+unknown value also prints a warning. The variable is read at startup, so one
+binary can run either engine for side-by-side testing.
 
-In the browser, open the page once with `?engine=matrix-sdk`. The page
-remembers the choice; `?engine=gomuks` switches back.
+In the browser, `?engine=gomuks` picks gomuks and the page remembers the
+choice; `?engine=matrix-sdk` switches back.
 
-**Why an environment variable rather than a Cargo feature:** QA and
-day-to-day comparison need both engines in the same build, and the default
-must stay gomuks. The cost is that every native build compiles the SDK (see
-[measurements](#c-build-time-and-binary-size)). Make it a feature only if
-that cost blocks someone before the SDK becomes the default.
+**Why an environment variable rather than a Cargo feature:** QA and the
+rollback release need both engines in the same build. The cost is that every
+native build compiles both (see
+[measurements](#c-build-time-and-binary-size)). Removing gomuks ends that.
 
 | Flow | Implementation | State |
 | --- | --- | --- |
@@ -107,7 +107,7 @@ Things worth knowing:
   yet." The mentions, search, report and community setup flows get their
   normal failure handling.
 
-Known differences on the new engine after step 6 (step 1 started with
+Known differences from gomuks on the default engine (step 1 started with
 many more; the step sections below say what closed them):
 - A message that only decrypts after its sync (late keys) raises no alert
   and no ring; gomuks waited for those.
@@ -115,8 +115,6 @@ many more; the step sections below say what closed them):
 - A text message that failed to send stays marked "Failed to send"; there
   is no Retry or Remove yet.
 - OAuth 2.0 / MAS sign-in is untested.
-- No full media call has run on this engine yet; the Element Call
-  fixtures assume gomuks profiles (see [step 6](#step-6-call-signaling-behind-a-seam)).
 - In the browser, sign-in is by password only: single sign-on and OAuth
   return to a loopback listener, which a page can't run. Emoji verification
   isn't reachable there either, because the recovery key dialog covers the
@@ -469,9 +467,9 @@ as `Event::CallFrame`, so the call UI is unchanged.
 
 ### Things worth knowing (step 6)
 
-- **A media call on the new engine is still to do.** The fixtures start
-  gomuks profiles and read gomuks databases, so they need an engine switch
-  before they can cover it. Do that before making the SDK the default.
+- **Media calls on the new engine** ran in
+  [step 8](#calls-on-matrix-sdk-with-real-media): both the DM and the
+  voice-room fixture pass with matrix-sdk clients.
 - **Declines read during another request:** gomuks delivers everything on
   one WebSocket, so frames read while waiting for an RPC answer are queued
   in the adapter. The first port collected them only in `next()`, and the
@@ -557,6 +555,61 @@ unchanged.
 - **Building:** `scripts/rust-web.sh` still builds the gomuks worker, since
   gomuks is the default. The engine needs nothing extra; Trunk copies
   `engine-worker.js`.
+
+## Step 8: matrix-sdk by default
+
+matrix-sdk is the default engine on the desktop and the web. gomuks stays in
+the build for one release as the way back (`UNTETHERED_ENGINE=gomuks`,
+`?engine=gomuks`), as the upgrade plan in
+[(b)](#existing-gomuks-profiles) recommends.
+
+| Change | Details |
+| --- | --- |
+| Default | `engine::selected()` is true unless gomuks is asked for |
+| Upgrade notice | When the profile has gomuks data but no matrix-sdk session, the sign-in screen explains the one-time sign-in: it's a new device, the recovery key restores encrypted history, and the old session can be removed under Devices. gomuks data is `<profile>/data/gomuks.db` on the desktop and anything in the origin private file system (gomuks's SQLite) in the browser |
+| Member names | Opening a room now reads its room state on this engine too, as gomuks's room open did, so members who haven't written yet have names. The voice-room fixture showed participants as user IDs before |
+| Call keys to new devices | The matrix-sdk call adapter asks the server for a user's keys before giving up on a device it doesn't know yet, as gomuks did. Without it, the first person in a voice room couldn't send their key to someone who had just joined |
+| QA scripts | The scripts that prepare gomuks profiles pin gomuks (`UNTETHERED_ENGINE=gomuks`, `?engine=gomuks`) until they are ported |
+| Debug builds | Crypto and SQLite dependencies are optimized in the dev profile. Unoptimized, each store's key derivation (200,000 PBKDF2 rounds) and Olm took seconds, and debug clients started too slowly for the fixtures |
+
+### Calls on matrix-sdk, with real media
+
+`UNTETHERED_QA_ENGINE=matrix-sdk` runs the Element Call fixtures'
+native clients on this engine. gomuks still creates each account and its
+recovery key; then a debug client signs the profile in on matrix-sdk and
+verifies it (`UNTETHERED_QA_SEED`, `engine/qa.rs`) and exits. The fixture's
+Synapse gets a relaxed login rate limit, because every account now signs in
+twice. The DM fixture reads device IDs from the matrix-sdk session and the
+decrypted rings and declines from `UNTETHERED_QA_CALL_EVENTS`, a debug-only
+log from the engine's call watcher, instead of gomuks's database.
+
+Both fixtures pass with matrix-sdk clients:
+
+- `--voice-room`: three-way encrypted audio (three GCM microphones, two
+  playback streams each, no self tone), participant names under the voice
+  channel, a client leaving with fresh audio for the other two, and a final
+  leave with no memberships, streams or rings left.
+- `--native-dm`: the caller cancelling, the callee declining the exact ring,
+  a ring expiring unanswered (45.9 s), mute and deafen, a TURN cut with fresh
+  audio on the original tracks, accepted calls both ways over TURN only, and
+  the caller's full network outage, recovered in 7.6 s without a new ring.
+
+They ran with this branch's scripts, which predate the Discord-style dock
+fixes on `claude/clever-nobel-e7c497`: the DM run read "Reconnecting…" from
+the dock, and the voice-room run skipped the mixer rows and logged the
+speaking-ring and departed-sidebar checks, which fail the same way on gomuks.
+
+### Still on gomuks
+
+- The other Element Call fixture modes and the web QA scripts still prepare
+  gomuks profiles; they need the same `UNTETHERED_QA_ENGINE` treatment.
+- `scripts/qa_matrix_sdk.py` and the fixtures use gomuks as a tool: to create
+  accounts and recovery keys, and as the encrypted peer. That can stay after
+  the client drops gomuks, or move to the engine's own seed mode.
+- Removing gomuks from the client: `backend/`, the gomuks worker build,
+  `GomuksSignal`, the gomuks branches in the feature modules (each now has a
+  typed engine branch first), the launcher scripts' gomuks download and the
+  package. Planned after the rollback release.
 
 ## (a) gomuks calls and their matrix-sdk equivalents
 
@@ -766,10 +819,10 @@ Most of these need 0.20.0 or later, which the engine uses since step 4.
 | Encrypted per-sender keys (`rtc_keys.rs`) | `send_to_device` / `listen_to_device` | `Encryption::encrypt_and_send_raw_to_device` (feature `experimental-send-custom-to-device`); `Client::subscribe_to_custom_to_device_messages([io.element.call.encryption_keys])` |
 | Memberships and ringing (`incoming.rs`) | `get_room_state`, decrypted `m.rtc.notification`/decline events | `Room::subscribe_to_state_events` for memberships; the Timeline already surfaces `RtcNotification { call_intent, declined_by, active_call_info }` |
 
-Still open: repeat the Element Call interop runs from
-`scripts/test-media-interop.py` (`--rtc-membership`, `--rtc-audio`,
-`--desktop-dm`, `--native-dm`, `--voice-room`) on the new engine before
-switching the default. When gomuks goes, delete `GomuksSignal` and the
+`--native-dm` and `--voice-room` pass on the new engine since step 8
+(`UNTETHERED_QA_ENGINE=matrix-sdk`). Still open: the other Element Call
+interop modes (`--rtc-membership`, `--rtc-audio`, `--desktop-dm` and the
+rest) on the new engine. When gomuks goes, delete `GomuksSignal` and the
 `Signal` blanket implementation with it. The to-device feature flag is the
 one place where an experimental SDK API sits on a user-facing path. Pin the
 SDK version, and treat each bump as a call regression test.
@@ -914,6 +967,8 @@ UNTETHERED_BACKEND=/path/to/gomuks uv run --python 3.13 --with matrix-synapse \
 6. **Web build:** done in step 7. Left: single sign-on and OAuth with a
    redirect back to the page, emoji verification on the web, and a smaller
    module (wasm-opt).
-7. **Remove gomuks:** delete `backend/`, `GomuksSignal` and the gomuks
-   scripts, and move the remaining call sites off `engine_rpc` to typed
-   commands.
+7. **Default:** matrix-sdk since step 8, with gomuks as the way back for
+   one release.
+8. **Remove gomuks** after that release: delete `backend/`, `GomuksSignal`
+   and the gomuks scripts, port the remaining QA scripts, and move the call
+   sites off `engine_rpc` to typed commands.

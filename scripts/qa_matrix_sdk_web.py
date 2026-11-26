@@ -56,6 +56,16 @@ def title(page, part, timeout=45):
     page.wait_for_function("p => document.title.includes(p)", arg=part, timeout=timeout * 1000)
 
 
+def field(page, caption):
+    """The input under a sign-in caption. The card recentres when it shows a
+    notice, so find the caption rather than a fixed position."""
+    def find():
+        shot = Image.open(io.BytesIO(page.screenshot())).convert("RGB")
+        return next(((x, y) for w, x, y in read(shot) if w.strip(".:") == caption), None)
+    _, y = wait_for(f"the {caption} field", find)
+    return 590, y + 37
+
+
 def open_room(page, name):
     """Click the room in the sidebar, then wait for its title."""
     point = wait_for(f"{name} in the sidebar",
@@ -126,12 +136,22 @@ def check_web(dist, fixture, peer, png, room_name="sdk-proof"):
         page.goto(url, wait_until="commit")
         try:
             title(page, "Preview", 90)
+            # gomuks's browser database lives in the origin private file
+            # system: with an entry there, the sign-in screen explains the
+            # switch to the new engine.
+            page.evaluate("""async () => {
+                const root = await navigator.storage.getDirectory();
+                await root.getFileHandle("gomuks-was-here", {create: true});
+            }""")
+            page.reload(wait_until="commit")
+            title(page, "Preview", 90)
             page.mouse.click(1095, 73)  # Account
             title(page, "Account")
-            # Homeserver, username and password fields of the sign-in card.
-            for y, field in [(299, "server"), (381, "username"), (464, "password")]:
-                page.mouse.click(510, y)
-                page.keyboard.type(fixture[field], delay=6)
+            wait_for("the upgrade notice", lambda: {"new", "engine", "recovery"} <= {w for w, _, _ in words(page)})
+            print("matrix-sdk in Chromium: the sign-in screen explains the switch from gomuks", flush=True)
+            for caption, value in [("HOMESERVER", "server"), ("USERNAME", "username"), ("PASSWORD", "password")]:
+                page.mouse.click(*field(page, caption))
+                page.keyboard.type(fixture[value], delay=6)
             page.keyboard.press("Enter")
             secret = page.get_by_label("Recovery key or passphrase")
             secret.fill(fixture["key"], timeout=90000)

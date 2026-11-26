@@ -35,9 +35,9 @@ pub fn selected() -> bool {
         }
         return choice == "matrix-sdk";
     }
-    storage
+    !storage
         .and_then(|s| s.get_item(ENGINE).ok().flatten())
-        .is_some_and(|choice| choice == "matrix-sdk")
+        .is_some_and(|choice| choice == "gomuks")
 }
 
 pub fn saved_session() -> Option<String> {

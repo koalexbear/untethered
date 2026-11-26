@@ -2147,6 +2147,11 @@ fn main() -> iced::Result {
     if web_sys::window().is_none() {
         return Ok(());
     }
+    // Call fixtures (debug builds): prepare a matrix-sdk profile and exit.
+    #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
+    if let Some(seed) = std::env::var_os("UNTETHERED_QA_SEED") {
+        std::process::exit(engine::qa::seed(&seed.to_string_lossy()));
+    }
     #[cfg(not(target_arch = "wasm32"))]
     fonts::configure();
     iced::application(App::boot, App::update, App::view)
