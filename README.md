@@ -419,9 +419,18 @@ Run `makepkg -s` in the checkout to build the **current local Git commit**.
 The package installs `/usr/bin/untethered` (and the camera helper in
 `/usr/lib/untethered`). Since `0.1.0-9` it no longer ships gomuks. Since
 `0.1.0-10` its desktop file is `io.github.koalexbear.Untethered.desktop`,
-the app ID its window and desktop portal requests carry.
+the app ID its window and desktop portal requests carry. Since `0.1.0.r144`
+the version names the commit it was built from
+(`0.1.0.r<commit count>.g<short hash>`), so each new commit is an upgrade.
 The packaged app keeps its Matrix device in `$XDG_DATA_HOME/untethered-iced`
 (default `~/.local/share/untethered-iced`), separate from the development profile.
 An [in-place upgrade from `0.1.0-2` to `0.1.0-6`](scripts/linux-upgrade.md#recorded-run-2026-11-25)
 preserved the device ID and both public keys. The upgraded app decrypted
 old and new messages from Element without signing in again.
+
+With paru, the repository can be a PKGBUILD repository: an `[untethered]`
+section in `paru.conf` with `Url = https://github.com/koalexbear/untethered.git`
+and `GenerateSrcinfo`. The repository commits no `.SRCINFO`, and without
+`GenerateSrcinfo` paru keeps the first one it generated, with that build's
+version. `paru -Syu` then fetches new commits along with the package
+databases and offers the upgrade; `paru -Sya` skips PKGBUILD repositories.

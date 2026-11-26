@@ -1,7 +1,11 @@
 # Local package: build the current checkout's committed Rust frontend.
+# The version names that commit (0.1.0.r<commit count>.g<short hash>), so
+# pacman and paru see every new commit as an upgrade. No pkgver() function:
+# makepkg would write its result over this line.
 pkgname=untethered
-pkgver=0.1.0
-pkgrel=10
+_commit=$(git -C "$startdir" rev-parse HEAD)
+pkgver=0.1.0.r$(git -C "$startdir" rev-list --count "$_commit").g$(git -C "$startdir" rev-parse --short=7 "$_commit")
+pkgrel=1
 pkgdesc='Native Rust/Iced Matrix client'
 arch=('x86_64')
 conflicts=('gomuks-native' 'unteathered')
@@ -18,7 +22,7 @@ depends=('ca-certificates' 'fontconfig' 'gcc-libs' 'glibc' 'libpipewire' 'libx11
 makedepends=('cargo' 'git' 'clang' 'glib2' 'cmake' 'protobuf')
 options=('!debug' '!lto')
 
-source=("untethered-src::git+file://$startdir#commit=$(git -C "$startdir" rev-parse HEAD)")
+source=("untethered-src::git+file://$startdir#commit=$_commit")
 sha256sums=('SKIP')
 
 build() {
