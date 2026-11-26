@@ -3,7 +3,13 @@
   "N6": {
    "branch": "claude/n6-system-tray",
    "claimed": "2026-11-26T18:02:00Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-26T19:18:23Z",
+     "by": "n6-system-tray",
+     "text": "Ready for review: 2 commits (326a19f, f28125e). Desktop is now an iced daemon (close to tray closes/reopens the window). Live fixture 'run_element.sh --tray plasma' passes end to end; hand-over in side-session notes n6-system-tray.md."
+    }
+   ],
    "owner": "n6-system-tray",
    "paths": [
     "PKGBUILD",
@@ -24,7 +30,7 @@
    ],
    "status": "review",
    "title": "System tray",
-   "updated": "2026-11-26T19:18:04Z",
+   "updated": "2026-11-26T19:18:23Z",
    "worktree": ".claude/worktrees/n6-system-tray"
   }
  },
