@@ -1,6 +1,7 @@
 """Independent second receiver for the two-device incoming DM call lifecycle."""
 import array
 import cmath
+import io
 import json
 import math
 import subprocess as sp
@@ -11,6 +12,8 @@ from pathlib import Path
 import qa_events
 from qa_native_paste import child, isolated_env, start_display, wait_for
 from qa_replies import screen_words
+from qa_web_login import caption_field
+from PIL import Image
 
 
 class Sibling:
@@ -56,10 +59,12 @@ class Sibling:
         self.win=wait_for("second Linux window",window)
         self.cmd("xdotool","windowsize",self.win,"1180","760","windowfocus",self.win)
         self.click(162,728);self.label("welcome")
-        # The fields sit under their captions; the card recentres for notices.
-        for caption,field in [("homeserver","server"),("username","username"),("password","password")]:
-            x,y=self.label(caption);self.click(590,y+37);self.type(account[field])
-        self.cmd("xdotool","key","Return");self.tap("passphrase");self.type(account["key"]);self.cmd("xdotool","key","Return")
+        for caption,field in [("HOMESERVER","server"),("USERNAME","username"),("PASSWORD","password")]:
+            self.click(*wait_for("second desktop "+caption,lambda:caption_field(self.image(),caption)));self.type(account[field])
+        self.cmd("xdotool","key","Return")
+        # The recovery key input sits under its RECOVERY KEY caption.
+        self.click(*wait_for("second desktop recovery key field",lambda:caption_field(self.image(),"RECOVERY"),30))
+        self.type(account["key"]);self.cmd("xdotool","key","Return")
         self.label("media-proof")
         self.profile=directory/"seed"
         def identity(profile):
@@ -72,6 +77,9 @@ class Sibling:
 
     def cmd(self,*args,check=True):
         return sp.run(args,env=self.env,capture_output=True,text=True,timeout=8,check=check)
+    def image(self):
+        raw=sp.check_output(["import","-window",self.win,"png:-"],env=self.env,timeout=6)
+        return Image.open(io.BytesIO(raw)).convert("RGB")
     def words(self):
         raw=sp.check_output(["import","-window",self.win,"png:-"],env=self.env,timeout=6)
         return screen_words(raw)

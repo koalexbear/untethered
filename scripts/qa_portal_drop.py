@@ -87,7 +87,8 @@ def test(tmp, hs, port, root, backend, seed):
         sx,sy=src["x"]+src["width"]//2,src["y"]+src["height"]//2
         dx,dy=dst["x"]+dst["width"]//2,dst["y"]+dst["height"]//2
         def select_room(index):
-            click(dst["x"]+157,dst["y"]+115+index*40)
+            # The sidebar's channel rows: media-proof, then zz-other, 35 px apart.
+            click(dst["x"]+157,dst["y"]+149+index*35)
             return wait_for("selected room",lambda:window("zz-other" if index else "media-proof"))
         # Let Wayland deliver the token, but delay the actual RetrieveFiles
         # answer so the user can switch chats while the drop is outstanding.

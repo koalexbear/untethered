@@ -56,7 +56,8 @@ def check_video(stack,tmp,root,backend,room,users,secret,sidechat,share=False):
         def locate():
             im=peer.kde.capture()
             for y in range(280,795):
-                xs=[x for x in range(195,278) if im.getpixel((x,y))[:3]==(181,51,69)]
+                # The disconnect button spans x≈261-294, up to the sidebar's edge.
+                xs=[x for x in range(195,312) if im.getpixel((x,y))[:3]==(181,51,69)]
                 if len(xs)>=32:
                     right=(xs[0]+xs[-1])//2
                     if slot==3:return right,y+11

@@ -7,15 +7,19 @@ from qa_native_paste import wait_for
 from qa_ui import read
 
 
+def caption_field(im,caption):
+    """The input under a sign-in caption (HOMESERVER, USERNAME, PASSWORD, or
+    RECOVERY on the verification card) in a
+    1180×760 screenshot of the sign-in card, or None. The card recentres when
+    it shows a notice, so this finds the caption rather than a fixed position;
+    it matches case, because the subtitle and placeholders repeat the words."""
+    at=next(((x,y) for w,x,y in read(im) if w.strip(".:")==caption),None)
+    return at and (590,at[1]+37)
+
+
 def field(page,caption):
-    """The input under a sign-in caption (HOMESERVER, USERNAME, PASSWORD). The
-    card recentres when it shows a notice, so find the caption rather than a
-    fixed position."""
-    def find():
-        shot=Image.open(io.BytesIO(page.screenshot())).convert("RGB")
-        return next(((x,y) for w,x,y in read(shot) if w.strip(".:")==caption),None)
-    _,y=wait_for(f"the {caption} field",find,30)
-    return 590,y+37
+    return wait_for(f"the {caption} field",lambda:caption_field(
+        Image.open(io.BytesIO(page.screenshot())).convert("RGB"),caption),30)
 
 
 def login_client(page,web,fixture,*,navigate=True):

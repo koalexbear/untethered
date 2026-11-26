@@ -8,7 +8,9 @@ if [ "${1-}" != "--unsupported-dm" ]; then
     : "${LK_JWT_SERVICE:?Set to the lk-jwt-service executable}"
 fi
 if [ "$#" -eq 0 ]; then set -- --rtc-audio; fi
-exec unshare -Urn sh -ec '
+# A mount namespace too: --portal-drop's document portal mounts FUSE, which
+# a user namespace allows only in a mount namespace of its own.
+exec unshare -Urnm sh -ec '
     ip link set lo up
     ip link add rtc-test type dummy
     ip addr add 192.0.2.2/24 dev rtc-test
