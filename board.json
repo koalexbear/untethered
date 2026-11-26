@@ -1,5 +1,28 @@
 {
- "claims": {},
+ "claims": {
+  "M3": {
+   "branch": "claude/m3-typing",
+   "claimed": "2026-11-26T23:47:37Z",
+   "notes": [],
+   "owner": "m3-typing",
+   "paths": [
+    "README.md",
+    "ROADMAP.md",
+    "rust-client/src/backend/mod.rs",
+    "rust-client/src/engine/*",
+    "rust-client/src/main.rs",
+    "rust-client/src/rooms/engine.rs",
+    "rust-client/src/typing.rs",
+    "rust-client/src/view.rs",
+    "rust-client/src/view/typing.rs",
+    "scripts/qa_typing*"
+   ],
+   "status": "working",
+   "title": "Typing indicators",
+   "updated": "2026-11-26T23:47:37Z",
+   "worktree": ".claude/worktrees/m3-typing"
+  }
+ },
  "done": [
   {
    "branch": "main",

@@ -2,7 +2,9 @@
 
 Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 
-Nothing claimed.
+| ID | Title | Agent | Branch | Status | Updated | Paths |
+|---|---|---|---|---|---|---|
+| M3 | Typing indicators | m3-typing | `claude/m3-typing` | working | 2026-11-26T23:47:37Z | `README.md`, `ROADMAP.md`, `rust-client/src/backend/mod.rs`, `rust-client/src/engine/*`, `rust-client/src/main.rs`, `rust-client/src/rooms/engine.rs`, `rust-client/src/typing.rs`, `rust-client/src/view.rs`, `rust-client/src/view/typing.rs`, `scripts/qa_typing*` |
 
 ## Done
 
