@@ -17,13 +17,14 @@ use matrix_sdk::{
     media::{MediaFormat, MediaRequestParameters, MediaThumbnailSettings},
     ruma::{
         MxcUri, OwnedMxcUri, UInt,
-        events::room::{MediaSource, message::MessageType},
+        events::room::{EncryptedFile, MediaSource, message::MessageType},
     },
 };
+use matrix_sdk_crypto::AttachmentEncryptor;
 use serde_json::{Value, json};
 use std::{
     collections::HashMap,
-    io::Cursor,
+    io::{Cursor, Read},
     sync::{Arc, Mutex},
 };
 
@@ -284,7 +285,9 @@ async fn read(file: &LocalFile) -> Result<Vec<u8>, Failure> {
     }
 }
 
-/// Upload one blob, reporting whole percents of it when `progress` is set.
+/// Upload one blob, encrypted for encrypted rooms like the SDK's
+/// `upload_encrypted_file`, reporting whole percents of it when `progress` is
+/// set.
 async fn send(
     client: &Client,
     mime: &mime::Mime,
@@ -292,21 +295,58 @@ async fn send(
     encrypt: bool,
     progress: Option<(i64, &Sender<Event>)>,
 ) -> Result<MediaSource, Failure> {
-    if encrypt {
-        let mut reader = Cursor::new(data);
-        let upload = client.upload_encrypted_file(&mut reader);
-        let watch = upload.subscribe_to_send_progress();
-        tokio::select! {
-            file = upload => file.map(|f| MediaSource::Encrypted(Box::new(f))).map_err(|_| Failure::Unreachable),
-            () = report(watch, progress) => unreachable!(),
-        }
-    } else {
-        let upload = client.media().upload(mime, data, None);
-        let watch = upload.subscribe_to_send_progress();
-        tokio::select! {
-            response = upload => response.map(|r| MediaSource::Plain(r.content_uri)).map_err(|_| Failure::Unreachable),
-            () = report(watch, progress) => unreachable!(),
-        }
+    if !encrypt {
+        return transmit(client, mime, data, progress)
+            .await
+            .map(MediaSource::Plain);
+    }
+    let mut plain = Cursor::new(data);
+    let mut encryptor = AttachmentEncryptor::new(&mut plain);
+    let mut ciphertext = Vec::new();
+    encryptor
+        .read_to_end(&mut ciphertext)
+        .map_err(|_| Failure::Failed)?;
+    let keys = encryptor.finish();
+    let uri = transmit(
+        client,
+        &mime::APPLICATION_OCTET_STREAM,
+        ciphertext,
+        progress,
+    )
+    .await?;
+    let file = EncryptedFile::new(uri, keys.encryption_info, keys.hashes);
+    Ok(MediaSource::Encrypted(Box::new(file)))
+}
+
+/// Upload bytes to the media repository with the SDK's own transport.
+#[cfg(not(target_arch = "wasm32"))]
+async fn transmit(
+    client: &Client,
+    mime: &mime::Mime,
+    data: Vec<u8>,
+    progress: Option<(i64, &Sender<Event>)>,
+) -> Result<OwnedMxcUri, Failure> {
+    let upload = client.media().upload(mime, data, None);
+    let watch = upload.subscribe_to_send_progress();
+    tokio::select! {
+        response = upload => response.map(|r| r.content_uri).map_err(|_| Failure::Unreachable),
+        () = report(watch, progress) => unreachable!(),
+    }
+}
+
+/// Upload bytes to the media repository over XHR, whose progress the SDK's
+/// fetch transport can't report (`xhr.rs`).
+#[cfg(target_arch = "wasm32")]
+async fn transmit(
+    client: &Client,
+    mime: &mime::Mime,
+    data: Vec<u8>,
+    progress: Option<(i64, &Sender<Event>)>,
+) -> Result<OwnedMxcUri, Failure> {
+    let (sent, watch) = async_channel::unbounded();
+    tokio::select! {
+        uri = super::xhr::upload(client, mime, data, sent) => uri,
+        () = report(Box::pin(watch), progress) => unreachable!(),
     }
 }
 
