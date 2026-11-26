@@ -148,6 +148,10 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
         # need the shared reader's sidebar pass.
         im=shot()
         return [(clean(w),x,y) for w,x,y in read(im.crop((0,0,CHAT_X,im.height)),dialogs=False,sidebar=True) if x>RAIL]
+    def sidebar_room(name):
+        # A channel or DM row: the topmost match, since the call dock below the
+        # room list names the call's room too. The DM row sits below 190 px.
+        return min(((x,y) for t,x,y in dock_words() if name in t),key=lambda p:p[1],default=None)
     def find(label):
         if label=="Voice":return call_ready()
         key=label.lower()
@@ -230,13 +234,14 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
             device_switch(widget,select,click,speakers,streams,cmd,secret,sockets,alice,bob,spare)
         elif controls:
             def change_room():
-                click("Sidechat")
+                x,y=wait_for("Sidechat sidebar entry",lambda:sidebar_room("sidechat"))
+                cmd("xdotool","mousemove","--window",win,str(x),str(y),"click","1",check=True)
                 wait_for("browsing another room",lambda:"Sidechat" in cmd("xdotool","getwindowname",win,text=True).stdout)
                 assert set(roster())=={alice,bob}
                 print("Switched the desktop to Sidechat during mute; DM call bar remained active.",flush=True)
             audio_controls(widget,click,lambda:speakers[0],streams,secret,sockets,alice,bob,change_room)
             # Return to the DM so the final assertion checks its Voice call button.
-            x,y=wait_for("original DM sidebar entry",lambda:next(((x,y) for t,x,y in words() if "media-proof" in t.lower() and x<265),None))
+            x,y=wait_for("original DM sidebar entry",lambda:sidebar_room("media-proof"))
             cmd("xdotool","mousemove","--window",win,str(x),str(y),"click","1",check=True)
             wait_for("original DM selected",lambda:"media-proof" in cmd("xdotool","getwindowname",win,text=True).stdout)
         else:
