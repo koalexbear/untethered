@@ -501,7 +501,10 @@ mod tests {
             ring.push(&[n; SAMPLES]);
         }
         assert_eq!(ring.samples.len(), LIMIT);
-        assert!(ring.pop(&mut frame) && frame[0] == 14, "oldest audio dropped");
+        assert!(
+            ring.pop(&mut frame) && frame[0] == 14,
+            "oldest audio dropped"
+        );
     }
 
     /// Records what reaches each opened output.
@@ -578,7 +581,10 @@ mod tests {
             voice.push(&[1_000; SAMPLES]);
             share.push(&[200; SAMPLES]);
         }
-        until("mixed audio", || fake.played.lock().unwrap().contains(&1_200)).await;
+        until("mixed audio", || {
+            fake.played.lock().unwrap().contains(&1_200)
+        })
+        .await;
         until("the reference", || heard.lock().unwrap().contains(&1_200)).await;
         assert_eq!((live(), opened()), (1, vec![None]));
 

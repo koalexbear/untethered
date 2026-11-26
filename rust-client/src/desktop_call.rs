@@ -34,10 +34,10 @@ mod channel;
 mod recovery;
 mod room_video;
 mod share_audio;
+use audio::{AudioIo, Kind, Mixer};
 pub(crate) use cameras::{CameraChoice, list_cameras};
 use recovery::{LeaseWatch, Lost, Rejoin, Step, close, encrypted_tracks, select_key, select_one};
 pub(super) use room_video::{Feed, Previews, VideoInput};
-use audio::{AudioIo, Kind, Mixer};
 
 /// The microphones, speakers and shareable app streams of this platform.
 pub(super) fn list_devices() -> futures_util::future::BoxFuture<'static, Result<Catalog>> {

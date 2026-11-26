@@ -254,7 +254,11 @@ pub(super) fn encrypted_tracks(
     if local.identity().0 != me || !lk.e2ee_manager().enabled() {
         return Err("Could not restore encrypted call tracks.");
     }
-    let Some(peer) = lk.remote_participants().get(&peer.to_owned().into()).cloned() else {
+    let Some(peer) = lk
+        .remote_participants()
+        .get(&peer.to_owned().into())
+        .cloned()
+    else {
         return Ok(None);
     };
     let Some(mic) = local_mic(lk) else {

@@ -13,7 +13,10 @@ pub(super) async fn deliver(notices: Vec<Notice>) -> zbus::Result<()> {
     .await?;
     for n in notices {
         let hints = HashMap::from([
-            ("desktop-entry", zvariant::Value::from(crate::app_id::APP_ID)),
+            (
+                "desktop-entry",
+                zvariant::Value::from(crate::app_id::APP_ID),
+            ),
             ("category", zvariant::Value::from("im.received")),
             ("suppress-sound", zvariant::Value::from(!n.sound)),
         ]);
