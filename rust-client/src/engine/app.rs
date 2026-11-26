@@ -773,6 +773,29 @@ mod tests {
         assert!(app.verified && app.recovery.is_empty());
     }
 
+    /// A restored session's account data comes from the engine's store before
+    /// the first account state, which waits on the homeserver.
+    #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
+    #[test]
+    fn account_data_before_the_restored_account_state_stays() {
+        let (mut app, _rx) = app();
+        app.engine_event(Event::ReadSharing(true));
+        app.engine_event(Event::PushRules(serde_json::json!({"global": {
+            "override": [], "content": [], "room": [], "sender": [], "underride": []}})));
+        app.engine_event(signed_in(false));
+        app.engine_event(signed_in(true));
+        assert!(app.alerts.ready, "the push rules survived");
+        assert!(
+            app.read_sharing.public,
+            "the read receipt preference survived"
+        );
+        app.engine_event(Event::Account(Account::default()));
+        assert!(
+            !app.alerts.ready && !app.read_sharing.public,
+            "signing out forgets them"
+        );
+    }
+
     #[test]
     fn engine_notices_explain_and_clear_only_themselves() {
         let (mut app, rx) = app();
