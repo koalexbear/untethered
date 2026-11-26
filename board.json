@@ -146,9 +146,9 @@
     "scripts/qa_context_menus.py",
     "scripts/test-media-interop.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Right-click menus",
-   "updated": "2026-11-26T17:28:37Z",
+   "updated": "2026-11-26T17:31:09Z",
    "worktree": ".claude/worktrees/m4-context-menus"
   }
  },
