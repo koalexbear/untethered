@@ -127,11 +127,13 @@
     "rust-client/src/reading.rs",
     "rust-client/src/view.rs",
     "rust-client/src/view/context_menu.rs",
-    "rust-client/src/view/room_people.rs"
+    "rust-client/src/view/room_people.rs",
+    "scripts/qa_context_menus.py",
+    "scripts/test-media-interop.py"
    ],
    "status": "working",
    "title": "Right-click menus",
-   "updated": "2026-11-26T16:45:52Z",
+   "updated": "2026-11-26T16:53:18Z",
    "worktree": ".claude/worktrees/m4-context-menus"
   }
  },
