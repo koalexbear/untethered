@@ -51,8 +51,13 @@ the client adds `https://`. This prototype supports password login and verificat
 with the account’s existing recovery key (grouped or compact) or recovery passphrase.
 The web verification form supports ordinary keyboard and context-menu paste.
 Single sign-on and emoji comparison (SAS) are desktop-only for now. Messages
-render as plain text. Profile pictures and server icons load from the
-homeserver, cropped to circles; anyone without one shows their initials.
+show the formatting Element sends: bold, italic, strikethrough, inline code,
+code blocks (hover one for **Copy**), quotes, lists, links, headings and
+spoilers, which stay hidden until clicked. Plain messages from bots and
+bridges get the same Markdown and Discord-style `||spoilers||`; raw HTML in
+them stays text ([checked against Element](scripts/rich-text.md)). Profile
+pictures and server icons load from the homeserver, cropped to circles;
+anyone without one shows their initials.
 
 **Discord-style layout:** Hover a message to show its toolbar: **Add Reaction**,
 **Reply**, **Edit** (your own text messages) and **Report Message** (other

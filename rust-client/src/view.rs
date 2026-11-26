@@ -11,6 +11,7 @@ mod hover;
 mod icons;
 mod mentions;
 mod reaction_bar;
+mod rich;
 mod room_people;
 mod room_search;
 mod sdk_account;
@@ -2658,6 +2659,13 @@ impl App {
                     .spacing(4)
                     .align_y(Center),
                 );
+            } else if let Some(doc) = p.rich.as_deref().filter(|_| caption) {
+                message = message.push(rich::view(
+                    self,
+                    p.event_id.as_deref(),
+                    doc,
+                    p.revision.is_some(),
+                ));
             } else if caption {
                 let mut spans = vec![span(p.text()).color(BODY)];
                 if p.revision.is_some() {

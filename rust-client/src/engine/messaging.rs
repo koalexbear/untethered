@@ -133,6 +133,7 @@ fn message(event: &TimelineEvent, row: i64, me: &str, sources: &Sources) -> Opti
         sender_avatar: None,
         time,
         body: String::new(),
+        formatted: None,
         kind: Kind::Undecryptable,
         encrypted,
         delivery: Delivery::Sent,
@@ -180,6 +181,7 @@ fn message(event: &TimelineEvent, row: i64, me: &str, sources: &Sources) -> Opti
             };
             Some(Message {
                 body: m.content.body().to_owned(),
+                formatted: super::timeline::html_body(&m.content.msgtype),
                 kind,
                 media,
                 text: matches!(m.content.msgtype, MessageType::Text(_)),

@@ -22,7 +22,7 @@ def screen_words(raw):
     return [(w.lower().strip(".,:|()"),x,y) for w,x,y in read(im)]
 
 
-def test_replies(tmp,hs,root,backend,seed,http,port,*,reactions=False,room_search=False,alerts=False,permissions=False,ban=False,kick=False,report=False,client_web=None,mentions=False,peer_hs=None,spaces=False,setup=False,composer=False):
+def test_replies(tmp,hs,root,backend,seed,http,port,*,rich=False,reactions=False,room_search=False,alerts=False,permissions=False,ban=False,kick=False,report=False,client_web=None,mentions=False,peer_hs=None,spaces=False,setup=False,composer=False):
     paths=[]
     def observe(method,path):
         if room_search or method=="GET" and "/context/" in path or setup and method=="POST" and path.endswith("/createRoom"):paths.append(unquote(path))
@@ -162,6 +162,11 @@ def test_replies(tmp,hs,root,backend,seed,http,port,*,reactions=False,room_searc
         if composer:
             from qa_composer_mentions import check_composer
             check_composer(page,room,uid,click,x,locate,ui,capture,messages)
+            return
+        if rich:
+            from qa_rich_text import check_rich
+            check_rich(page,room,locate,click,lambda pos:x("mousemove","--window",win,*map(str,pos)),
+                       lambda k:x("key","--clearmodifiers",k),capture,ui.composer())
             return
         if mentions:
             from qa_mentions_inbox import check_inbox

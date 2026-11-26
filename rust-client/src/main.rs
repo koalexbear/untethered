@@ -42,6 +42,7 @@ mod reactions;
 mod reading;
 mod replies;
 mod reports;
+mod rich;
 mod room_state;
 mod rooms;
 mod search;
@@ -240,6 +241,12 @@ enum Msg {
         bookmark: search::bookmark::Bookmark,
     },
     Copy,
+    /// A link in a message.
+    OpenLink(String),
+    /// Show a message's spoiler: its event and the spoiler's number.
+    RevealSpoiler(String, u16),
+    /// A code block's Copy button.
+    CopyCode(String),
     TogglePeople,
     /// Open or close the server dropdown in the channel sidebar.
     ServerMenu(bool),
@@ -391,6 +398,10 @@ struct App {
     search: Option<search::Search>,
     mentions: Option<mentions::Inbox>,
     editing: Option<edits::Editing>,
+    /// Spoilers clicked open: each message's spoiler numbers, by event.
+    spoilers: BTreeMap<String, BTreeSet<u16>>,
+    /// The code block copied last, which shows "Copied".
+    copied_code: Option<String>,
     reporting: Option<reports::Draft>,
     reaction_picker: Option<reactions::Picker>,
     editor: text_editor::Content,
@@ -478,6 +489,8 @@ impl App {
             search: None,
             mentions: None,
             editing: None,
+            spoilers: BTreeMap::new(),
+            copied_code: None,
             reporting: None,
             reaction_picker: None,
             editor: text_editor::Content::new(),
@@ -1717,6 +1730,14 @@ impl App {
                     return context_menu::copy(text);
                 }
             }
+            Msg::CopyCode(code) => {
+                self.copied_code = Some(code.clone());
+                return context_menu::copy(code);
+            }
+            Msg::OpenLink(url) => rich::open(&url),
+            Msg::RevealSpoiler(event, spoiler) => {
+                self.spoilers.entry(event).or_default().insert(spoiler);
+            }
             #[cfg(target_arch = "wasm32")]
             Msg::WebPaste(field) => {
                 return Task::perform(
@@ -1836,6 +1857,9 @@ fn main() -> iced::Result {
         .title(App::title)
         .font(include_bytes!("../assets/LiberationSans-Regular.ttf").as_slice())
         .font(include_bytes!("../assets/LiberationSans-Bold.ttf").as_slice())
+        // Italics and code in messages (rich.rs), the same on every platform.
+        .font(include_bytes!("../assets/LiberationSans-Italic.ttf").as_slice())
+        .font(include_bytes!("../assets/LiberationMono-Regular.ttf").as_slice())
         .default_font(iced::Font::with_name("Liberation Sans"))
         .theme(|_: &App| Theme::Dark)
         .window(iced::window::Settings {

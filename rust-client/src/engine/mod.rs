@@ -13,7 +13,7 @@ mod account;
 pub mod account_ui;
 mod alerts;
 pub mod app;
-mod browser;
+pub mod browser;
 #[cfg(target_os = "linux")]
 mod calls;
 mod compose;
@@ -583,6 +583,10 @@ pub struct Message {
     pub sender_avatar: Option<String>,
     pub time: i64,
     pub body: String,
+    /// The `org.matrix.custom.html` body of a text, notice or emote, as
+    /// matrix-sdk-ui sanitised it (reply fallback removed).
+    #[serde(default)]
+    pub formatted: Option<String>,
     pub kind: Kind,
     pub encrypted: bool,
     pub delivery: Delivery,
