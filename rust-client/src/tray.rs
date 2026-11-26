@@ -385,6 +385,14 @@ impl App {
     /// Show the window: open a new one from the tray, or raise the open one.
     pub fn open_window(&mut self) -> Task<Msg> {
         if let Some(id) = self.tray.window {
+            // Wayland lets no app restore or raise its own window without an
+            // activation token from a click in it, so on Linux a window that
+            // isn't focused (behind others, or minimised) opens anew in front.
+            #[cfg(target_os = "linux")]
+            if !self.focused {
+                self.tray.window = None;
+                return Task::batch([self.open_window(), window::close(id)]);
+            }
             return Task::batch([window::minimize(id, false), window::gain_focus(id)]);
         }
         let (id, opened) = window::open(crate::main_window());

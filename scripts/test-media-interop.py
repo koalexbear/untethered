@@ -179,6 +179,7 @@ def main():
     args.add_argument("--room-ptt",action="store_true",help="Verify key-gated microphone and uninterrupted peer audio in a three-client Linux voice room")
     args.add_argument("--global",dest="ptt_global",nargs="?",const="x11",choices=("x11","wayland"),help="With --room-ptt: hold the key while another window has focus (XInput2 on X11; the GlobalShortcuts portal under KWin)")
     args.add_argument("--upload-cancel",action="store_true",help="Test native and browser cancellation against a throttled Matrix upload")
+    args.add_argument("--tray",nargs="?",const="watcher",choices=("watcher","plasma"),help="Close the window to the system tray on a private KWin; Element messages and rings it; answer, mute and quit from the tray menu (plasma: draw the icon in Plasma's panel too)")
     args.add_argument("--context-menus",action="store_true",help="Drive the native right-click menus on a private KWin output; check the clipboard and the homeserver")
     args=args.parse_args()
     if args.room_kick and (args.room_ban or args.federated_ban):
@@ -203,6 +204,7 @@ def main():
     if args.multi_device_ring:args.incoming_dm=True
     if args.dnd_ring:args.incoming_dm=True
     if args.muted_peer:args.incoming_dm=True
+    if args.tray:args.incoming_dm=True
     if args.account_dnd or args.read_state or args.space_alerts=="web":args.browser_alerts=True
     if args.desktop_dm or args.incoming_dm or args.voice_room: args.rtc_audio=True
     assert BACKEND.is_file(), "Run scripts/rust-client.sh once or set UNTETHERED_BACKEND"
@@ -282,7 +284,7 @@ federation_domain_whitelist: []
                 test_replies(tmp,hs,ROOT,BACKEND,seed,http,gateway_port,rich=args.rich_text,reactions=args.reactions,room_search=args.room_search,alerts=args.room_alerts,permissions=args.room_permissions,ban=args.room_ban,kick=args.room_kick,report=args.message_report,mentions=args.mentions_inbox,spaces=args.space_alerts=="native",setup=args.community_setup,composer=args.composer_mentions)
                 return
             if args.rtc_audio:
-                audio_test(tmp,hs,server_name,rtc_service,ROOT,BACKEND,seed,http,service,desktop=args.desktop_dm or args.incoming_dm,incoming=args.incoming_dm,controls=args.call_controls,devices=args.call_devices,reconnect=args.call_reconnect,turn=args.call_turn,group=args.voice_room,share=args.window_share,camera=args.room_camera,ptt=args.room_ptt and (args.ptt_global or "window"),layout=args.room_layout,room_reconnect=args.room_reconnect,multi_ring=args.multi_device_ring,dnd_ring=args.dnd_ring,muted_peer=args.muted_peer,native_dm=args.native_dm,unsupported_dm=args.unsupported_dm,dm_video=args.dm_video,element_video=args.element_video,switch_camera=args.switch_camera)
+                audio_test(tmp,hs,server_name,rtc_service,ROOT,BACKEND,seed,http,service,desktop=args.desktop_dm or args.incoming_dm,incoming=args.incoming_dm,controls=args.call_controls,devices=args.call_devices,reconnect=args.call_reconnect,turn=args.call_turn,group=args.voice_room,share=args.window_share,camera=args.room_camera,ptt=args.room_ptt and (args.ptt_global or "window"),layout=args.room_layout,room_reconnect=args.room_reconnect,multi_ring=args.multi_device_ring,dnd_ring=args.dnd_ring,muted_peer=args.muted_peer,native_dm=args.native_dm,unsupported_dm=args.unsupported_dm,dm_video=args.dm_video,element_video=args.element_video,switch_camera=args.switch_camera,tray=args.tray)
                 return
             if args.rtc_membership:
                 from qa_rtc_membership import test

@@ -143,6 +143,7 @@ record. On Linux the icon is a StatusNotifierItem: KDE Plasma and most panels
 show it, GNOME needs the AppIndicator extension. On a desktop without a tray,
 closing the window quits. Windows has no calls or notifications yet, so there
 the menu's Mute, Deafen and Do Not Disturb stay disabled.
+[Live test on KWin and Plasma](scripts/tray.md).
 
 **Mentions inbox:** Choose **Mentions** in the sidebar to see messages that
 address your Matrix ID across joined rooms. Select an entry to open that

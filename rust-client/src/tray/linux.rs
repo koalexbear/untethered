@@ -40,7 +40,7 @@ impl Link {
 /// so keep trying for a while before the app falls back to its window.
 pub async fn start(events: Sender<Event>, patient: bool) -> Option<Link> {
     let shown = Arc::new(Mutex::new(Snapshot::default()));
-    let mut tries = if patient { 20 } else { 1 };
+    let mut tries = if patient { 10 } else { 1 };
     loop {
         let item = Item {
             shown: shown.clone(),
