@@ -84,11 +84,15 @@
     "rust-client/src/view.rs",
     "rust-client/src/view/autocomplete.rs",
     "rust-client/src/view/emoji_picker.rs",
-    "rust-client/src/view/reaction_bar.rs"
+    "rust-client/src/view/reaction_bar.rs",
+    "scripts/qa_composer_mentions.py",
+    "scripts/qa_replies.py",
+    "scripts/replies-element.md",
+    "scripts/test-media-interop.py"
    ],
    "status": "working",
    "title": "Composer autocomplete",
-   "updated": "2026-11-26T16:41:13Z",
+   "updated": "2026-11-26T16:46:53Z",
    "worktree": ".claude/worktrees/m2-autocomplete"
   },
   "M4": {
