@@ -1,39 +1,5 @@
 {
- "claims": {
-  "N6": {
-   "branch": "claude/n6-system-tray",
-   "claimed": "2026-11-26T18:02:00Z",
-   "notes": [
-    {
-     "at": "2026-11-26T19:18:23Z",
-     "by": "n6-system-tray",
-     "text": "Ready for review: 2 commits (326a19f, f28125e). Desktop is now an iced daemon (close to tray closes/reopens the window). Live fixture 'run_element.sh --tray plasma' passes end to end; hand-over in side-session notes n6-system-tray.md."
-    }
-   ],
-   "owner": "n6-system-tray",
-   "paths": [
-    "PKGBUILD",
-    "README.md",
-    "rust-client/Cargo.lock",
-    "rust-client/Cargo.toml",
-    "rust-client/src/engine/mod.rs",
-    "rust-client/src/main.rs",
-    "rust-client/src/tray.rs",
-    "rust-client/src/tray/**",
-    "rust-client/src/view.rs",
-    "rust-client/src/view/tray.rs",
-    "scripts/qa_kwin.py",
-    "scripts/qa_rtc_audio.py",
-    "scripts/qa_tray.py",
-    "scripts/test-media-interop.py",
-    "scripts/tray*.md"
-   ],
-   "status": "review",
-   "title": "System tray",
-   "updated": "2026-11-26T19:18:23Z",
-   "worktree": ".claude/worktrees/n6-system-tray"
-  }
- },
+ "claims": {},
  "done": [
   {
    "branch": "main",
@@ -70,6 +36,15 @@
    "owner": "m1-rich-text",
    "result": "merged as 62d12ae",
    "title": "Rich text in received messages"
+  },
+  {
+   "branch": "claude/n6-system-tray",
+   "claimed": "2026-11-26T18:02:00Z",
+   "finished": "2026-11-26T19:28:05Z",
+   "id": "N6",
+   "owner": "n6-system-tray",
+   "result": "merged as 4145624",
+   "title": "System tray"
   }
  ]
 }
