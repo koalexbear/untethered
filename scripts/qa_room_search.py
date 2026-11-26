@@ -1,7 +1,7 @@
 """A real cache, cold UI, cross-room decoy and pixel-level reading bookmark."""
 import re
-import sqlite3
 from urllib.parse import quote
+import qa_events
 from qa_native_paste import wait_for
 from qa_ui import CHAT_X
 
@@ -23,12 +23,12 @@ def check_room_search(tmp,hs,page,room,native,hdr,http,messages,restart,words,lo
         return [p,m,e,await send(r,'Context beacon'),await send(other,'Saffron comet diversion')];
     }""",[room,other])
     gap=messages([f"Ledger sequence {i:03}" for i in range(150)])
-    # Both rooms must actually be cached and decrypted on the searching device.
-    with sqlite3.connect((tmp/"seed/data/gomuks.db").as_uri()+"?mode=ro",uri=True) as db:
-        def cached(eid,r):
-            return db.execute("select json_extract(decrypted,'$.body') from event where event_id=? and room_id=? and type='m.room.encrypted'",(eid,r)).fetchone()
-        wait_for("both encrypted rooms indexed on this device",lambda:cached(edit,room)==("* Saffron comet launch",)
-                 and cached(decoy,other)==("Saffron comet diversion",) and cached(gap[-1],room)==("Ledger sequence 149",),35)
+    # Both rooms must actually be synced and decrypted on the searching device.
+    def cached(eid,r):
+        e=qa_events.event(tmp/"seed",r,eid)
+        return e and e["encrypted"] and e["content"].get("body")
+    wait_for("both encrypted rooms decrypted on this device",lambda:cached(edit,room)=="* Saffron comet launch"
+             and cached(decoy,other)=="Saffron comet diversion" and cached(gap[-1],room)=="Ledger sequence 149",35)
     restart()
     def point(ws,w):return next(((xx,y) for word,xx,y in ws if word==w and xx>CHAT_X),None)
     def markers(ws):
@@ -76,9 +76,8 @@ def check_room_search(tmp,hs,page,room,native,hdr,http,messages,restart,words,lo
             msgtype:'m.text',body:'* '+body,'m.new_content':{msgtype:'m.text',body},
             'm.relates_to':{rel_type:'m.replace',event_id:target}})).event_id
     }""",[room,gap[above]])
-    with sqlite3.connect((tmp/"seed/data/gomuks.db").as_uri()+"?mode=ro",uri=True) as db:
-        wait_for("incoming append and above-bookmark edit processed",lambda:db.execute(
-            "select count(*) from event where event_id in (?,?) and decrypted is not null",(new[-1],change)).fetchone()[0]==2)
+    wait_for("incoming append and above-bookmark edit processed",
+             lambda:qa_events.event(tmp/"seed",room,new[-1]) and qa_events.event(tmp/"seed",room,change))
     tap("timeline")
     def restored(ws):
         rows=markers(ws)

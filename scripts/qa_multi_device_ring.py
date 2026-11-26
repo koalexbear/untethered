@@ -3,13 +3,12 @@ import array
 import cmath
 import json
 import math
-import sqlite3
 import subprocess as sp
 import threading
 import time
-from contextlib import closing
 from pathlib import Path
 
+import qa_events
 from qa_native_paste import child, isolated_env, start_display, wait_for
 from qa_replies import screen_words
 
@@ -57,17 +56,17 @@ class Sibling:
         self.win=wait_for("second Linux window",window)
         self.cmd("xdotool","windowsize",self.win,"1180","760","windowfocus",self.win)
         self.click(162,728);self.label("welcome")
-        for y,field in [(299,"server"),(381,"username"),(464,"password")]:
-            self.click(510,y);self.type(account[field])
+        # The fields sit under their captions; the card recentres for notices.
+        for caption,field in [("homeserver","server"),("username","username"),("password","password")]:
+            x,y=self.label(caption);self.click(590,y+37);self.type(account[field])
         self.cmd("xdotool","key","Return");self.tap("passphrase");self.type(account["key"]);self.cmd("xdotool","key","Return")
         self.label("media-proof")
-        self.db=directory/"seed/data/gomuks.db"
-        def identity(db):
-            with closing(sqlite3.connect(db.as_uri()+"?mode=ro",uri=True)) as c:
-                [(me,dev)]=c.execute("SELECT user_id,device_id FROM account")
-            assert me==user
-            return dev
-        self.main_id=identity(tmp/"seed/data/gomuks.db");self.other_id=identity(self.db)
+        self.profile=directory/"seed"
+        def identity(profile):
+            session=json.loads((profile/"matrix-sdk/session.json").read_text())["session"]
+            assert session["user_id"]==user
+            return session["device_id"]
+        self.main_id=identity(tmp/"seed");self.other_id=identity(self.profile)
         assert self.main_id!=self.other_id
         print(f"Two verified Linux devices on {user}: {self.main_id} and {self.other_id}, separate X and audio servers.",flush=True)
 
@@ -89,10 +88,9 @@ class Sibling:
         self.label("accept");self.label("decline")
         wait_for("second speaker chime (440 + 620 Hz)",lambda:self.ring_frames>baseline,5)
         assert self.playback()==["Incoming call"] and self.capture_starts==0
-        with closing(sqlite3.connect(self.db.as_uri()+"?mode=ro",uri=True)) as c:
-            [(ty,body)]=c.execute("SELECT decrypted_type,decrypted FROM event WHERE type='m.room.encrypted' "
-                "AND room_id=? AND event_id=? AND sender=?",(room,ring,peer))
-        assert ty=="org.matrix.msc4075.rtc.notification" and json.loads(body)["notification_type"]=="ring"
+        e=wait_for("second device decrypted the ring",lambda:qa_events.event(self.profile,room,ring),5)
+        assert e["encrypted"] and e["sender"]==peer,e
+        assert e["type"]=="org.matrix.msc4075.rtc.notification" and e["content"]["notification_type"]=="ring"
     def quiet(self):
         wait_for("second speaker silent and ringtone stream removed",lambda:self.silent>=6 and not self.playback(),6)
         assert self.capture_starts==0

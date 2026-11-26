@@ -1,11 +1,11 @@
 """Use two distinct receivers, their real desktop notification servers and a separate sender."""
-import json
-import sqlite3
 import subprocess as sp
-from contextlib import ExitStack, closing
+from contextlib import ExitStack
 from pathlib import Path
 from urllib.parse import quote
 
+import qa_events
+from qa_events import use_profile
 from qa_native_paste import child,isolated_env,start_display,wait_for
 from qa_replies import screen_words
 from qa_room_alerts import NotificationDesktop
@@ -15,8 +15,7 @@ from qa_ui import CHAT_X
 def verify_dnd(stack,tmp,hs,backend,hdr,http,me,room,page,peer,words,click_word,send,hide,browser_desk):
     root=Path(__file__).resolve().parents[1]
     folder=tmp/"desktop";folder.mkdir()
-    env=isolated_env(folder,backend,"x11")
-    env["UNTETHERED_PROFILE"]=str(tmp/"seed")
+    env=use_profile(isolated_env(folder,backend,"x11"),tmp/"seed")
     # Bare Xvfb has no window manager to restack an existing notification
     # window above a newly launched GUI. Keep the popup area unobstructed.
     start_display(stack,folder,env,"x11",1820,980)
@@ -56,14 +55,9 @@ def verify_dnd(stack,tmp,hs,backend,hdr,http,me,room,page,peer,words,click_word,
     def deliver(body,target,notify,r=room):
         assert page.evaluate("document.hidden && !document.hasFocus()") and desk.run("xdotool","getwindowfocus")==desk.other
         eid=send(body,target,True,notify,r)
-        with closing(sqlite3.connect((tmp/"seed/data/gomuks.db").as_uri()+"?mode=ro",uri=True)) as db:
-            def check():
-                row=db.execute("SELECT decrypted,unread_type FROM event WHERE event_id=? AND room_id=? AND type='m.room.encrypted'",(eid,r)).fetchone()
-                if row and row[0]:
-                    c=json.loads(row[0])
-                    assert (c["body"],c["m.mentions"].get("user_ids",[]),bool(row[1]&2))==(body,[target] if target else [],notify)
-                    return True
-            wait_for("desktop decrypted "+body,check,20)
+        e=wait_for("desktop decrypted "+body,lambda:qa_events.event(tmp/"seed",r,eid),20)
+        c=e["content"]
+        assert e["encrypted"] and (c["body"],c["m.mentions"].get("user_ids",[]),e["notify"])==(body,[target] if target else [],notify),e
         if notify:
             for d,app in ((desk,"Untethered"),(browser_desk,"Chromium")):
                 try:d.popup(body,appname=app,on_visible=(lambda:still_hidden(page)) if app=="Chromium" else None)

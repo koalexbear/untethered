@@ -15,6 +15,7 @@ from urllib.parse import quote, urlsplit
 import requests
 from PIL import Image, ImageDraw
 from playwright.sync_api import sync_playwright
+import qa_events
 from qa_kwin import KWin
 from qa_native_paste import child, wait_for
 from qa_upload_cancel import slow_gateway
@@ -190,12 +191,14 @@ def round_trip(tmp,hs,gateway,uploads,release,root,backend,seed,plain,web_client
         if plain:check_plain_objects(hs,headers,all_events,original,alice,bob,uploads)
         back_ids={e["event_id"] for e in all_events if e["sender"]==bob}
         assert len(back_ids)==2
-        with sqlite3.connect((tmp/"seed/data/gomuks.db").as_uri()+"?mode=ro",uri=True) as db:
-            def read_back():
-                return db.execute("select event_id,coalesce(decrypted,content) from event where room_id=? and sender=? and type=?",(room,bob,wire_type)).fetchall()
-            rows=wait_for("native device received both return events",lambda: rows if len(rows:=read_back())==2 and all(json.loads(c).get("msgtype") for _,c in rows) else None)
-            assert {row[0] for row in rows}==back_ids
-            assert {json.loads(row[1]).get("filename",json.loads(row[1]).get("body")) for row in rows}=={p.name for p in returned.values()}
+        def read_back():
+            # Decrypted (or plain) on the native device, as its sync brought them.
+            rows={e["event_id"]:e["content"] for e in qa_events.entries(tmp/"seed") if e["room_id"]==room and
+                  e["sender"]==bob and e["encrypted"]==(wire_type=="m.room.encrypted") and qa_events.decrypted(e)}
+            return rows if len(rows)==2 and all(c.get("msgtype") for c in rows.values()) else None
+        rows=wait_for("native device received both return events",read_back)
+        assert set(rows)==back_ids
+        assert {c.get("filename",c.get("body")) for c in rows.values()}=={p.name for p in returned.values()}
         select_room("media-proof")
         # Wait for both the newly focused room's read marker and both
         # decoded previews: removing the unread divider moves Save buttons.

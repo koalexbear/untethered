@@ -7,7 +7,6 @@ import os
 from pathlib import Path
 import re
 import signal
-import sqlite3
 import subprocess as sp
 import threading
 import time
@@ -18,6 +17,7 @@ import requests
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from PIL import Image
 
+import qa_events
 from qa_native_paste import child, isolated_env, start_display, wait_for
 from qa_upload_cancel import slow_gateway
 
@@ -134,10 +134,7 @@ def test(tmp, hs, port, root, backend, seed):
         found={}
         for event in accepted:
             assert event["type"]=="m.room.encrypted"
-            def persisted():
-                with sqlite3.connect((tmp/"seed/data/gomuks.db").as_uri()+"?mode=ro",uri=True) as db:
-                    return db.execute("select decrypted from event where event_id=?",(event["event_id"],)).fetchone()
-            content=json.loads(wait_for("confirmed native event row",persisted)[0])
+            content=wait_for("the native device decrypted its event",lambda:qa_events.event(tmp/"seed",room,event["event_id"]))["content"]
             assert content["filename"] not in found
             desc=content["file"];server,mid=desc["url"][6:].split("/",1)
             blob=requests.get(f"{hs}/_matrix/client/v1/media/download/{quote(server,safe='')}/{quote(mid,safe='')}",headers=headers,timeout=10)

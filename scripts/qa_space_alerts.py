@@ -1,12 +1,11 @@
 """Real space hierarchy, encrypted child rooms, Matrix rules and visible notifications."""
 import base64
-import json
-import sqlite3
 import subprocess as sp
-from contextlib import closing
 from pathlib import Path
 from urllib.parse import quote
 
+import qa_events
+from qa_events import use_profile
 from qa_ui import CHAT_X
 from qa_native_paste import child,isolated_env,start_display,wait_for
 
@@ -19,14 +18,9 @@ def native_sender(tmp,hs,page,hdr,http):
             body:b,msgtype:'m.text','m.mentions':u?{user_ids:[u]}:{}})).event_id""",[room,body,target])
         wire=http("GET",hs+"/_matrix/client/v3/rooms/"+quote(room,safe="")+"/event/"+quote(eid,safe=""),headers=hdr).json()
         assert wire["type"]=="m.room.encrypted" and wire["content"]["algorithm"]=="m.megolm.v1.aes-sha2"
-        with closing(sqlite3.connect((tmp/"seed/data/gomuks.db").as_uri()+"?mode=ro",uri=True)) as db:
-            def check():
-                row=db.execute("SELECT decrypted,unread_type FROM event WHERE room_id=? AND event_id=?",(room,eid)).fetchone()
-                if row and row[0]:
-                    c=json.loads(row[0])
-                    assert (c["body"],c["m.mentions"].get("user_ids",[]),bool(row[1]&2))==(body,[target] if target else [],notify),(c,row[1])
-                    return True
-            wait_for("native decrypted "+body,check)
+        e=wait_for("native decrypted "+body,lambda:qa_events.event(tmp/"seed",room,eid))
+        c=e["content"]
+        assert e["encrypted"] and (c["body"],c["m.mentions"].get("user_ids",[]),e["notify"])==(body,[target] if target else [],notify),e
         return eid
     return send
 
@@ -35,7 +29,7 @@ def companion(stack,tmp,backend):
     """A separately signed-in receiver sharing this web account's push rules."""
     from qa_room_alerts import NotificationDesktop
     d=tmp/"companion";d.mkdir()
-    env=isolated_env(d,backend,"x11");env["UNTETHERED_PROFILE"]=str(tmp/"seed")
+    env=use_profile(isolated_env(d,backend,"x11"),tmp/"seed")
     start_display(stack,d,env,"x11",1820,980)
     desk=NotificationDesktop(stack,d,env)
     p=stack.enter_context(child([Path(__file__).resolve().parents[1]/"rust-client/target/debug/untethered-iced"],env))
@@ -47,10 +41,10 @@ def companion(stack,tmp,backend):
     desk.run("xdotool","windowmove",win,"0","0","windowsize",win,"1180","760")
     desk.focus(desk.other)
     def decoded(room,eid,body,notify):
-        with closing(sqlite3.connect((tmp/"seed/data/gomuks.db").as_uri()+"?mode=ro",uri=True)) as db:
-            wait_for("companion decoded and evaluated "+body,lambda:db.execute("SELECT json_extract(decrypted,'$.body'),"
-                "(unread_type & 2) != 0 FROM event WHERE room_id=? AND event_id=? AND type='m.room.encrypted'",
-                (room,eid)).fetchone()==(body,notify))
+        def evaluated():
+            e=qa_events.event(tmp/"seed",room,eid)
+            return e and e["encrypted"] and (e["content"].get("body"),e["notify"])
+        assert wait_for("companion decoded and evaluated "+body,evaluated)==(body,notify)
     return desk,decoded
 
 

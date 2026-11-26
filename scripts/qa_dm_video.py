@@ -1,9 +1,7 @@
 """Ring and answer two real clients. Verify camera pixels rather than just track metadata."""
-import json
-import sqlite3
 import subprocess as sp
-from contextlib import closing
 
+import qa_events
 from qa_desktop_dm import sfu_participants
 from qa_kwin import KWin
 from qa_native_paste import child,isolated_env,wait_for
@@ -73,10 +71,12 @@ def check_video(stack,tmp,root,backend,room,users,secret,sidechat,share=False):
     a.click("video")
     try:wait_for("incoming video call accepts camera-off",lambda:{"incoming","video","accept","off"}<={w for w,_,_ in b.words()},15)
     except RuntimeError:print("Caller labels:",a.words(),"callee labels:",b.words(),flush=True);raise
-    with closing(sqlite3.connect((tmp/"peer/seed/data/gomuks.db").as_uri()+"?mode=ro",uri=True)) as db:
-        [(ring,body)]=db.execute("SELECT event_id,decrypted FROM event WHERE room_id=? AND type='m.room.encrypted' "
-            "AND decrypted_type='org.matrix.msc4075.rtc.notification'",(room,))
-        assert json.loads(body)["m.call.intent"]=="video"
+    # The callee's device decrypted exactly one ring, a video one.
+    def rings():
+        return {e["event_id"]:e["content"] for e in qa_events.entries(tmp/"peer/seed") if e["room_id"]==room
+                and e["encrypted"] and e["type"]=="org.matrix.msc4075.rtc.notification"}
+    [(ring,body)]=wait_for("callee's decrypted ring",rings,5).items()
+    assert body["m.call.intent"]=="video"
     assert not tracks() and all(not readers(d) for d in desks)
     b.click("accept")
     grant_camera(a.kde,lambda:(users[0],"CAMERA") in tracks())
@@ -178,11 +178,11 @@ def check_video(stack,tmp,root,backend,room,users,secret,sidechat,share=False):
     click_at(*wait_for("preserved Sidechat draft",draft))
     a.kde.keys(("Down","\ue007"),("Up","\ue007"))
     def delivered():
-        with closing(sqlite3.connect((tmp/"peer/seed/data/gomuks.db").as_uri()+"?mode=ro",uri=True)) as db:
-            return list(db.execute("SELECT room_id,type FROM event WHERE sender=? AND "
-                "decrypted_type='m.room.message' AND json_extract(decrypted,'$.body')=?",(users[0],marker)))
+        return {(e["event_id"],e["room_id"],e["encrypted"]) for e in qa_events.entries(tmp/"peer/seed")
+                if e["sender"]==users[0] and e["type"]=="m.room.message" and e["content"].get("body")==marker}
     wait_for("peer decrypted Sidechat message",delivered,20)
-    assert delivered()==[(other,"m.room.encrypted")]
+    [(_,in_room,encrypted)]=delivered()
+    assert (in_room,encrypted)==(other,True)
     print("Sidechat: peer video changed in the sidebar dock; hide/show preserved the call. Open call view restored the full stage, "
           "Sidechat kept its draft, and the peer decrypted it only in Sidechat. Same four GCM SIDs and camera readers.",flush=True)
     dock_control(b,1)

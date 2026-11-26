@@ -1,4 +1,4 @@
-"""Observe the Rust/gomuks device from a separate actual Element Web session."""
+"""Observe the Rust client's matrix-sdk device from a separate actual Element Web session."""
 import json
 import os
 import shutil
@@ -23,8 +23,10 @@ def test(tmp, hs, root, backend, seed, http):
     service = hs+"/qa-focus"
     (tmp/"rtc.json").write_text(json.dumps({"room": room, "service": service}))
     user = "@"+native["username"]+":test.invalid"
+    # The engine test (engine/calls.rs) restores the device seed() signed in;
+    # seed() left its store passphrase in the session file.
     env = {**os.environ, "UNTETHERED_RTC_QA": str(tmp), "UNTETHERED_PROFILE": str(tmp/"seed"),
-           "UNTETHERED_BACKEND": str(backend), "UNTETHERED_ENGINE": "gomuks"}
+           "UNTETHERED_KEYRING": "off"}
     with element_server(hs) as web, sync_playwright() as pw:
         browser = pw.chromium.launch(executable_path=os.environ.get("CHROMIUM") or shutil.which("chromium"))
         try:
@@ -64,7 +66,7 @@ def test(tmp, hs, root, backend, seed, http):
                     start = time.monotonic()
                     page.wait_for_timeout(4200)
                     (tmp/"restart").touch()
-                    until("gomuks acknowledged delayed leave restart", lambda: (tmp/"restarted").exists())
+                    until("the device restarted its delayed leave", lambda: (tmp/"restarted").exists())
                     # Past the first eight-second deadline, before the renewed deadline.
                     while time.monotonic()-start < 9:
                         assert roster() == wanted
@@ -81,11 +83,11 @@ def test(tmp, hs, root, backend, seed, http):
                     content = http("GET", room_api+"/state/org.matrix.msc3401.call.member/"+quote(
                         f"_{user}_{device}_m.call", safe=""), headers=ph).json()
                     assert content == {}
-                    print("Disconnected native backend: Synapse published the delayed leave; Element roster empty.", flush=True)
+                    print("Disconnected native device: Synapse published the delayed leave; Element roster empty.", flush=True)
                 finally:
                     if proc.poll() is None:
-                        # Let the driver shut its own gomuks child down before the
-                        # homeserver and profile are removed, also on observer failure.
+                        # Let the test finish before the homeserver and profile
+                        # are removed, also on observer failure.
                         for marker in ("restart", "leave", "rejoin"):
                             (tmp/marker).touch()
         finally:

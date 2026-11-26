@@ -7,6 +7,8 @@ from pathlib import Path
 from urllib.parse import quote
 
 import requests
+import qa_events
+from qa_events import use_profile
 from qa_native_paste import child,isolated_env,start_display,wait_for
 from qa_replies import screen_words
 from qa_ui import CHAT_X
@@ -15,7 +17,7 @@ from qa_ui import CHAT_X
 def check_read_state(stack,tmp,hs,backend,room,me,hdr,http,web,peer,web_words):
     root=Path(__file__).resolve().parents[1]
     folder=tmp/"reader";folder.mkdir()
-    env=isolated_env(folder,backend,"x11");env["UNTETHERED_PROFILE"]=str(tmp/"seed")
+    env=use_profile(isolated_env(folder,backend,"x11"),tmp/"seed")
     start_display(stack,folder,env,"x11")
     stack.enter_context(child(["xmessage","-title","Focus control","-geometry","150x70+10+800","Other task"],env))
     def x(*args):return sp.check_output(["xdotool",*map(str,args)],env=env,text=True,timeout=6).strip()
@@ -63,7 +65,7 @@ def check_read_state(stack,tmp,hs,backend,room,me,hdr,http,web,peer,web_words):
             msgtype:'m.text',body,'m.mentions':u?{user_ids:[u]}:{}})).event_id""",[r,body,me if target else None])
         e=http("GET",hs+"/_matrix/client/v3/rooms/"+quote(r,safe="")+"/event/"+quote(eid,safe=""),headers=hdr).json()
         assert e["type"]=="m.room.encrypted" and e["content"]["algorithm"]=="m.megolm.v1.aes-sha2"
-        web.wait_for_function("([id,b])=>qaSeen[id]?.body===b",arg=[eid,body],polling=150,timeout=30000)
+        wait_for("browser decrypted "+body,lambda:(qa_events.web_event(web,r,eid) or {}).get("content",{}).get("body")==body,30)
         return eid
     def hold(expected):
         # Check continuously across multiple 750 ms reading checks.
@@ -131,9 +133,8 @@ def check_read_state(stack,tmp,hs,backend,room,me,hdr,http,web,peer,web_words):
     web.mouse.click(*find("opt into public receipts",lambda ws:phrase(ws,"share","receipts"),web_words))
     find("public sharing enabled",lambda ws:phrase(ws,"keep","receipts"),web_words)
     def pref(value):
-        with closing(sqlite3.connect((tmp/"seed/data/gomuks.db").as_uri()+"?mode=ro",uri=True)) as db:
-            wait_for("native synced read receipt preference",lambda:db.execute("SELECT json_extract(content,'$.public') "
-                "FROM account_data WHERE type='com.untethered.read_receipts.v1' AND user_id=?",(me,)).fetchone()==(int(value),))
+        wait_for("native synced read receipt preference",lambda:(qa_events.account_data(
+            tmp/"seed","com.untethered.read_receipts.v1") or {}).get("public")==value)
     pref(True)
     shared=send(room,"Public receipt")
     wait_for("Synapse received opted-in public receipt",lambda:receipts(room).get("m.read")==shared)

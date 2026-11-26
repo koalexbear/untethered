@@ -3,12 +3,12 @@ import io
 import json
 import os
 import shutil
-import sqlite3
 import subprocess as sp
 from pathlib import Path
 from urllib.parse import quote
 
 from PIL import Image
+import qa_events
 from qa_ui import CHAT_X
 from qa_native_paste import child,wait_for
 
@@ -87,13 +87,11 @@ def check_room_alerts(tmp,hs,page,room,native,hdr,http,desk,locate,click,restart
             body,msgtype:'m.text','m.mentions':id?{user_ids:[id]}:{}})).event_id""",[r,body,mention])
         wire=http("GET",hs+"/_matrix/client/v3/rooms/"+quote(r,safe="")+"/event/"+quote(eid,safe=""),headers=hdr).json()
         assert wire["type"]=="m.room.encrypted" and "ciphertext" in wire["content"]
-        with sqlite3.connect((tmp/"seed/data/gomuks.db").as_uri()+"?mode=ro",uri=True) as db:
-            def read():
-                row=db.execute("select decrypted,unread_type from event where room_id=? and event_id=?",(r,eid)).fetchone()
-                if row and row[0] and json.loads(row[0]).get("body")==body:return row
-            decoded,unread=wait_for("native decoded "+body,read,15)
-            assert json.loads(decoded)["m.mentions"].get("user_ids",[])==([mention] if mention else [])
-            return unread
+        # The device's own push rule evaluation of the decrypted event.
+        e=wait_for("native decoded "+body,lambda:qa_events.event(tmp/"seed",r,eid),15)
+        assert e["encrypted"] and e["content"]["body"]==body,e
+        assert e["content"]["m.mentions"].get("user_ids",[])==([mention] if mention else [])
+        return e["notify"]
     def words(ws,w):return [(x,y) for v,x,y in ws if x>CHAT_X and v==w]
     def panel():
         # The bell icon in the channel header.
@@ -112,26 +110,26 @@ def check_room_alerts(tmp,hs,page,room,native,hdr,http,desk,locate,click,restart
     panel();setting("default");option("all");setting("all")
     assert rules()[room]["actions"]==["notify"] and rules()[room]["enabled"]
     desk.focus(desk.other)
-    assert send(room,"Baseline lantern")&2
+    assert send(room,"Baseline lantern")
     desk.popup("Baseline lantern")
     desk.focus(window());option("mute");setting("mute")
     assert rules()[room]["actions"]==[] and rules()[room]["enabled"] and other not in rules()
     desk.focus(desk.other)
-    assert not send(room,"Quiet marble")&2
-    assert not send(room,"Different recipient",foreign)&2
-    assert send(room,"Direct beacon",me)&2
+    assert not send(room,"Quiet marble")
+    assert not send(room,"Different recipient",foreign)
+    assert send(room,"Direct beacon",me)
     desk.popup("Direct beacon")
     assert desk.count()==2
     print("Same muted encrypted room: ordinary and other-user mention delivered to timeline, 0 Notify calls; direct mention produced 1.",flush=True)
-    assert send(other,"Control meadow")&2
+    assert send(other,"Control meadow")
     desk.popup("Control meadow")
     assert desk.count()==3
     restart();panel();setting("mute")
-    assert send(room,"Already reading",me)&2
+    assert send(room,"Already reading",me)
     locate("mention rendered in the focused room",lambda ws:words(ws,"already") and words(ws,"reading"))
     desk.focus(desk.other)
-    assert not send(room,"Still quiet")&2
-    assert send(room,"Restored beacon",me)&2
+    assert not send(room,"Still quiet")
+    assert send(room,"Restored beacon",me)
     desk.popup("Restored beacon")
     assert desk.count()==4 and desk.run(desk.ctl,"count","history")=="4"
     assert not any(s in desk.log.read_text() for s in ("Quiet marble","Different recipient","Already reading","Still quiet"))

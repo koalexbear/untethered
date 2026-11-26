@@ -10,10 +10,12 @@ from urllib.parse import quote
 from PIL import Image
 from playwright.sync_api import sync_playwright
 
+import qa_events
 from qa_kwin_element import element_server,login_element
 from qa_native_paste import child,isolated_env,start_display,wait_for
 from qa_room_alerts import NotificationDesktop
 from qa_ui import CHAT_X,Ui,read
+from qa_web_login import login_client
 
 
 def check_browser_alerts(tmp,hs,web,backend,seed,http,*,dnd=False,reading=False,spaces=False):
@@ -58,32 +60,11 @@ def check_browser_alerts(tmp,hs,web,backend,seed,http,*,dnd=False,reading=False,
         page.on("pageerror",lambda e:print("Receiver page error:",str(e)[:250],flush=True))
         page.set_viewport_size({"width":1180,"height":760})
         # Observe genuine worker output, never substitute permission, visibility,
-        # notification APIs, events, or the device's decryption decisions.
-        page.add_init_script("""window.qaSeen={};
-          window.Worker=class extends Worker{constructor(...args){super(...args);
-            this.addEventListener('message',({data:f})=>{
-              if(!['sync_complete','events_decrypted'].includes(f.command))return;
-              const data=typeof f.data==='string'?JSON.parse(f.data):f.data;
-              for(const delta of f.command==='events_decrypted'?[data]:Object.values(data.rooms||{})){
-                for(const e of delta.events||[]){
-                  if(e.decrypted?.body && e.event_id?.startsWith('$') && !window.qaSeen[e.event_id]){
-                    qaSeen[e.event_id]={body:e.decrypted.body,hidden:document.hidden,mentions:e.decrypted['m.mentions'],
-                      sender:e.sender,room:e.room_id,notify:!!(e.unread_type&2),live:f.command==='events_decrypted'||
-                        (!!data.since&&!data.catchup&&!data.clear_state&&delta.timeline?.some(t=>t.event_rowid===e.rowid))};
-                  }
-                }
-              }
-            });
-          }}""")
+        # notification APIs, events, or the device's decryption decisions:
+        # the debug engine's QA entries (qa_events.WORKER_HOOK).
+        page.add_init_script(qa_events.WORKER_HOOK)
         page.goto(web,wait_until="commit")
-        page.wait_for_function("document.title.includes('Preview')",timeout=45000)
-        page.mouse.click(1095,73);page.wait_for_function("document.title.includes('Account')")
-        for y,field in [(333,"server"),(391,"username"),(447,"password")]:
-            page.mouse.click(510,y);page.keyboard.type(receiver[field],delay=5)
-        page.keyboard.press("Enter")
-        recovery=page.get_by_label("Recovery key or passphrase")
-        recovery.fill(receiver["key"],timeout=45000);recovery.press("Enter")
-        page.wait_for_function("document.title.includes('media-proof')",timeout=45000)
+        login_client(page,web,receiver,navigate=False)
 
         def read_words(raw):
             im=Image.open(io.BytesIO(raw)).convert("RGB")
@@ -121,11 +102,11 @@ def check_browser_alerts(tmp,hs,web,backend,seed,http,*,dnd=False,reading=False,
                 body:b,msgtype:'m.text','m.mentions':u?{user_ids:[u]}:{}})).event_id""",[in_room,body,target])
             wire=http("GET",hs+"/_matrix/client/v3/rooms/"+quote(in_room,safe="")+"/event/"+quote(eid,safe=""),headers=hdr).json()
             assert wire["type"]=="m.room.encrypted" and wire["content"]["algorithm"]=="m.megolm.v1.aes-sha2"
-            page.wait_for_function("id=>!!window.qaSeen[id]",arg=eid,polling=200,timeout=35000)
-            seen=page.evaluate("id=>window.qaSeen[id]",eid)
-            assert seen.get("live"),"expected incremental sync or fresh decryption"
-            assert (seen["body"],seen["room"],seen["sender"],seen["hidden"],seen["notify"])==(body,in_room,them,hidden,expected),seen
-            assert seen["mentions"].get("user_ids",[])==([target] if target else [])
+            # Sent after the page loaded, so this is live sync (or a late key).
+            seen=wait_for("browser decrypted "+body,lambda:qa_events.web_event(page,in_room,eid),35)
+            c=seen["content"]
+            assert seen["encrypted"] and (c["body"],seen["sender"],seen["hidden"],seen["notify"])==(body,them,hidden,expected),seen
+            assert c["m.mentions"].get("user_ids",[])==([target] if target else [])
             return eid
         hide()
         if reading:

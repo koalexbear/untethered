@@ -24,6 +24,10 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from PIL import Image
 from playwright.sync_api import sync_playwright
 
+import qa_events
+from qa_events import use_profile
+from qa_web_login import login_client
+
 
 SIZE = 16 * 1024 * 1024
 
@@ -144,7 +148,9 @@ def test(tmp, hs, port, web, backend, root, seed):
             assert len(uploads)==index+2 and uploads[-1]["received"]==SIZE
             assert media_count()==len(e)==index//2+1 and all(x["type"]=="m.room.encrypted" for x in e)
             print(f"{label} Retry: 1 completed media upload and exactly 1 new encrypted room event.",flush=True)
-        env={**os.environ,"UNTETHERED_UPLOAD_QA":str(tmp),"UNTETHERED_PROFILE":str(tmp/"seed"),"UNTETHERED_BACKEND":str(backend),"UNTETHERED_ENGINE":"gomuks"}
+        # The engine test (engine/live_test.rs) restores the device seed()
+        # signed in, which left its store passphrase in the session file.
+        env=use_profile({**os.environ,"UNTETHERED_UPLOAD_QA":str(tmp),"UNTETHERED_KEYRING":"off"},tmp/"seed")
         proc=subprocess.Popen(["cargo","test","--locked","-j3","--manifest-path","rust-client/Cargo.toml",
                                "throttled_encrypted_upload_cancel_retry","--","--ignored","--nocapture"],cwd=root,env=env)
         try:
@@ -160,9 +166,9 @@ def test(tmp, hs, port, web, backend, root, seed):
                 (tmp/"native.retry").touch()
                 proc.terminate();proc.wait(timeout=8)
         assert_retry("Native",0)
-        # Verify the successful encrypted upload independently of the UI.
-        with sqlite3.connect((tmp/"seed/data/gomuks.db").as_uri()+"?mode=ro",uri=True) as db:
-            content=json.loads(db.execute("select decrypted from event where event_id=?",(events()[0]["event_id"],)).fetchone()[0])
+        # Verify the successful encrypted upload independently of the UI, with
+        # the descriptor the device decrypted from its own synced event.
+        content=until("the device decrypted its event",lambda:qa_events.event(tmp/"seed",room,events()[0]["event_id"]))["content"]
         assert content["body"]=="native cancel proof" and content["filename"]=="throttled.bin"
         def b64(s):return base64.urlsafe_b64decode(s+"="*(-len(s)%4))
         def decrypt_stored_object(desc):
@@ -179,14 +185,9 @@ def test(tmp, hs, port, web, backend, root, seed):
             browser=pw.chromium.launch(executable_path=os.environ.get("CHROMIUM","/usr/bin/chromium"),
                                        args=["--enable-unsafe-swiftshader","--ignore-gpu-blocklist"])
             page=browser.new_page(viewport={"width":1180,"height":760})
-            page.goto(web);page.wait_for_function("document.title.includes('Preview')",timeout=35000)
-            page.mouse.click(1095,73);page.wait_for_function("document.title.includes('Account')")
-            for y,key in [(299,"server"),(381,"username"),(464,"password")]:
-                page.mouse.click(510,y);page.keyboard.type(fixture[key],delay=5)
-            page.keyboard.press("Enter")
-            field=page.get_by_label("Recovery key or passphrase")
-            field.wait_for(timeout=30000);field.fill(fixture["key"]);field.press("Enter")
-            page.wait_for_function("document.title.includes('media-proof')",timeout=35000)
+            # The debug engine's QA entries: what this browser device decrypted.
+            page.add_init_script(qa_events.WORKER_HOOK)
+            login_client(page,web,fixture)
             page.evaluate("""n=>{const d=new DataTransfer();const bytes=new Uint8Array(n);
                 for(let i=0;i<n;i++)bytes[i]=i%251;
                 d.items.add(new File([bytes],'browser.bin'));
@@ -209,27 +210,12 @@ def test(tmp, hs, port, web, backend, root, seed):
             assert_retry("Chromium",2)
             until("cleared browser retry card",lambda:"browser.bin" not in card().lower())
             # Independently read the encrypted media object using the descriptor
-            # returned by real gomuks timeline pagination, not the staged File.
-            page.add_init_script("""
-                window.Worker=class extends Worker {
-                    constructor(...args){
-                        super(...args);
-                        this.addEventListener("message",({data:f})=>{
-                            if(f.command!=="response" || typeof f.data!=="string")return;
-                            const page=JSON.parse(f.data);
-                            for(const e of page?.events ?? []){
-                                if(e.decrypted?.filename==="browser.bin" || e.decrypted?.body==="browser.bin"){
-                                    window.retryMedia=e.decrypted.file;
-                                }
-                            }
-                        });
-                    }
-                };
-            """)
-            page.reload()
-            page.wait_for_function("document.title.includes('media-proof')",timeout=35000)
-            page.wait_for_function("!!window.retryMedia",timeout=35000)
+            # this browser device decrypted from its synced event, not the staged File.
+            def retried():
+                for e in page.evaluate("(window.qaEvents||[]).filter(e=>e.kind==='event' && e.type==='m.room.message')"):
+                    if e["room_id"]==room and "browser.bin" in (e["content"].get("filename"),e["content"].get("body")):
+                        return e["content"]["file"]
             pattern=bytes(range(251))
-            assert decrypt_stored_object(page.evaluate("window.retryMedia"))==(pattern*(SIZE//251+1))[:SIZE]
-            print("Chromium reload: decrypted retry download matched the original 16 MiB.",flush=True)
+            assert decrypt_stored_object(until("the browser decrypted its retried event",retried))==(pattern*(SIZE//251+1))[:SIZE]
+            print("Chromium: decrypted retry download matched the original 16 MiB.",flush=True)
             browser.close()

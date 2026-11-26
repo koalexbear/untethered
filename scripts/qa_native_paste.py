@@ -17,6 +17,9 @@ import requests
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from PIL import Image, ImageDraw
 
+import qa_events
+from qa_events import use_profile
+
 
 def wait_for(description, check, timeout=20):
     end = time.monotonic() + timeout
@@ -55,10 +58,9 @@ def isolated_env(tmp,backend,platform):
         folder = tmp/k
         folder.mkdir(mode=0o700)
         env[k] = str(folder)
+    env.update(XDG_SESSION_TYPE=platform, DBUS_SESSION_BUS_ADDRESS="unix:path="+env["XDG_RUNTIME_DIR"]+"/bus")
     # test-media-interop.seed prepared the client's matrix-sdk session in tmp/seed.
-    env.update(XDG_SESSION_TYPE=platform, DBUS_SESSION_BUS_ADDRESS="unix:path="+env["XDG_RUNTIME_DIR"]+"/bus",
-               UNTETHERED_PROFILE=str(tmp/"seed"))
-    return env
+    return use_profile(env, tmp/"seed")
 
 
 def start_display(stack,tmp,env,platform,width=1180,height=760):
@@ -176,8 +178,8 @@ def check_paste(tmp, root, backend, f, headers, platform):
         assert event["type"]=="m.room.encrypted" and media_count()-initial_media==1
         # Read metadata only from this fixture's device; independently retrieve
         # the stored encrypted object and verify its hash and decoded PNG pixels.
-        with sqlite3.connect((tmp/"seed/data/gomuks.db").as_uri()+"?mode=ro",uri=True) as db:
-            content=json.loads(db.execute("select decrypted from event where event_id=?",(event["event_id"],)).fetchone()[0])
+        content=wait_for("the device decrypted its attachment event",
+                         lambda:qa_events.event(tmp/"seed",f["room"],event["event_id"]),15)["content"]
         assert content["msgtype"]=="m.image" and content["body"]==caption
         assert content["filename"].startswith("Screenshot-") and content["filename"].endswith(".png")
         file=content["file"]
