@@ -145,6 +145,19 @@
    "title": "Right-click menus",
    "updated": "2026-11-26T16:53:18Z",
    "worktree": ".claude/worktrees/m4-context-menus"
+  },
+  "roadmap-tray": {
+   "branch": "main",
+   "claimed": "2026-11-26T17:11:18Z",
+   "notes": [],
+   "owner": "coordinator",
+   "paths": [
+    "ROADMAP.md"
+   ],
+   "status": "working",
+   "title": "Add the system tray to the roadmap",
+   "updated": "2026-11-26T17:11:18Z",
+   "worktree": "."
   }
  },
  "done": []
