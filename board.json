@@ -22,9 +22,9 @@
     "scripts/test-media-interop.py",
     "scripts/tray*.md"
    ],
-   "status": "working",
+   "status": "review",
    "title": "System tray",
-   "updated": "2026-11-26T18:21:33Z",
+   "updated": "2026-11-26T19:18:04Z",
    "worktree": ".claude/worktrees/n6-system-tray"
   }
  },

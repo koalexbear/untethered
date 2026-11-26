@@ -4,7 +4,7 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
-| N6 | System tray | n6-system-tray | `claude/n6-system-tray` | working | 2026-11-26T18:21:33Z | `PKGBUILD`, `README.md`, `rust-client/Cargo.lock`, `rust-client/Cargo.toml`, `rust-client/src/engine/mod.rs`, `rust-client/src/main.rs`, `rust-client/src/tray.rs`, `rust-client/src/tray/**`, `rust-client/src/view.rs`, `rust-client/src/view/tray.rs`, `scripts/qa_kwin.py`, `scripts/qa_rtc_audio.py`, `scripts/qa_tray.py`, `scripts/test-media-interop.py`, `scripts/tray*.md` |
+| N6 | System tray | n6-system-tray | `claude/n6-system-tray` | review | 2026-11-26T19:18:04Z | `PKGBUILD`, `README.md`, `rust-client/Cargo.lock`, `rust-client/Cargo.toml`, `rust-client/src/engine/mod.rs`, `rust-client/src/main.rs`, `rust-client/src/tray.rs`, `rust-client/src/tray/**`, `rust-client/src/view.rs`, `rust-client/src/view/tray.rs`, `scripts/qa_kwin.py`, `scripts/qa_rtc_audio.py`, `scripts/qa_tray.py`, `scripts/test-media-interop.py`, `scripts/tray*.md` |
 
 ## Done
 
