@@ -16,6 +16,8 @@ mod engine;
 #[cfg(not(target_arch = "wasm32"))]
 mod fonts;
 #[cfg(target_os = "linux")]
+mod hotkeys;
+#[cfg(target_os = "linux")]
 mod incoming;
 mod inline;
 mod media;
@@ -129,6 +131,10 @@ enum Msg {
     RoomPtt(bool),
     #[cfg(target_os = "linux")]
     TalkKey(bool),
+    #[cfg(target_os = "linux")]
+    Hotkey(hotkeys::Event),
+    #[cfg(target_os = "linux")]
+    TalkRelease(tokio::time::Instant),
     #[cfg(target_os = "linux")]
     ToggleVideo(desktop_call::VideoInput),
     #[cfg(target_os = "linux")]
@@ -307,6 +313,8 @@ struct App {
     #[cfg(target_os = "linux")]
     room_ptt: bool,
     #[cfg(target_os = "linux")]
+    hotkeys: hotkeys::State,
+    #[cfg(target_os = "linux")]
     drop_epoch: u64,
     #[cfg(not(target_arch = "wasm32"))]
     paste_seq: u64,
@@ -379,6 +387,8 @@ impl App {
             call: None,
             #[cfg(target_os = "linux")]
             room_ptt: false,
+            #[cfg(target_os = "linux")]
+            hotkeys: Default::default(),
             #[cfg(target_os = "linux")]
             inbox: Default::default(),
             #[cfg(target_os = "linux")]
@@ -666,7 +676,7 @@ impl App {
                 self.focused = focused;
                 #[cfg(target_os = "linux")]
                 if !focused {
-                    return self.update(Msg::TalkKey(false));
+                    return self.talk_key(hotkeys::Source::Window, false);
                 }
             }
             #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
@@ -872,6 +882,7 @@ impl App {
             #[cfg(target_os = "linux")]
             Msg::RoomPtt(enabled) => {
                 self.room_ptt = enabled;
+                self.hotkeys.reset();
                 if let Some(call) = &self.call
                     && call.group
                     && !call.cancel.is_closed()
@@ -881,14 +892,11 @@ impl App {
                 }
             }
             #[cfg(target_os = "linux")]
-            Msg::TalkKey(down) => {
-                if let Some(call) = &self.call
-                    && call.group
-                    && !call.cancel.is_closed()
-                {
-                    call.audio.send_if_modified(|s| s.hold(down));
-                }
-            }
+            Msg::TalkKey(down) => return self.talk_key(hotkeys::Source::Window, down),
+            #[cfg(target_os = "linux")]
+            Msg::Hotkey(event) => return self.hotkey(event),
+            #[cfg(target_os = "linux")]
+            Msg::TalkRelease(until) => self.talk_release(until),
             #[cfg(target_os = "linux")]
             Msg::ReturnToCall(id) => {
                 if let Some(c) = &self.call
@@ -1755,6 +1763,8 @@ fn main() -> iced::Result {
                     _ => None,
                 }),
                 iced::window::close_requests().map(|_| Msg::Close),
+                #[cfg(target_os = "linux")]
+                hotkeys::subscription(app.room_ptt).map(Msg::Hotkey),
                 iced::keyboard::listen().filter_map(|event| match event {
                     iced::keyboard::Event::KeyPressed {
                         key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Tab),

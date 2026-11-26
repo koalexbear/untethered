@@ -173,12 +173,15 @@ def main():
     args.add_argument("--room-camera",action="store_true",help="Toggle a portal-authorized virtual camera and measure the changing decoded frames at both voice-room peers")
     args.add_argument("--room-layout",action="store_true",help="Measure grid and focus views of two live portal cameras on a third desktop")
     args.add_argument("--room-ptt",action="store_true",help="Verify key-gated microphone and uninterrupted peer audio in a three-client Linux voice room")
+    args.add_argument("--global",dest="ptt_global",nargs="?",const="x11",choices=("x11","wayland"),help="With --room-ptt: hold the key while another window has focus (XInput2 on X11; the GlobalShortcuts portal under KWin)")
     args.add_argument("--upload-cancel",action="store_true",help="Test native and browser cancellation against a throttled Matrix upload")
     args=args.parse_args()
     if args.room_kick and (args.room_ban or args.federated_ban):
         raise SystemExit("Run the kick and ban fixtures separately")
     if args.room_layout and (args.room_ptt or args.window_share or args.room_camera):
         raise SystemExit("Run --room-layout separately; it uses two independent camera desktops")
+    if args.ptt_global and not args.room_ptt:
+        raise SystemExit("--global is a --room-ptt variant")
     if args.room_ptt and (args.window_share or args.room_camera):
         raise SystemExit("--room-ptt uses private X displays; run the KWin video fixtures separately")
     if args.window_share or args.room_camera or args.room_ptt or args.room_layout: args.voice_room=True
@@ -271,7 +274,7 @@ federation_domain_whitelist: []
                 test_replies(tmp,hs,ROOT,BACKEND,seed,http,gateway_port,reactions=args.reactions,room_search=args.room_search,alerts=args.room_alerts,permissions=args.room_permissions,ban=args.room_ban,kick=args.room_kick,report=args.message_report,mentions=args.mentions_inbox,spaces=args.space_alerts=="native",setup=args.community_setup)
                 return
             if args.rtc_audio:
-                audio_test(tmp,hs,server_name,rtc_service,ROOT,BACKEND,seed,http,service,desktop=args.desktop_dm or args.incoming_dm,incoming=args.incoming_dm,controls=args.call_controls,devices=args.call_devices,reconnect=args.call_reconnect,turn=args.call_turn,group=args.voice_room,share=args.window_share,camera=args.room_camera,ptt=args.room_ptt,layout=args.room_layout,multi_ring=args.multi_device_ring,dnd_ring=args.dnd_ring,native_dm=args.native_dm,unsupported_dm=args.unsupported_dm,dm_video=args.dm_video,element_video=args.element_video,switch_camera=args.switch_camera)
+                audio_test(tmp,hs,server_name,rtc_service,ROOT,BACKEND,seed,http,service,desktop=args.desktop_dm or args.incoming_dm,incoming=args.incoming_dm,controls=args.call_controls,devices=args.call_devices,reconnect=args.call_reconnect,turn=args.call_turn,group=args.voice_room,share=args.window_share,camera=args.room_camera,ptt=args.room_ptt and (args.ptt_global or "window"),layout=args.room_layout,multi_ring=args.multi_device_ring,dnd_ring=args.dnd_ring,native_dm=args.native_dm,unsupported_dm=args.unsupported_dm,dm_video=args.dm_video,element_video=args.element_video,switch_camera=args.switch_camera)
                 return
             if args.rtc_membership:
                 from qa_rtc_membership import test

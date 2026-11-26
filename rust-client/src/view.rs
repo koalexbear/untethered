@@ -842,13 +842,12 @@ impl App {
         }
         if mode.talk != crate::desktop_call::TalkGate::Open {
             let hint = if mode.deafened {
-                "Undeafen to use push-to-talk."
+                "Undeafen to use push-to-talk.".into()
             } else if mode.muted {
-                "Unmute to use push-to-talk."
-            } else if mode.talk == crate::desktop_call::TalkGate::Held {
-                "Right Ctrl held · release to stop talking."
+                "Unmute to use push-to-talk.".into()
             } else {
-                "Hold Right Ctrl to talk while Untethered is focused."
+                self.hotkeys
+                    .hint(mode.talk != crate::desktop_call::TalkGate::Waiting)
             };
             details = details.push(text(hint).size(13));
         }

@@ -279,8 +279,10 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
     with ExitStack() as stack:
         sock=tmp/"pulse"
         for i,d in enumerate(dirs):
-            wayland=((share or camera) and i==0) or (layout and i in (1,2))
+            wayland=((share or camera or ptt=="wayland") and i==0) or (layout and i in (1,2))
             env=isolated_env(d,backend,"wayland" if wayland else "x11");env.update(TOKIO_WORKER_THREADS="2",RAYON_NUM_THREADS="2",GOMAXPROCS="2")
+            # Plain --room-ptt checks the in-window key on its own.
+            if ptt=="window":env["UNTETHERED_GLOBAL_SHORTCUTS"]="0"
             if not wayland:start_display(stack,d,env,"x11")
             env.update(PULSE_SERVER="unix:"+str(sock),PULSE_SOURCE=f"Mic{i}.monitor",PULSE_SINK=f"Out{i}")
             log=None
@@ -299,7 +301,8 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
             kde=None
             if wayland:
                 from qa_kwin import KWin
-                kde=KWin(stack,d,root,backend,env=env,screencast=True,native_log=log)
+                kde=KWin(stack,d,root,backend,env=env,screencast=ptt!="wayland",native_log=log,
+                         global_shortcuts=ptt=="wayland")
             desks.append(Desktop(stack,root,env,i,kde,log=log))
             if log:desks[-1].stats=logs
         try:
@@ -318,6 +321,11 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
             original={}
             if ptt:
                 desks[0].click("push-to-talk")
+                if ptt=="wayland":
+                    # Arming push-to-talk binds the portal shortcuts.
+                    offered=desks[0].kde.accept_shortcuts({"talk","pause","mute","deafen"})
+                    print("KDE's Global Shortcuts Requested dialog offered Push to talk (Pause), "
+                          f"Toggle mute and Toggle deafen; accepted ({len(offered)} words read).",flush=True)
                 for d in desks[1:]:d.audit=[]
             for i,d in enumerate(desks):
                 d.click("join")
@@ -340,7 +348,7 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
             print("Three joined devices, three GCM microphones, two playback streams per client; zero ring or other non-state events.",flush=True)
             if ptt:
                 from qa_room_ptt import check_ptt
-                check_ptt(stack,desks,audio_counts,lambda:publications(3)==tracks)
+                check_ptt(stack,desks,audio_counts,lambda:publications(3)==tracks,None if ptt=="window" else ptt)
             elif layout:
                 from qa_room_layout import check_layout
                 check_layout(stack,desks,users,secret,tracks,publications)
