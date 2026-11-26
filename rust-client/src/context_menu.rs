@@ -636,8 +636,10 @@ impl App {
         task
     }
 
-    /// Mention `user` in the composer. M2's pills and `m.mentions` replace
-    /// the plain name once they land.
+    /// Mention `user` in the composer, as plain text for now. When M2
+    /// (branch claude/m2-autocomplete) merges, this becomes
+    /// `self.mention(user)` from `autocomplete.rs`: a real pill with
+    /// `m.mentions`.
     pub fn insert_mention(&mut self, room: &str, user: &str) -> Task<Msg> {
         let Some(r) = self.live.list.get(room) else {
             return Task::none();
