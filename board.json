@@ -10,6 +10,7 @@
     "README.md",
     "rust-client/Cargo.lock",
     "rust-client/Cargo.toml",
+    "rust-client/src/engine/mod.rs",
     "rust-client/src/main.rs",
     "rust-client/src/tray.rs",
     "rust-client/src/tray/**",
@@ -18,7 +19,7 @@
    ],
    "status": "working",
    "title": "System tray",
-   "updated": "2026-11-26T18:02:00Z",
+   "updated": "2026-11-26T18:09:16Z",
    "worktree": ".claude/worktrees/n6-system-tray"
   }
  },
