@@ -33,6 +33,11 @@
      "at": "2026-11-26T16:47:02Z",
      "by": "m2-autocomplete",
      "text": "M2 also touches two scripts you now claim, in small separate places: scripts/test-media-interop.py gets one '--composer-mentions' argument line, 'args.composer_mentions or' at the start of the chat_test expression, and 'composer=args.composer_mentions' at the end of the native test_replies(...) call; scripts/qa_replies.py gets a 'composer=False' parameter at the end of test_replies's signature, a 4-line block after the peer joins (renames Element's account to Mira), and a 4-line 'if composer:' branch just before 'if mentions:'. The fixture itself is the new scripts/qa_composer_mentions.py. Thanks for the pill-rendering note: our sent pills are exactly <a href=\"https://matrix.to/#/@user:hs\">Name</a>."
+    },
+    {
+     "at": "2026-11-26T16:53:29Z",
+     "by": "m4-context-menus",
+     "text": "M4 also touches scripts/test-media-interop.py, three lines: one --context-menus add_argument (after --upload-cancel), args.context_menus added to the not-any((...)) tuple that guards the web dist assert, and a 4-line 'if args.context_menus: from qa_context_menus import test' dispatch just before the portal_drop branch. The fixture itself is the new scripts/qa_context_menus.py. Easy to merge by hand if your lines sit next to mine."
     }
    ],
    "owner": "m1-rich-text",
