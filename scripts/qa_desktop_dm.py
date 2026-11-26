@@ -180,6 +180,15 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
         if relay_links:
             from qa_rtc_turn import verify_turn
             verify_turn(relay_links,widget,lambda:speakers[0],new_tone,native_log,roster,lambda:sfu_audio(secret),(alice,bob))
+    if path:=os.environ.get("QA_ELEMENT_CONSOLE"):
+        # Element's console, including its Element Call widget. The sync API delivers
+        # messages only during Playwright calls: their order holds, their times don't.
+        console=stack.enter_context(open(path,"w"))
+        def log(m):
+            console.write(f"{m.type} {m.text[:600]}\n");console.flush()
+        page.on("console",log)
+        # Unregister before the file closes: the browser outlives this stack.
+        stack.callback(page.remove_listener,"console",log)
     try:
         if incoming:
             reverse_call(stack,page,room,alice,bob,secret,find,click,roster,streams,chime,received,env,cmd,check_relay,sibling,set_dnd,lambda:speakers[0])
@@ -266,6 +275,13 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
             from qa_rtc_turn import counters
             print("Relay-only counters:",{k:counters(v) for k,v in relay_links.items()},flush=True)
             print("Native ICE:",[l for l in native_log.read_text(errors="replace").splitlines() if l.startswith("RTC selected audio")][-8:],flush=True)
+        try:
+            print("SFU participants:",[(p["identity"],[(t.get("type","AUDIO"),t.get("source"),t.get("muted",False)) for t in p.get("tracks",[])])
+                                        for p in sfu_participants(secret,allow_empty=True)],flush=True)
+            for f in page.frames:
+                if urlsplit(f.url).path.startswith("/widgets/element-call/"):
+                    print("Element Call RTP:",f.evaluate("window.qaRtpAudio?.() ?? null"),flush=True)
+        except Exception as e:print("SFU state unavailable:",e,flush=True)
         print("Desktop visible labels:", " ".join(t for t,_,_ in words()),flush=True)
         print("Desktop sidebar and call dock:", " ".join(t for t,_,_ in dock_words()),flush=True)
         print("Element roster:",roster(),"incoming toast:",page.locator(".mx_IncomingCallToast_content").all_text_contents(),flush=True)
@@ -435,6 +451,42 @@ def audio_controls(widget,click,speaker,streams,secret,sockets,alice,bob,change_
     print("No reconnect: same Element receiver, SSRC and signaling sockets; both original GCM track and participant SIDs retained.",flush=True)
 
 
+def element_microphone(page,user,secret):
+    """Make sure the ringing Element Call publishes its microphone before the desktop answers.
+
+    Element Call (in Element Web 1.12.35) decides its initial mute state when its call view
+    starts. If the browser's device list arrives even a few ms later, it logs "MuteState:
+    devices connected: false, disabling", and the "enabled by default" state that follows
+    once the devices appear never publishes the microphone: Element joins the SFU without
+    an audio track while its switch still reads "Mute microphone". Under load this hit about
+    a third of `--multi-device-ring` runs, leaving the desktop at "Connecting" with nothing
+    to play. Toggling the switch publishes it.
+    """
+    def element():
+        return [p for p in sfu_participants(secret,allow_empty=True) if p["identity"].rsplit(":",1)[0]==user]
+    def sending():
+        return any(t.get("type","AUDIO")=="AUDIO" and t.get("source")=="MICROPHONE" and not t.get("muted",False)
+                   for p in element() for t in p.get("tracks",[]))
+    wait_for("Element Call in the SFU room",element,15)
+    try:
+        wait_for("Element Call publishes its microphone",sending,6)
+        return
+    except RuntimeError:
+        pass
+    widget=next(f for f in page.frames if urlsplit(f.url).path.startswith("/widgets/element-call/"))
+    # The microphone switch ("Mute microphone" while on). Its state settles once aria-busy clears.
+    mic=widget.get_by_test_id("incall_mute")
+    def settled(on):
+        return lambda:mic.get_attribute("aria-checked")==("true" if on else "false") and mic.get_attribute("aria-busy")!="true"
+    stuck=mic.get_attribute("aria-checked")=="true"
+    if stuck:
+        mic.click(timeout=5000);wait_for("Element Call microphone switched off",settled(False),5)
+    mic.click(timeout=5000);wait_for("Element Call microphone switched on",settled(True),5)
+    wait_for("Element Call republishes its microphone",sending,10)
+    print("Element Call had joined without publishing its microphone (its devices arrived after its call view started);"
+          f" switching it {'off and on' if stuck else 'on'} published the track.",flush=True)
+
+
 def reverse_call(stack,page,room,alice,bob,secret,find,click,roster,streams,chime,received,env,cmd,check_relay,sibling,set_dnd,speaker):
     from playwright.sync_api import Error as BrowserError
     # Count stream creations too: polling an empty list after Decline alone
@@ -506,6 +558,7 @@ def reverse_call(stack,page,room,alice,bob,secret,find,click,roster,streams,chim
     page.goto(page.url.split("#")[0]+"#/room/"+room)
     second=dial(quiet=bool(set_dnd))
     assert second!=ring
+    element_microphone(page,bob,secret)
     started=time.monotonic()
     click("Accept")
     wait_for("Element and Untethered joined the answered call",lambda:set(roster())=={alice,bob},20)

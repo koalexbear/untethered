@@ -19,6 +19,12 @@
                     state:pair?.state,url:c?.url?.split("?")[0]};
             });
     }))).flat();
+    // Failure reports: what each peer connection sends and receives.
+    window.qaRtpAudio = async () => (await Promise.all([...pcs].map(async pc => {
+        const stats = await pc.getStats();
+        return [...stats.values()].filter(r=>r.kind==="audio" && (r.type==="outbound-rtp"||r.type==="inbound-rtp"))
+            .map(r=>({type:r.type,ssrc:r.ssrc,packets:r.packetsSent??r.packetsReceived,state:pc.connectionState}));
+    }))).flat();
     const listen = pc => pc.addEventListener("track", async ({track,receiver}) => {
         if (track.kind !== "audio") return;
         // A new track event, even with the same remote track label, is not
