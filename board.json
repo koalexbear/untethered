@@ -3,7 +3,13 @@
   "single-instance": {
    "branch": "single-instance",
    "claimed": "2026-11-26T19:48:38Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-26T19:54:59Z",
+     "by": "single-instance",
+     "text": "Ready for review: 84b6b38 on single-instance. Unit tests + live tray fixture pass."
+    }
+   ],
    "owner": "main-session",
    "paths": [
     "README.md",
