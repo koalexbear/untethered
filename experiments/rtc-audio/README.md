@@ -334,7 +334,10 @@ ends: a through-tone or silence (Element FFT peak below −65 dB; desktop peak
 below 32 in signed 16-bit PCM). It also checks the actual capture-stream
 count and the SFU mute flags. Throughout the test the browser receiver, track,
 SSRC and signaling sockets stay the same, and both participants keep their
-original GCM publications on the SFU.
+original GCM publications on the SFU. Last, it opens the dock's **Mixer** and
+sets Element to 25%: Element's 960 Hz at the desktop speaker must drop to a
+quarter of a steady reference for 12 fresh 100 ms windows, still in one
+playback stream, and **Reset** must restore it.
 
 ### Verify microphone and speaker selection
 

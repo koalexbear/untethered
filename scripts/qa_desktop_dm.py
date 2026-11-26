@@ -12,18 +12,20 @@ import subprocess as sp
 import threading
 import time
 from pathlib import Path
+from statistics import median
 from urllib.parse import urlsplit
 
 from PIL import Image
 import requests
 from qa_native_paste import child, isolated_env, start_display, wait_for
+from qa_room_volume import SLIDER_BELOW
 from qa_ui import CHAT_X, PICK_BELOW, RAIL, SIDEBAR, Ui, clean, icon_buttons, read
 
 # Since 76d6e43 a call's controls, status and Devices panel are in a dock at the
 # foot of the sidebar. These controls are icons, named only by their tooltips:
 DOCK_ICONS=("mute","unmute","hang")
 # and these words are dock text:
-DOCK_TEXT=("deafen","undeafen","devices","refresh","reconnecting","connected")
+DOCK_TEXT=("deafen","undeafen","devices","mixer","refresh","reconnecting","connected")
 
 
 def sfu_participants(secret,*,allow_empty=False):
@@ -93,6 +95,11 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
     received=threading.Event()
     chime=threading.Event()
     speakers=[(0,0,0),(0,0,0)]  # completed 100ms windows, consecutive 960 Hz windows, consecutive silent windows
+    levels=[[],[]]  # the 960 Hz amplitude of every completed 100 ms window
+    def tone(pcm,hz=960):
+        half=pcm[::2]  # 24 kHz is plenty for one pure tone
+        w=math.tau*hz/24000
+        return 2*abs(sum(v*complex(math.cos(k*w),math.sin(k*w)) for k,v in enumerate(half)))/len(half)
     def observe(monitor,idx):
         good=quiet=0
         while data:=monitor.stdout.read(9600):
@@ -101,6 +108,7 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
             good=good+1 if abs(hz-960)<35 and max(pcm)>500 else 0
             quiet=quiet+1 if max(abs(min(pcm)),abs(max(pcm)))<32 else 0
             speakers[idx]=(speakers[idx][0]+1,good,quiet)
+            if controls:levels[idx].append(tone(pcm))
             if good>=6:received.set()
             if incoming and max(pcm)>500:
                 # Both ringtone partials must actually be playing on the private sink.
@@ -240,6 +248,22 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
                 assert set(roster())=={alice,bob}
                 print("Switched the desktop to Sidechat during mute; DM call bar remained active.",flush=True)
             audio_controls(widget,click,lambda:speakers[0],streams,secret,sockets,alice,bob,change_room)
+            def peer_volume(old,new,reset=False):
+                # The DM's one Mixer row: the peer's name, its gain and Reset,
+                # with the slider under them. Arrow keys need the pointer on it.
+                def at(percent):
+                    words=dock_words()
+                    for w,x,y in words:
+                        if w=="reset" and any(v==str(percent) and abs(vy-y)<=5 for v,_,vy in words):
+                            return (RAIL+SIDEBAR//2,y+SLIDER_BELOW),(x,y)
+                    return None
+                slider,button=wait_for(f"Element's local volume at {old}%",lambda:at(old),8)
+                x,y=button if reset else slider
+                cmd("xdotool","windowfocus",win,"mousemove","--window",win,str(x),str(y),check=True)
+                if reset:cmd("xdotool","click","1",check=True)
+                else:cmd("xdotool","key","--repeat",str(abs(new-old)//5),"--delay","65","Down" if new<old else "Up",check=True)
+                wait_for(f"Element's local volume at {new}%",lambda:at(new),8)
+            dm_volume(click,peer_volume,levels[0],streams)
             # Return to the DM so the final assertion checks its Voice call button.
             x,y=wait_for("original DM sidebar entry",lambda:sidebar_room("media-proof"))
             cmd("xdotool","mousemove","--window",win,str(x),str(y),"click","1",check=True)
@@ -433,6 +457,33 @@ def audio_controls(widget,click,speaker,streams,secret,sockets,alice,bob,change_
     phase("Deafen",False,False)   # open mic is automatically muted
     phase("Undeafen",True,True)
     print("No reconnect: same Element receiver, SSRC and signaling sockets; both original GCM track and participant SIDs retained.",flush=True)
+
+
+def dm_volume(click,peer_volume,levels,streams):
+    """Element at 25 % in the DM's Mixer: its 960 Hz at the desktop speaker drops to a quarter."""
+    # Chromium's audio processing moves Element's tone level now and then, so
+    # the reference is a steady stretch taken just before the change.
+    def level(expected=1.0,reference=None):
+        mark=len(levels)
+        def steady():
+            if len(levels)-mark<12:return None
+            last=levels[-12:]
+            if reference is None:
+                m=median(last)
+                return m if m>200 and all(abs(a/m-1)<=.05 for a in last) else None
+            if all(abs(a/reference-expected)<=max(.02,.05*expected) for a in last):return median(last)
+            return None
+        return wait_for(f"desktop 960 Hz at {expected:.0%} of its level",steady,15)
+    click("Mixer")
+    reference=level()
+    peer_volume(100,25)
+    low=level(.25,reference)
+    assert len(streams("sink-inputs"))==1
+    peer_volume(25,100,reset=True)
+    level(1,reference)
+    click("Mixer")
+    print(f"DM Mixer: Element at 25% lowered its 960 Hz at the desktop speaker from {reference:.0f} to {low:.0f} "
+          "(median amplitude of 12 consecutive 100 ms windows) in the one playback stream; Reset restored it.",flush=True)
 
 
 def reverse_call(stack,page,room,alice,bob,secret,find,click,roster,streams,chime,received,env,cmd,check_relay,sibling,set_dnd,speaker):
