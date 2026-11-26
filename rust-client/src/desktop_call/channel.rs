@@ -193,7 +193,7 @@ impl Subscriptions {
         &mut self,
         lk: &Room,
         keys: &GroupKeys,
-        mode: &watch::Receiver<AudioMode>,
+        mixer: &Mixer,
         notices: &DeviceNotices,
         previews: &Previews,
     ) -> Result<BTreeSet<String>> {
@@ -230,12 +230,10 @@ impl Subscriptions {
                     }
                     live.insert(sid.clone());
                     self.tracks.entry(sid).or_insert_with(|| match track {
-                        RemoteTrack::Audio(track) => self.jobs.spawn(play(
+                        RemoteTrack::Audio(track) => self.jobs.spawn(mixer.play(
                             track,
-                            publication.source(),
+                            publication.source().into(),
                             Some(keys.members[&id.0].user.clone()),
-                            mode.clone(),
-                            notices.clone(),
                         )),
                         RemoteTrack::Video(track) => self.jobs.spawn(room_video::display(
                             track,
@@ -280,9 +278,13 @@ pub(super) async fn joined<S: CallSignal>(
         room: w.room.to_owned(),
     };
     // Keep capture paced by the audio device while membership and key RPCs
-    // are in flight. Dropping either task set releases its pacat children.
+    // are in flight. Dropping the task set releases its pacat child; every
+    // peer plays through the one mixer output.
+    let io = audio::platform();
+    let mixer = Mixer::start(io.clone(), mode.clone(), notices.clone());
     let mut input = JoinSet::new();
     input.spawn(controlled_capture(
+        io,
         src,
         mic.clone(),
         mode.clone(),
@@ -316,7 +318,7 @@ pub(super) async fn joined<S: CallSignal>(
             }
         }
         keys.receive(w)?;
-        let mut speaking = subscriptions.sync(lk, &keys, &mode, &notices, &views.previews)?;
+        let mut speaking = subscriptions.sync(lk, &keys, &mixer, &notices, &views.previews)?;
         if lk.local_participant().is_speaking() && !mic.is_muted() && !mode.borrow().mic_off() {
             speaking.insert(s.user.clone());
         }

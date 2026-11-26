@@ -8,7 +8,6 @@ use livekit::{
     prelude::*,
     webrtc::{
         audio_source::native::NativeAudioSource,
-        audio_stream::native::NativeAudioStream,
         prelude::{AudioFrame, AudioSourceOptions, RtcAudioSource},
     },
 };
@@ -16,10 +15,11 @@ use serde_json::{Value, json};
 use std::{
     collections::VecDeque,
     process::Stdio,
+    sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::AsyncReadExt,
     process::Command,
     sync::watch,
     task::JoinSet,
@@ -28,12 +28,19 @@ use tokio::{
 use untethered_iced::rtc_keys::{self, EVENT as KEY, SenderKey};
 use untethered_iced::rtc_membership::{CallKey, CallSignal, CallUpdate, EVENT_TYPE, Membership};
 use url::Url;
+mod audio;
 mod cameras;
 mod channel;
 mod room_video;
 mod share_audio;
 pub(crate) use cameras::{CameraChoice, list_cameras};
 pub(super) use room_video::{Feed, Previews, VideoInput};
+use audio::{AudioIo, Kind, Mixer};
+
+/// The microphones, speakers and shareable app streams of this platform.
+pub(super) fn list_devices() -> futures_util::future::BoxFuture<'static, Result<Catalog>> {
+    audio::platform().list_devices()
+}
 
 pub enum Target {
     Dm {
@@ -122,6 +129,8 @@ pub struct ActiveCall {
     pub room: String,
     pub label: String,
     pub group: bool,
+    /// A DM's other user, whose local volume the mixer sets.
+    pub peer: Option<String>,
     pub video_peer: Option<String>,
     pub cancel: Sender<()>,
     pub audio: watch::Sender<AudioMode>,
@@ -157,6 +166,10 @@ impl crate::App {
     pub(super) fn start_voice(&mut self, room: String, target: Target) {
         self.inbox.handled = None;
         let group = matches!(target, Target::Channel);
+        let peer = match &target {
+            Target::Dm { peer, .. } => Some(peer.clone()),
+            Target::Channel => None,
+        };
         let video_peer = match &target {
             Target::Dm {
                 video: true, peer, ..
@@ -211,6 +224,7 @@ impl crate::App {
                 room,
                 label: label.into(),
                 group,
+                peer,
                 video_peer,
                 cancel,
                 audio,
@@ -698,18 +712,18 @@ async fn call<S: CallSignal>(
     };
     let mut audio = JoinSet::new();
     let devices = mode.clone();
+    let io = audio::platform();
+    let mixer = Mixer::start(io.clone(), mode.clone(), notices.clone());
     let capture = |publication| {
-        controlled_capture(src.clone(), publication, devices.clone(), notices.clone())
-    };
-    let playback = |track| {
-        play(
-            track,
-            TrackSource::Microphone,
-            None,
+        controlled_capture(
+            io.clone(),
+            src.clone(),
+            publication,
             devices.clone(),
             notices.clone(),
         )
     };
+    let playback = |track| mixer.play(track, Kind::Voice, Some(dm_peer.to_owned()));
     let mut camera = room_video::Publisher::new(VideoInput::Camera);
     let mut share = room_video::Publisher::new(VideoInput::Window);
     let mut sound = share_audio::Publisher::default();
@@ -785,17 +799,15 @@ async fn call<S: CallSignal>(
                             ))
                         });
                     }
-                    (source @ TrackSource::ScreenshareAudio, Some(RemoteTrack::Audio(track))) => {
+                    (TrackSource::ScreenshareAudio, Some(RemoteTrack::Audio(track))) => {
                         // A tab may stop or be replaced while the microphone stays live.
                         // Its worker follows the publication SID, not the call recovery path.
                         live.insert(sid.clone());
                         subscriptions.entry(sid).or_insert_with(|| {
-                            media_jobs.spawn(play(
+                            media_jobs.spawn(mixer.play(
                                 track,
-                                source,
-                                None,
-                                devices.clone(),
-                                notices.clone(),
+                                Kind::Share,
+                                Some(dm_peer.to_owned()),
                             ))
                         });
                     }
@@ -864,7 +876,8 @@ async fn call<S: CallSignal>(
         if interrupted && recovering.is_none() {
             recovering = Some(Instant::now());
             // Cancel and drain both device tasks before any replacement is
-            // started. Their pacat children are kill-on-drop. Keep user routes,
+            // started. The microphone's pacat child is kill-on-drop, and the
+            // mixer closes its output once no source is left. Keep user routes,
             // mute/deafen, the E2EE provider and the SDK reconnect loop alive.
             audio.shutdown().await;
             playing = false;
@@ -1107,6 +1120,7 @@ impl DeviceNotices {
 }
 
 async fn controlled_capture(
+    io: Arc<dyn AudioIo>,
     src: NativeAudioSource,
     publication: LocalTrackPublication,
     mut mode: watch::Receiver<AudioMode>,
@@ -1129,7 +1143,7 @@ async fn controlled_capture(
         tokio::select! {
             biased;
             change=mode.wait_for(changed)=>{change.map_err(|_| ENDED)?;continue;}
-            result=capture(&src,&publication,&route,&notices)=>result?,
+            result=capture(&*io,&src,&publication,&route,&notices)=>result?,
         }
         if !publication.is_muted() {
             publication.mute();
@@ -1139,49 +1153,21 @@ async fn controlled_capture(
     }
 }
 
-fn audio_process(record: bool, device: Option<&str>) -> Result<tokio::process::Child> {
-    let mut p = Command::new("pacat");
-    p.args([
-        if record { "--record" } else { "--playback" },
-        "--raw",
-        "--format=s16le",
-        "--rate=48000",
-        "--channels=1",
-        "--latency-msec=40",
-        "--client-name=Untethered",
-        "--stream-name=Voice call",
-    ])
-    .kill_on_drop(true)
-    .stderr(Stdio::null());
-    if let Some(device) = device {
-        p.arg("--device").arg(device);
-    }
-    if record {
-        p.stdin(Stdio::null()).stdout(Stdio::piped());
-    } else {
-        p.stdin(Stdio::piped()).stdout(Stdio::null());
-    }
-    p.spawn()
-        .map_err(|_| "Cannot open audio. Install the PulseAudio client tools.")
-}
 // A local device failure is recoverable by choosing another input. An error
 // submitting PCM to the network source remains a call-level error.
 async fn capture(
+    io: &dyn AudioIo,
     src: &NativeAudioSource,
     publication: &LocalTrackPublication,
     route: &Route,
     notices: &DeviceNotices,
 ) -> Result<()> {
-    let Ok(mut child) = audio_process(true, route.name.as_deref()) else {
+    let Ok(mut input) = io.open_input(route.name.as_deref()) else {
         return Ok(());
     };
-    let mut input = child.stdout.take().unwrap();
-    let mut buf = [0u8; 960];
+    let mut frame = [0; audio::SAMPLES];
     let mut first = true;
-    loop {
-        if input.read_exact(&mut buf).await.is_err() {
-            return Ok(());
-        }
+    while input.read(&mut frame).await {
         if first {
             first = false;
             if publication.is_muted() {
@@ -1189,85 +1175,16 @@ async fn capture(
             }
             notices.report(Port::Mic, route.revision, false).await;
         }
-        let pcm: Vec<_> = buf
-            .as_chunks::<2>()
-            .0
-            .iter()
-            .copied()
-            .map(i16::from_le_bytes)
-            .collect();
         src.capture_frame(&AudioFrame {
-            data: pcm.into(),
-            sample_rate: 48000,
+            data: frame.as_slice().into(),
+            sample_rate: audio::RATE,
             num_channels: 1,
-            samples_per_channel: 480,
+            samples_per_channel: audio::SAMPLES as u32,
         })
         .await
         .map_err(|_| "Microphone capture failed.")?;
     }
-}
-async fn play(
-    track: RemoteAudioTrack,
-    source: TrackSource,
-    user: Option<String>,
-    mut mode: watch::Receiver<AudioMode>,
-    notices: DeviceNotices,
-) -> Result<()> {
-    let mut stream = NativeAudioStream::new(track.rtc_track(), 48000, 1);
-    let mut bytes = Vec::new();
-    loop {
-        let route = mode.borrow_and_update().speaker.clone();
-        let changed = |s: &AudioMode| s.speaker.revision != route.revision;
-        let mut child = audio_process(false, route.name.as_deref()).ok();
-        if child.is_none() {
-            notices.report(Port::Speaker, route.revision, true).await;
-        }
-        loop {
-            let frame = tokio::select! {
-                biased;
-                change=mode.wait_for(changed)=>{change.map_err(|_|ENDED)?;break;}
-                frame=stream.next()=>match frame {Some(f)=>f,None=>return Ok(())}
-            };
-            // Drain a failed output rather than falling back to a different speaker
-            // or replaying old speech when a working device is selected.
-            let Some(out) = child.as_mut().and_then(|c| c.stdin.as_mut()) else {
-                continue;
-            };
-            let gain = {
-                let settings = mode.borrow();
-                if settings.deafened
-                    || source == TrackSource::ScreenshareAudio && settings.share_silent
-                {
-                    0
-                } else {
-                    user.as_ref().map_or(100, |u| settings.volume(u))
-                }
-            };
-            playback_pcm(&frame.data, gain, &mut bytes);
-            let written = tokio::select! {
-                biased;
-                change=mode.wait_for(changed)=>{change.map_err(|_|ENDED)?;break;}
-                written=out.write_all(&bytes)=>written,
-            };
-            if written.is_err() {
-                child = None;
-                notices.report(Port::Speaker, route.revision, true).await;
-            }
-        }
-    }
-}
-
-fn playback_pcm(samples: &[i16], gain: u8, bytes: &mut Vec<u8>) {
-    bytes.clear();
-    match gain {
-        // Keep draining the stream at 0% and while deafened.
-        0 => bytes.resize(samples.len() * 2, 0),
-        100 => bytes.extend(samples.iter().flat_map(|s| s.to_le_bytes())),
-        _ => bytes.extend(samples.iter().flat_map(|&s| {
-            let amplified = i32::from(s) * i32::from(gain) / 100;
-            (amplified.clamp(i16::MIN.into(), i16::MAX.into()) as i16).to_le_bytes()
-        })),
-    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1305,20 +1222,6 @@ mod tests {
         let _ = app.update(crate::Msg::Open("!other".into()));
         let _ = app.update(crate::Msg::Open("!call".into()));
         assert!(!app.call.as_ref().unwrap().stage_open);
-    }
-
-    #[test]
-    fn boosted_playback_clips_peaks_without_inverting_them() {
-        let mut bytes = Vec::new();
-        playback_pcm(&[-20_000, -10_000, 0, 10_000, 20_000], 200, &mut bytes);
-        let pcm: Vec<_> = bytes
-            .as_chunks::<2>()
-            .0
-            .iter()
-            .copied()
-            .map(i16::from_le_bytes)
-            .collect();
-        assert_eq!(pcm, [i16::MIN, -20_000, 0, 20_000, i16::MAX]);
     }
 
     #[test]

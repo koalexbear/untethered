@@ -993,7 +993,6 @@ impl App {
             #[cfg(target_os = "linux")]
             Msg::ToggleMixer => {
                 if let Some(call) = &mut self.call
-                    && call.group
                     && !call.cancel.is_closed()
                 {
                     call.mixer = !call.mixer;
@@ -1005,7 +1004,7 @@ impl App {
             #[cfg(target_os = "linux")]
             Msg::PeerVolume(id, user, percent) => {
                 if let Some(call) = &self.call
-                    && call.group
+                    && (call.group || call.peer.as_ref() == Some(&user))
                     && call.id == id
                     && !call.cancel.is_closed()
                     && user != self.matrix_id
@@ -1076,7 +1075,7 @@ impl App {
                     if call.picker && !call.loading {
                         call.loading = true;
                         let id = call.id;
-                        return Task::perform(call_devices::Catalog::read(), move |r| {
+                        return Task::perform(desktop_call::list_devices(), move |r| {
                             Msg::DevicesListed(id, r)
                         });
                     }
