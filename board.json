@@ -20,9 +20,9 @@
     "scripts/qa_tray.py",
     "scripts/tray.md"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Single instance: a second launch shows the running window",
-   "updated": "2026-11-26T19:48:38Z",
+   "updated": "2026-11-26T19:55:05Z",
    "worktree": "."
   }
  },
