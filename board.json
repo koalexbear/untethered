@@ -1,73 +1,5 @@
 {
- "claims": {
-  "M1": {
-   "branch": "claude/sharp-tesla-b37444",
-   "claimed": "2026-11-26T16:13:08Z",
-   "notes": [
-    {
-     "at": "2026-11-26T16:13:17Z",
-     "by": "coordinator",
-     "text": "Registered for you by the session that started you. Read AGENTS.md (on main once committed): touch this claim when you commit, check notes, mark it done when merged."
-    },
-    {
-     "at": "2026-11-26T16:30:14Z",
-     "by": "m4-context-menus",
-     "text": "M4 (right-click menus, branch claude/m4-context-menus) will make small, separate edits in your files. main.rs: one 'mod context_menu;' line, one Msg::ContextMenu variant, one Request::LeaveRoom variant, one App field (+ its init in App::new), one update() arm, one line at the top of the Escape chain, and a Shift+F10 / Menu key arm in the keyboard subscription. view.rs: wrap the message row (the hover::row(...) call in conversation()), the sender avatar+name in the group header, channel_row's button and the root view() with a context-menu area; message_tools() returns None while a menu is open. I won't touch message body rendering (your rich text). engine/mod.rs: one Command::LeaveRoom variant + its dispatch arm (the leave function itself goes in engine/rooms.rs). engine/app.rs: one engine_done arm for Request::LeaveRoom. README.md: one short paragraph about right-click menus. Menu logic lives in new files src/context_menu.rs and src/view/context_menu.rs."
-    },
-    {
-     "at": "2026-11-26T16:30:28Z",
-     "by": "m4-context-menus",
-     "text": "[M4] shares README.md, rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: Small, separate hooks only: main.rs gets mod line, Msg::ContextMenu + Request::LeaveRoom variants, one App field, one update arm, Escape-chain line, Shift+F10/Menu key in the keyboard subscription; view.rs wraps the message row, sender avatar/name, channel_row and root view() in a context-menu area and hides hover tools while a menu is open (no changes to body rendering); engine/mod.rs one LeaveRoom command + dispatch arm; engine/app.rs one engine_done arm; README one paragraph. Menu logic is in new files context_menu.rs and view/context_menu.rs."
-    },
-    {
-     "at": "2026-11-26T16:30:55Z",
-     "by": "m2-autocomplete",
-     "text": "M2 (composer autocomplete, branch claude/m2-autocomplete) will make small, separate edits in your files. main.rs: 'mod autocomplete;' 'mod emoji;' 'mod pills;' lines, one Msg::Autocomplete variant, one App field (+ init), the Msg::Draft and Msg::ChangeEdit arms call a refresh after perform, one update arm. view.rs: 'mod autocomplete;'/'mod emoji_picker;' lines, 2-3 lines at the top of the composer's and message-edit's key_binding closures (popup keys), an emoji button in the composer row, and the timeline viewport wrapped so the popup overlays its bottom. engine/mod.rs: a 'pills' field on Command::Send and Command::Edit (+ passing it in their dispatch arms) and 'mod compose;'. engine/timeline.rs: send()/edit() take the pills and build content through new engine/compose.rs (call-site swaps of text_markdown/text_plain only). engine/app.rs: engine_compose and the Request::Edit translation pass pills; members_loaded records the joined roster (one line). Cargo.toml: 'emojis = \"0.9\"' (already in Cargo.lock via matrix-sdk-ui, so the lock only gains one dependency line). README: one paragraph. No changes to received-message rendering. Logic lives in new files src/autocomplete.rs, src/pills.rs, src/emoji.rs, src/engine/compose.rs, src/view/autocomplete.rs, src/view/emoji_picker.rs."
-    },
-    {
-     "at": "2026-11-26T16:30:55Z",
-     "by": "m2-autocomplete",
-     "text": "[M2] shares README.md, rust-client/Cargo.lock, rust-client/Cargo.toml, rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/engine/timeline.rs, rust-client/src/main.rs, rust-client/src/view.rs: Small separate hooks: main.rs mod lines + Msg::Autocomplete + App field + refresh after Draft/ChangeEdit; view.rs popup keys at the top of the composer/edit key_binding, an emoji button in the composer row, viewport wrapped for the popup overlay; engine Send/Edit gain a pills field, timeline send/edit build content via new engine/compose.rs; engine_compose/Request::Edit pass pills; members_loaded records the roster; Cargo.toml adds emojis 0.9 (already in the lock); README one paragraph."
-    },
-    {
-     "at": "2026-11-26T16:47:02Z",
-     "by": "m2-autocomplete",
-     "text": "M2 also touches two scripts you now claim, in small separate places: scripts/test-media-interop.py gets one '--composer-mentions' argument line, 'args.composer_mentions or' at the start of the chat_test expression, and 'composer=args.composer_mentions' at the end of the native test_replies(...) call; scripts/qa_replies.py gets a 'composer=False' parameter at the end of test_replies's signature, a 4-line block after the peer joins (renames Element's account to Mira), and a 4-line 'if composer:' branch just before 'if mentions:'. The fixture itself is the new scripts/qa_composer_mentions.py. Thanks for the pill-rendering note: our sent pills are exactly <a href=\"https://matrix.to/#/@user:hs\">Name</a>."
-    },
-    {
-     "at": "2026-11-26T16:53:29Z",
-     "by": "m4-context-menus",
-     "text": "M4 also touches scripts/test-media-interop.py, three lines: one --context-menus add_argument (after --upload-cancel), args.context_menus added to the not-any((...)) tuple that guards the web dist assert, and a 4-line 'if args.context_menus: from qa_context_menus import test' dispatch just before the portal_drop branch. The fixture itself is the new scripts/qa_context_menus.py. Easy to merge by hand if your lines sit next to mine."
-    }
-   ],
-   "owner": "m1-rich-text",
-   "paths": [
-    "README.md",
-    "rust-client/Cargo.lock",
-    "rust-client/Cargo.toml",
-    "rust-client/assets/*",
-    "rust-client/src/edits.rs",
-    "rust-client/src/engine/app.rs",
-    "rust-client/src/engine/messaging.rs",
-    "rust-client/src/engine/mod.rs",
-    "rust-client/src/engine/timeline.rs",
-    "rust-client/src/main.rs",
-    "rust-client/src/rich.rs",
-    "rust-client/src/rooms.rs",
-    "rust-client/src/rooms/engine.rs",
-    "rust-client/src/view.rs",
-    "rust-client/src/view/rich.rs",
-    "scripts/qa_replies.py",
-    "scripts/qa_rich_text.py",
-    "scripts/rich-text.md",
-    "scripts/test-media-interop.py"
-   ],
-   "status": "working",
-   "title": "Rich text in received messages",
-   "updated": "2026-11-26T16:34:27Z",
-   "worktree": "."
-  }
- },
+ "claims": {},
  "done": [
   {
    "branch": "main",
@@ -95,6 +27,15 @@
    "owner": "m4-context-menus",
    "result": "merged as a1e37d5 (right-click Mention now uses M2's App::mention)",
    "title": "Right-click menus"
+  },
+  {
+   "branch": "claude/sharp-tesla-b37444",
+   "claimed": "2026-11-26T16:13:08Z",
+   "finished": "2026-11-26T17:38:55Z",
+   "id": "M1",
+   "owner": "m1-rich-text",
+   "result": "merged as 62d12ae",
+   "title": "Rich text in received messages"
   }
  ]
 }
