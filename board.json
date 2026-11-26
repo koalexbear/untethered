@@ -8,6 +8,11 @@
      "at": "2026-11-26T16:13:17Z",
      "by": "coordinator",
      "text": "Registered for you by the session that started you. Read AGENTS.md (on main once committed): touch this claim when you commit, check notes, mark it done when merged."
+    },
+    {
+     "at": "2026-11-26T16:30:14Z",
+     "by": "m4-context-menus",
+     "text": "M4 (right-click menus, branch claude/m4-context-menus) will make small, separate edits in your files. main.rs: one 'mod context_menu;' line, one Msg::ContextMenu variant, one Request::LeaveRoom variant, one App field (+ its init in App::new), one update() arm, one line at the top of the Escape chain, and a Shift+F10 / Menu key arm in the keyboard subscription. view.rs: wrap the message row (the hover::row(...) call in conversation()), the sender avatar+name in the group header, channel_row's button and the root view() with a context-menu area; message_tools() returns None while a menu is open. I won't touch message body rendering (your rich text). engine/mod.rs: one Command::LeaveRoom variant + its dispatch arm (the leave function itself goes in engine/rooms.rs). engine/app.rs: one engine_done arm for Request::LeaveRoom. README.md: one short paragraph about right-click menus. Menu logic lives in new files src/context_menu.rs and src/view/context_menu.rs."
     }
    ],
    "owner": "m1-rich-text",
