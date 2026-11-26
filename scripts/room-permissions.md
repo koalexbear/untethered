@@ -99,7 +99,7 @@ unshare -Urn sh -ec 'ip link set lo up; exec "$PYTHON" scripts/test-media-intero
 Each run starts a fresh Synapse. The reporter has room power level **0**
 and gets HTTP **403** if they try to read the moderation queue. The sender
 uses Element; the reporter uses either the native Iced client on Xvfb or a
-fresh Chromium tab running the Rust/WASM client and gomuks worker.
+fresh Chromium tab running the Rust/WASM client and its matrix-sdk worker.
 
 1. Element sends two identical messages. Open **Report Message** from the first one’s hover toolbar and
    cancel after typing a reason: the server still has zero reports.

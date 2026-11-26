@@ -20,7 +20,8 @@ Set `ELEMENT_WEB_DIR` to the extracted official `element-v1.12.35.tar.gz`
 (SHA-256 `5aaff32e348eba976aea8da11cd50f9ca7f824f235aa66e24d1176f829e6bba5`).
 The fixture serves the release locally with its own config, without changing
 the extracted files. Build the native debug client first and set
-`UNTETHERED_BACKEND` if the pinned gomuks binary isn't already in `.dev/backends`.
+`UNTETHERED_BACKEND` if the pinned gomuks binary (the fixtures' account
+seeding tool) isn't already in `.dev/backends`.
 
 ```sh
 cargo build --locked -j2 --manifest-path rust-client/Cargo.toml

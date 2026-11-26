@@ -14,8 +14,8 @@ unshare -Urn sh -ec 'ip link set lo up; exec "$PYTHON" scripts/test-media-intero
 
 Each run starts a loopback Synapse and two disposable accounts. Element sends
 messages to two Megolm rooms. The receiver opens **Mentions** in the native
-client on Xvfb or in a Chromium tab running the WASM frontend and gomuks
-worker. The fixture reads the actual rendered entries and clicks each one.
+client on Xvfb or in a Chromium tab running the WASM frontend and its
+matrix-sdk worker. The fixture reads the actual rendered entries and clicks each one.
 
 | Check | Required observation |
 |---|---|
@@ -27,8 +27,8 @@ worker. The fixture reads the actual rendered entries and clicks each one.
 | Select each entry | The gateway sees precisely `/rooms/{room_id}/context/{event_id}` for that message, including the **base** for the edited hit. Both the highlighted text and the expected next message appear on screen. |
 | Leave the second room while viewing the inbox | The visible count drops from three to one; the first room’s entry stays. |
 
-The inbox reads the existing device cache with paged gomuks `search_local`
-queries. It checks the decrypted `m.mentions.user_ids` array and the current
+The inbox reads the messages the matrix-sdk event cache stored on this
+device (`engine/search.rs`). It checks the decrypted `m.mentions.user_ids` array and the current
 valid edit, rather than inferring a mention from a notification or a text
 match. It does not store a second plaintext history. Messages the device
 has not synced or cannot decrypt are outside its coverage.

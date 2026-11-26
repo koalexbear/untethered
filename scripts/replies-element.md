@@ -23,7 +23,7 @@ three replacements. Both native edits must target the first reply’s ID rather
 than the preceding edit, and the Element edit must target the other reply.
 
 A native jump while the timeline is still loaded must use no `/context`
-request. After the native client and gomuks restart and Element reloads,
+request. After the native client restarts and Element reloads,
 both clients must display the two final texts on the original reply rows, and
 neither original may be in Element’s initial live timeline. Clicking each
 edited quote in Element must highlight the exact original. Each click on a native reply’s quoted line must

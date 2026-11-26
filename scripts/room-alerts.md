@@ -43,7 +43,7 @@ ELEMENT_WEB_DIR=/path/to/element-v1.12.35 DUNST=/path/to/dunst \
   unshare -Urn sh -ec 'ip link set lo up; exec "$PYTHON" scripts/test-media-interop.py --browser-alerts'
 ```
 
-The receiver uses Untethered’s Rust/WASM frontend and gomuks worker in a
+The receiver uses Untethered’s Rust/WASM frontend and its matrix-sdk worker in a
 fresh, headed Chromium profile on Xvfb. The sender is a different verified
 user in Element. The fixture clicks **Mute ordinary** and reads that room’s
 push rule from Synapse. It then drives **Enable browser notifications** and
@@ -52,7 +52,8 @@ result or page visibility is mocked. A second tab is brought forward;
 Playwright’s usual forced-focus emulation is disabled.
 
 The receiving tab must be hidden and unfocused, with the worker reporting
-decrypted message bodies and mention targets. Only the direct mention after
+decrypted message bodies and mention targets (the debug build's QA event
+log, `scripts/qa_events.py`). Only the direct mention after
 permission is granted may produce a popup. OCR reads its body on screen;
 Dunst’s history must identify Chromium as the sender. The fixture activates
 the popup, checks the tab regains focus, reloads, and sends another ordinary
