@@ -166,9 +166,10 @@ def main():
     args.add_argument("--multi-device-ring",action="store_true",help="Ring two independently verified Linux devices on one Matrix account; decline on one, answer on the other")
     args.add_argument("--call-controls",action="store_true",help="Measure Linux mute/deafen and track continuity during a live encrypted call with Element")
     args.add_argument("--call-devices",action="store_true",help="Switch two microphones and two speakers using the Linux call bar during a live encrypted call with Element")
-    args.add_argument("--call-reconnect",action="store_true",help="Cut the Linux desktop's private network link during an encrypted Element call, then verify automatic two-way recovery")
+    args.add_argument("--call-reconnect",nargs="?",const=6.5,type=float,metavar="SECONDS",help="Cut the Linux desktop's private network link during an encrypted Element call (6.5 s by default), then verify automatic two-way recovery; past the 16 s delayed leave, the rejoin rule")
     args.add_argument("--call-turn",action="store_true",help="Block direct ICE from both clients and verify selected TURN routes and encrypted audio")
     args.add_argument("--voice-room",action="store_true",help="Join a silent encrypted voice room with three native Linux clients and measure every audio path")
+    args.add_argument("--room-reconnect",action="store_true",help="Cut one voice-room client's link (6.5 s, SFU ports only, then 25 s); verify the others' audio, recovery and a rejoin with a fresh membership")
     args.add_argument("--window-share",action="store_true",help="Share a selected test window through KDE's ScreenCast portal to two encrypted voice peers")
     args.add_argument("--room-camera",action="store_true",help="Toggle a portal-authorized virtual camera and measure the changing decoded frames at both voice-room peers")
     args.add_argument("--room-layout",action="store_true",help="Measure grid and focus views of two live portal cameras on a third desktop")
@@ -181,12 +182,14 @@ def main():
         raise SystemExit("Run --room-layout separately; it uses two independent camera desktops")
     if args.room_ptt and (args.window_share or args.room_camera):
         raise SystemExit("--room-ptt uses private X displays; run the KWin video fixtures separately")
-    if args.window_share or args.room_camera or args.room_ptt or args.room_layout: args.voice_room=True
+    if args.window_share or args.room_camera or args.room_ptt or args.room_layout or args.room_reconnect: args.voice_room=True
+    if args.room_reconnect and (args.window_share or args.room_camera or args.room_ptt or args.room_layout):
+        raise SystemExit("Run --room-reconnect separately")
     if args.dm_window:
         if args.voice_room:args.error("Run the DM and group window fixtures separately")
         if not args.element_video:args.dm_video=True
         args.window_share=True
-    if args.call_controls or args.call_devices or args.call_reconnect or args.call_turn: args.desktop_dm=True
+    if args.call_controls or args.call_devices or args.call_reconnect is not None or args.call_turn: args.desktop_dm=True
     if args.switch_camera:args.element_video=True
     if args.native_dm or args.unsupported_dm or args.dm_video or args.element_video:args.desktop_dm=True
     if args.native_dm and args.unsupported_dm:args.error("run --native-dm and --unsupported-dm separately")
@@ -271,7 +274,7 @@ federation_domain_whitelist: []
                 test_replies(tmp,hs,ROOT,BACKEND,seed,http,gateway_port,reactions=args.reactions,room_search=args.room_search,alerts=args.room_alerts,permissions=args.room_permissions,ban=args.room_ban,kick=args.room_kick,report=args.message_report,mentions=args.mentions_inbox,spaces=args.space_alerts=="native",setup=args.community_setup)
                 return
             if args.rtc_audio:
-                audio_test(tmp,hs,server_name,rtc_service,ROOT,BACKEND,seed,http,service,desktop=args.desktop_dm or args.incoming_dm,incoming=args.incoming_dm,controls=args.call_controls,devices=args.call_devices,reconnect=args.call_reconnect,turn=args.call_turn,group=args.voice_room,share=args.window_share,camera=args.room_camera,ptt=args.room_ptt,layout=args.room_layout,multi_ring=args.multi_device_ring,dnd_ring=args.dnd_ring,native_dm=args.native_dm,unsupported_dm=args.unsupported_dm,dm_video=args.dm_video,element_video=args.element_video,switch_camera=args.switch_camera)
+                audio_test(tmp,hs,server_name,rtc_service,ROOT,BACKEND,seed,http,service,desktop=args.desktop_dm or args.incoming_dm,incoming=args.incoming_dm,controls=args.call_controls,devices=args.call_devices,reconnect=args.call_reconnect,turn=args.call_turn,group=args.voice_room,share=args.window_share,camera=args.room_camera,ptt=args.room_ptt,layout=args.room_layout,room_reconnect=args.room_reconnect,multi_ring=args.multi_device_ring,dnd_ring=args.dnd_ring,native_dm=args.native_dm,unsupported_dm=args.unsupported_dm,dm_video=args.dm_video,element_video=args.element_video,switch_camera=args.switch_camera)
                 return
             if args.rtc_membership:
                 from qa_rtc_membership import test

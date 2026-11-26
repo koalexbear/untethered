@@ -21,13 +21,18 @@ class ClientLink:
         return sp.run([*self.prefix,*args],check=True,capture_output=True,text=True,timeout=5,**kw)
 
 
+# Each role's /30: gateway (outer namespace) and client address.
+ROLES={"desktop":("198.51.100.1","198.51.100.2"),"element":("198.51.100.5","198.51.100.6"),
+       "room":("198.51.100.9","198.51.100.10")}
+
+
 def client_link(stack, ports, role):
     def run(*args, **kw):
         return sp.run(args, check=True, capture_output=True, text=True, timeout=5, **kw)
 
     interfaces=json.loads(run("ip","-j","addr").stdout)
-    assert role in ("desktop","element")
-    assert {i["ifname"] for i in interfaces} <= {"lo","rtc-test","qa-desktop-gw","qa-element-gw"}
+    assert role in ROLES
+    assert {i["ifname"] for i in interfaces} <= {"lo","rtc-test",*(f"qa-{r}-gw" for r in ROLES)}
     assert any(a["local"]=="192.0.2.2" for i in interfaces for a in i["addr_info"])
     ns=sp.Popen(["unshare","-n","sh","-ec","ip link set lo up; echo ready; exec cat"],
                 stdin=sp.PIPE, stdout=sp.PIPE, text=True)
@@ -40,7 +45,7 @@ def client_link(stack, ports, role):
     def inside(*args, **kw):return run(*prefix,*args,**kw)
     iface=f"qa-{role}-gw"
     nic=f"qa-{role}"
-    gateway,local=("198.51.100.1","198.51.100.2") if role=="desktop" else ("198.51.100.5","198.51.100.6")
+    gateway,local=ROLES[role]
     run("ip","link","add",iface,"type","veth","peer","name",nic,"netns",str(ns.pid))
     stack.callback(run,"ip","link","del",iface)
     for execute,dev,ip in [(run,iface,gateway),(inside,nic,local)]:
@@ -67,6 +72,27 @@ add rule ip qa_rtc post oifname "{nic}" ip saddr 127.0.0.1 snat to {local}
 def desktop_network(stack, ports):
     link=client_link(stack,ports,"desktop")
     return link.prefix,lambda:outage(link)
+
+
+@contextmanager
+def sfu_block(link):
+    """Drop only the SFU's signaling and media ports, so Matrix stays up, and
+    reset the SFU socket as a NAT that lost its mapping would."""
+    endpoint=["dst","127.0.0.1","dport","=",":18820"]
+    assert link.inside("ss","-Htn","state","established",*endpoint).stdout.strip()
+    link.inside("nft","-f","-",input="""add table ip qa_sfu_block
+add chain ip qa_sfu_block out { type filter hook output priority filter; }
+add chain ip qa_sfu_block in { type filter hook input priority filter; }
+add rule ip qa_sfu_block out tcp dport { 18820, 18821 } drop
+add rule ip qa_sfu_block out udp dport 18822 drop
+add rule ip qa_sfu_block in tcp sport { 18820, 18821 } drop
+add rule ip qa_sfu_block in udp sport 18822 drop
+""")
+    try:
+        link.inside("ss","-HKtn","state","established",*endpoint)
+        yield
+    finally:
+        link.inside("nft","delete","table","ip","qa_sfu_block")
 
 
 @contextmanager

@@ -364,7 +364,35 @@ silence and closed desktop audio devices. It changes the test mic from 480 Hz
 to 730 Hz while disconnected. After link-up it requires 12 fresh samples of
 the new tone at Element and 12 of the 960 Hz return tone at the desktop, both
 GCM tracks, unchanged MatrixRTC membership and exactly one ring event. These
-are short-outage checks; they do not exercise TURN or resume an expired call.
+are short-outage checks; they do not exercise TURN.
+
+`--call-reconnect 25` keeps the link down past the 16 s delayed leave. The
+desktop's membership expires while it is away. Element's DM calls leave once
+everyone else has (`autoLeaveWhenOthersLeft`), so Element hangs up then. When
+the link returns the desktop must end the call: no new membership, no second
+ring, and both audio devices released. If Element kept its session, the test
+instead requires a rejoin with a newer membership, two-way audio and still one
+ring. `--native-dm` covers the rejoin between two Linux desktops.
+
+### Verify voice-room recovery
+
+`sh experiments/rtc-audio/run_element.sh --room-reconnect` runs the three-client
+voice room with Bruno, client 2, on his own network namespace and veth (as in
+`--call-reconnect`). The debug clients log lost sessions, rejoins and sender
+key indices (`UNTETHERED_QA_RECOVERY=1`).
+
+* (a) Bruno's link goes down for 6.5 s. Alice and Clara must hear each other in
+  every 100 ms window. Afterwards all six paths carry fresh tones on Bruno's
+  original membership, and no client logged a lost session.
+* (b) Only the SFU's ports are blocked with `nft` for 6.5 s (Matrix stays up),
+  and his SFU socket is reset. Same outcome.
+* (c) A 25 s outage. Bruno's membership must expire while he is away. He must
+  then rejoin with a new membership event (newer `created_ts`) and log
+  `lost=Lease` and `rejoined fresh=true`. Every client's sender key index must
+  advance, all six paths must carry fresh tones, and Bruno must appear once in
+  the room state, at the SFU and in Alice's and Clara's rosters.
+
+Clara then leaves, and the usual departure and final-leave checks run.
 
 ### Verify TURN-only calls
 
@@ -395,8 +423,11 @@ one another and from silence in successive 100 ms windows.
   flow: both outputs must fall silent. Restore it: both must receive *new*
   tones without changing track IDs. For the reverse call, interrupt the
   caller’s entire network link. Check **Reconnecting**, automatic return
-  of fresh audio, and no second invitation. Each hangup must release the
-  devices, dismiss the call controls and clear both Matrix memberships.
+  of fresh audio, and no second invitation. Then cut it for 25 s: the
+  caller's membership must expire while the callee keeps its own, and the
+  caller must rejoin with a newer membership, without a ring, and fresh tones
+  both ways. Each hangup must release the devices, dismiss the call controls
+  and clear both Matrix memberships.
 
 `--unsupported-dm` runs against Synapse without an advertised MatrixRTC
 transport or a running SFU. Clicking **Voice call** must report the

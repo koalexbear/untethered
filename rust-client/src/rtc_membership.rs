@@ -287,6 +287,22 @@ impl Membership {
         rpc.update_delayed(&self.delay_id, Delayed::Restart).await
     }
 
+    /// A delayed leave is scheduled. Without one, renewing would keep this
+    /// membership alive with no lease at all.
+    pub fn armed(&self) -> bool {
+        !self.delay_id.is_empty()
+    }
+
+    /// Cancel the scheduled leave without leaving, before a new membership
+    /// replaces this one: the old leave must not fire over the new join.
+    pub async fn retire(&mut self, rpc: &mut impl StateSignal) -> Result<(), String> {
+        if self.armed() {
+            rpc.update_delayed(&self.delay_id, Delayed::Cancel).await?;
+            self.delay_id.clear();
+        }
+        Ok(())
+    }
+
     pub async fn leave(self, rpc: &mut impl StateSignal) -> Result<(), String> {
         if rpc
             .update_delayed(&self.delay_id, Delayed::Send)

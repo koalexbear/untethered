@@ -128,6 +128,35 @@ def check_native_dm(stack,tmp,hs,name,jwt,root,backend,room,users,headers,secret
     def hears(left,right):
         for d in desks:d.windows.clear()
         wait_for(f"two decoded speaker monitors: {left}/{right}",lambda:a.hears(set(left)) and b.hears(set(right)),18)
+    def memberships():
+        return {e["sender"]+":"+e["content"]["device_id"]:(e["event_id"],e["content"]["created_ts"]) for e in
+                http("GET",api+"/state",headers=headers[0]).json() if e["type"]==MEMBER and e["content"].get("application")=="m.call"}
+    def rejoin(link,seen):
+        # Past the 16 s delayed leave: the caller's membership expires. The
+        # callee keeps the call (the caller did not hang up); the caller
+        # rejoins it with a new membership and key, without ringing again.
+        before=memberships()
+        with outage(link):
+            down=time.monotonic()
+            hears([],[])
+            wait_for("caller shows Reconnecting",lambda:"reconnecting" in {w for w,_,_ in b.words()},12)
+            a.tone=2;b.tone=0
+            wait_for("caller's delayed leave fired",lambda:set(memberships())=={ids[0]},25)
+            expired=time.monotonic()-down
+            wait_for("25-second outage",lambda:time.monotonic()-down>=25,25)
+            assert set(memberships())=={ids[0]} and memberships()[ids[0]][1]==before[ids[0]][1]
+        restored=time.monotonic()
+        def back():
+            now=memberships()
+            return set(now)==set(ids) and now[ids[1]][1]>before[ids[1]][1]
+        wait_for("caller rejoined with a new membership",back,45)
+        hears([410],[1030])
+        after=memberships()
+        assert after[ids[0]][1]==before[ids[0]][1] and after[ids[1]][0]!=before[ids[1]][0]
+        assert publications() and set(messages(0,RING))==seen
+        print(f"Caller offline for 25 s; its membership expired after {expired:.1f}s. It rejoined {time.monotonic()-restored:.1f}s "
+              f"after restoration with membership {after[ids[1]][0]} (created {after[ids[1]][1]-before[ids[1]][1]} ms later); "
+              "the callee kept its own; fresh 410/1030 Hz both ways, two GCM microphones, no new ring.",flush=True)
     try:
         cancel,_=dial(1)
         a.click("hang");ended()
@@ -189,6 +218,7 @@ def check_native_dm(stack,tmp,hs,name,jwt,root,backend,room,users,headers,secret
                 assert set(roster())==set(ids) and publications() and set(messages(0,RING))==seen
                 print(f"Native caller lost its full network link. After restoration both speakers decoded fresh 830/530 Hz "
                       f"in {time.monotonic()-restored:.1f}s; still two devices and no new ring.",flush=True)
+                rejoin(links[1],seen)
             for i,link in enumerate(links):
                 delta={k:v-before[i][k] for k,v in counters(link).items()}
                 assert delta["sfu_drop"]>0 and min(delta["turn_tx"],delta["turn_rx"])>10,delta
