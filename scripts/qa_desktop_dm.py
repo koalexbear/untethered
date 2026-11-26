@@ -56,7 +56,7 @@ def sfu_audio(secret):
     return result
 
 
-def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=False,controls=False,devices=False,network_ports=None,relay_links=None,sibling=None,set_dnd=None):
+def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=False,controls=False,devices=False,network_ports=None,relay_links=None,sibling=None,set_dnd=None,muted_peer=False):
     env=isolated_env(tmp,backend,"x11")
     start_display(stack,tmp,env,"x11",1280,900)
     sock=Path(env["XDG_RUNTIME_DIR"])/"qa-pulse"
@@ -191,7 +191,7 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
         stack.callback(page.remove_listener,"console",log)
     try:
         if incoming:
-            reverse_call(stack,page,room,alice,bob,secret,find,click,roster,streams,chime,received,env,cmd,check_relay,sibling,set_dnd,lambda:speakers[0])
+            reverse_call(stack,page,room,alice,bob,secret,find,click,roster,streams,chime,received,env,cmd,check_relay,sibling,set_dnd,lambda:speakers[0],muted_peer)
             return
         ring_started=threading.Event()
         page.on("console",lambda m:ring_started.set() if "LegacyCallHandler.play(ringAudio): playing audio successfully" in m.text else None)
@@ -451,16 +451,17 @@ def audio_controls(widget,click,speaker,streams,secret,sockets,alice,bob,change_
     print("No reconnect: same Element receiver, SSRC and signaling sockets; both original GCM track and participant SIDs retained.",flush=True)
 
 
-def element_microphone(page,user,secret):
-    """Make sure the ringing Element Call publishes its microphone before the desktop answers.
+def element_microphone(page,user,secret,on=True,settle=6):
+    """Switch Element Call's microphone on or off, as the SFU sees it.
 
     Element Call (in Element Web 1.12.35) decides its initial mute state when its call view
     starts. If the browser's device list arrives even a few ms later, it logs "MuteState:
     devices connected: false, disabling", and the "enabled by default" state that follows
     once the devices appear never publishes the microphone: Element joins the SFU without
     an audio track while its switch still reads "Mute microphone". Under load this hit about
-    a third of `--multi-device-ring` runs, leaving the desktop at "Connecting" with nothing
-    to play. Toggling the switch publishes it.
+    a quarter of `--multi-device-ring` runs, leaving the desktop with nothing to play.
+    Switching it off and on publishes it, and the result says it was needed: an existing
+    publication gets `settle` seconds to appear first.
     """
     def element():
         return [p for p in sfu_participants(secret,allow_empty=True) if p["identity"].rsplit(":",1)[0]==user]
@@ -468,26 +469,83 @@ def element_microphone(page,user,secret):
         return any(t.get("type","AUDIO")=="AUDIO" and t.get("source")=="MICROPHONE" and not t.get("muted",False)
                    for p in element() for t in p.get("tracks",[]))
     wait_for("Element Call in the SFU room",element,15)
-    try:
-        wait_for("Element Call publishes its microphone",sending,6)
-        return
-    except RuntimeError:
-        pass
     widget=next(f for f in page.frames if urlsplit(f.url).path.startswith("/widgets/element-call/"))
     # The microphone switch ("Mute microphone" while on). Its state settles once aria-busy clears.
     mic=widget.get_by_test_id("incall_mute")
-    def settled(on):
-        return lambda:mic.get_attribute("aria-checked")==("true" if on else "false") and mic.get_attribute("aria-busy")!="true"
-    stuck=mic.get_attribute("aria-checked")=="true"
-    if stuck:
-        mic.click(timeout=5000);wait_for("Element Call microphone switched off",settled(False),5)
-    mic.click(timeout=5000);wait_for("Element Call microphone switched on",settled(True),5)
-    wait_for("Element Call republishes its microphone",sending,10)
-    print("Element Call had joined without publishing its microphone (its devices arrived after its call view started);"
-          f" switching it {'off and on' if stuck else 'on'} published the track.",flush=True)
+    def flip(state):
+        mic.click(timeout=5000)
+        wait_for(f"Element Call microphone switched {'on' if state else 'off'}",lambda:mic.get_attribute("aria-busy")!="true"
+                 and mic.get_attribute("aria-checked")==("true" if state else "false"),5)
+    reads_on=mic.get_attribute("aria-checked")=="true"
+    if not on:
+        if reads_on:flip(False)
+        wait_for("Element Call stops sending its microphone",lambda:not sending(),10)
+        return False
+    if not reads_on:
+        flip(True)
+    else:
+        try:
+            wait_for("Element Call publishes its microphone",sending,settle)
+            return False
+        except RuntimeError:
+            pass
+        flip(False);flip(True)
+    wait_for("Element Call publishes its microphone",sending,10)
+    return reads_on
 
 
-def reverse_call(stack,page,room,alice,bob,secret,find,click,roster,streams,chime,received,env,cmd,check_relay,sibling,set_dnd,speaker):
+# Element Call without a microphone while the Element page's qaMicUnplugged is set:
+# no audio inputs, and capture fails as with none attached. A browser-context init
+# script (`--muted-peer`). It runs on the widget iframe's initial about:blank document,
+# whose window the widget then reuses, so it checks the location on each call.
+UNPLUGGED_MIC="""(() => {
+    const devices = navigator.mediaDevices;
+    if (!devices) return;
+    const unplugged = () => location.pathname.startsWith("/widgets/element-call/") && window.parent.qaMicUnplugged === true;
+    const enumerate = devices.enumerateDevices.bind(devices), capture = devices.getUserMedia.bind(devices);
+    devices.enumerateDevices = async () => (await enumerate()).filter(d => !(unplugged() && d.kind === "audioinput"));
+    devices.getUserMedia = c => unplugged() && c && c.audio
+        ? Promise.reject(new DOMException("Requested device not found", "NotFoundError")) : capture(c);
+})()"""
+
+
+def muted_caller(find,speaker,received,capture_starts,page,user,secret):
+    """The answered caller has no microphone: connected and silent, audible once it has one.
+
+    A peer without a microphone track is still in the call, so the dock reads "Voice
+    connected" rather than "Connecting". Muting mid-call doesn't interrupt the call either.
+    """
+    def connected_for(seconds,why):
+        wait_for(why,lambda:find("Connected"),10)
+        end=time.monotonic()+seconds
+        while time.monotonic()<end:
+            assert not find("Reconnecting") and find("Connected"),"dock left Voice connected: "+why
+    def quiet(windows):
+        first=speaker()[0]
+        wait_for("desktop speaker silent",lambda:speaker()[0]-first>=windows and speaker()[2]>=windows,windows/10+8)
+    connected_for(2,"desktop shows the call with a caller without a microphone as connected")
+    quiet(10)
+    assert not received.is_set() and capture_starts()==1
+    # Plug one in. Element Call's switch then reads on without publishing (its device-list
+    # race again), so switch it off and on.
+    page.evaluate("window.qaMicUnplugged=false")
+    widget=next(f for f in page.frames if urlsplit(f.url).path.startswith("/widgets/element-call/"))
+    widget.evaluate("navigator.mediaDevices.dispatchEvent(new Event('devicechange'))")
+    wait_for("Element Call sees the new microphone",lambda:widget.get_by_test_id("incall_mute").get_attribute("aria-disabled")=="false",10)
+    element_microphone(page,user,secret,settle=0)
+    assert received.wait(10),"desktop did not play Element's 960 Hz once it had a microphone"
+    element_microphone(page,user,secret,on=False)
+    quiet(8)
+    connected_for(3,"desktop still connected after the caller muted")
+    received.clear()
+    element_microphone(page,user,secret)
+    assert received.wait(10),"desktop did not play Element's 960 Hz after it unmuted again"
+    assert capture_starts()==1 and not find("Reconnecting")
+    print("Caller without a microphone: the desktop showed Voice connected with a silent speaker, played 960 Hz once "
+          "Element had one, and stayed connected (same microphone stream) through a mid-call mute.",flush=True)
+
+
+def reverse_call(stack,page,room,alice,bob,secret,find,click,roster,streams,chime,received,env,cmd,check_relay,sibling,set_dnd,speaker,muted_peer=False):
     from playwright.sync_api import Error as BrowserError
     # Count stream creations too: polling an empty list after Decline alone
     # would miss a microphone that briefly opened and was then closed.
@@ -556,15 +614,21 @@ def reverse_call(stack,page,room,alice,bob,secret,find,click,roster,streams,chim
         print(f"{sibling.other_id} declined {ring}; {sibling.main_id} showed 'declined on another device'.",flush=True)
     print("First Element call: audible 440/620 Hz desktop ring; Decline received for that invite; 0 microphone streams created.",flush=True)
     page.goto(page.url.split("#")[0]+"#/room/"+room)
+    if muted_peer:page.evaluate("window.qaMicUnplugged=true")
     second=dial(quiet=bool(set_dnd))
     assert second!=ring
-    element_microphone(page,bob,secret)
+    if muted_peer:element_microphone(page,bob,secret,on=False)
+    elif element_microphone(page,bob,secret):
+        print("Element Call had joined without publishing its microphone (its devices arrived after its call view started);"
+              " switching it off and on published the track.",flush=True)
+    received.clear()
     started=time.monotonic()
     click("Accept")
     wait_for("Element and Untethered joined the answered call",lambda:set(roster())=={alice,bob},20)
     if sibling:sibling.answered(started,peer=page,room=room,ring=second)
     widget=next(f for f in page.frames if urlsplit(f.url).path.startswith("/widgets/element-call/"))
     wait_for("Element receives accepted caller's desktop audio",lambda:widget.evaluate("window.qaAudioStats?.().then(s=>s.got480) ?? false"),25)
+    if muted_peer:muted_caller(find,speaker,received,capture_starts,page,bob,secret)
     assert received.wait(6)
     assert len(streams("source-outputs"))==1 and capture_starts()==1
     tracks=sfu_audio(secret)

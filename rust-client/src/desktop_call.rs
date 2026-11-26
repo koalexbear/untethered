@@ -719,6 +719,8 @@ async fn call<S: CallSignal>(
     let mut subscriptions = std::collections::BTreeMap::<String, tokio::task::AbortHandle>::new();
     audio.spawn(capture(publication));
     let mut playing = false;
+    // Whether the dock says "Connected" for this connection.
+    let mut connected = false;
     let mut recovering: Option<Instant> = None;
     let mut rtc_up = true;
     let mut lease = LeaseWatch {
@@ -732,6 +734,18 @@ async fn call<S: CallSignal>(
     let trace_video = room_video::trace_video_enabled();
     loop {
         install(w, &provider, peer_device, &peer.member, peer_id)?;
+        // The call is up once the authenticated peer is in this Room, whether
+        // or not it publishes a microphone: it may have joined muted or have
+        // none. Their audio plays whenever its track is subscribed.
+        if recovering.is_none()
+            && !connected
+            && lk
+                .remote_participants()
+                .contains_key(&peer_id.to_owned().into())
+        {
+            connected = true;
+            status(events, w.room, "Connected").await;
+        }
         let (requested, route) = {
             let state = mode.borrow_and_update();
             (
@@ -836,8 +850,9 @@ async fn call<S: CallSignal>(
                             room_video::trace_video_stats(lk).await;
                         }
                         if restoring && let Some((mic,track))=encrypted_tracks(lk,&my_id,peer_id)? {
-                            audio.spawn(capture(mic));audio.spawn(playback(track));
-                            playing=true;recovering=None;status(events,w.room,"Connected").await;
+                            audio.spawn(capture(mic));
+                            if let Some(track)=track {audio.spawn(playback(track));playing=true;}
+                            recovering=None;
                         }
                         false
                     }
@@ -853,7 +868,7 @@ async fn call<S: CallSignal>(
                 Some(RoomEvent::Reconnected)=>{rtc_up=true;heartbeat.reset_immediately();false}
                 Some(RoomEvent::TrackSubscribed{track:RemoteTrack::Audio(track),participant,publication,..}) if participant.identity().0==peer_id && publication.source()==TrackSource::Microphone && !playing && recovering.is_none()=>{
                     if publication.encryption_type()!=EncryptionType::Gcm{return Err("Peer did not encrypt audio.")}
-                    audio.spawn(playback(track));playing=true;status(events,w.room,"Connected").await;false
+                    audio.spawn(playback(track));playing=true;false
                 }
                 Some(RoomEvent::TrackUnsubscribed{track:RemoteTrack::Audio(_),participant,publication,..}) if participant.identity().0==peer_id && publication.source()==TrackSource::Microphone=>true,
                 Some(RoomEvent::ParticipantDisconnected(p)) if p.identity().0==peer_id=>true,
@@ -868,6 +883,7 @@ async fn call<S: CallSignal>(
             // mute/deafen, the E2EE provider and the SDK reconnect loop alive.
             audio.shutdown().await;
             playing = false;
+            connected = false;
             status(events, w.room, "Reconnecting…").await;
             heartbeat.reset_immediately();
         }
@@ -1055,39 +1071,48 @@ impl LeaseWatch {
 }
 
 /// A resume may preserve tracks; a full SDK restart may assign new SIDs.
-/// Only rebind the authenticated peer's current encrypted audio in this Room.
+/// Rebind our encrypted microphone once the authenticated peer is back in this
+/// Room, with their current encrypted audio if they publish any: a peer without
+/// a microphone has none, and its later TrackSubscribed starts playback.
 fn encrypted_tracks(
     lk: &Room,
     me: &str,
     peer: &str,
-) -> Result<Option<(LocalTrackPublication, RemoteAudioTrack)>> {
+) -> Result<Option<(LocalTrackPublication, Option<RemoteAudioTrack>)>> {
     let local = lk.local_participant();
     if local.identity().0 != me || !lk.e2ee_manager().enabled() {
         return Err("Could not restore encrypted call tracks.");
     }
-    let ours = local
-        .track_publications()
-        .into_values()
-        .find(|p| p.source() == TrackSource::Microphone && p.track().is_some());
-    let theirs = lk
+    let Some(peer) = lk
         .remote_participants()
         .get(&peer.to_owned().into())
-        .and_then(|p| {
-            p.track_publications()
-                .into_values()
-                .find(|p| p.source() == TrackSource::Microphone && p.is_subscribed())
-        });
-    let (Some(mic), Some(pubn)) = (ours, theirs) else {
+        .cloned()
+    else {
         return Ok(None);
     };
-    if mic.encryption_type() != EncryptionType::Gcm || pubn.encryption_type() != EncryptionType::Gcm
+    let Some(mic) = local
+        .track_publications()
+        .into_values()
+        .find(|p| p.source() == TrackSource::Microphone && p.track().is_some())
+    else {
+        return Ok(None);
+    };
+    let theirs = peer
+        .track_publications()
+        .into_values()
+        .find(|p| p.source() == TrackSource::Microphone && p.is_subscribed());
+    if mic.encryption_type() != EncryptionType::Gcm
+        || theirs
+            .as_ref()
+            .is_some_and(|p| p.encryption_type() != EncryptionType::Gcm)
     {
         return Err("Could not restore encrypted call tracks.");
     }
-    Ok(match pubn.track() {
-        Some(RemoteTrack::Audio(track)) => Some((mic, track)),
+    let track = theirs.and_then(|p| match p.track() {
+        Some(RemoteTrack::Audio(track)) => Some(track),
         _ => None,
-    })
+    });
+    Ok(Some((mic, track)))
 }
 
 #[derive(Clone)]

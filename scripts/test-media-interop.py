@@ -145,6 +145,7 @@ def main():
     args.add_argument("--account-dnd",action="store_true",help="Toggle account-wide DND between Linux and Chromium; check both desktops and their persistent Matrix settings")
     args.add_argument("--space-alerts",choices=("native","web"),help="Verify nested Matrix space rules, room overrides, live membership and real popups")
     args.add_argument("--read-state",action="store_true",help="Verify private read markers, manual reminders and unread badges between two actual Linux and web devices")
+    args.add_argument("--muted-peer",action="store_true",help="Element rings without a microphone: the desktop answers to Voice connected, stays silent until Element has one, and stays connected through a mid-call mute")
     args.add_argument("--dnd-ring",action="store_true",help="Verify active and new Linux incoming ringtone suppression while accepting a real encrypted DM under DND")
     args.add_argument("--room-permissions",action="store_true",help="Restrict and restore room posting from Iced; check the member's actual Synapse send response")
     args.add_argument("--community-setup",choices=("native","web"),help="Create a private space and encrypted text/voice channels; verify restricted joins from Element")
@@ -192,6 +193,7 @@ def main():
     if args.native_dm and args.unsupported_dm:args.error("run --native-dm and --unsupported-dm separately")
     if args.multi_device_ring:args.incoming_dm=True
     if args.dnd_ring:args.incoming_dm=True
+    if args.muted_peer:args.incoming_dm=True
     if args.account_dnd or args.read_state or args.space_alerts=="web":args.browser_alerts=True
     if args.desktop_dm or args.incoming_dm or args.voice_room: args.rtc_audio=True
     assert BACKEND.is_file(), "Run scripts/rust-client.sh once or set UNTETHERED_BACKEND"
@@ -271,7 +273,7 @@ federation_domain_whitelist: []
                 test_replies(tmp,hs,ROOT,BACKEND,seed,http,gateway_port,reactions=args.reactions,room_search=args.room_search,alerts=args.room_alerts,permissions=args.room_permissions,ban=args.room_ban,kick=args.room_kick,report=args.message_report,mentions=args.mentions_inbox,spaces=args.space_alerts=="native",setup=args.community_setup)
                 return
             if args.rtc_audio:
-                audio_test(tmp,hs,server_name,rtc_service,ROOT,BACKEND,seed,http,service,desktop=args.desktop_dm or args.incoming_dm,incoming=args.incoming_dm,controls=args.call_controls,devices=args.call_devices,reconnect=args.call_reconnect,turn=args.call_turn,group=args.voice_room,share=args.window_share,camera=args.room_camera,ptt=args.room_ptt,layout=args.room_layout,multi_ring=args.multi_device_ring,dnd_ring=args.dnd_ring,native_dm=args.native_dm,unsupported_dm=args.unsupported_dm,dm_video=args.dm_video,element_video=args.element_video,switch_camera=args.switch_camera)
+                audio_test(tmp,hs,server_name,rtc_service,ROOT,BACKEND,seed,http,service,desktop=args.desktop_dm or args.incoming_dm,incoming=args.incoming_dm,controls=args.call_controls,devices=args.call_devices,reconnect=args.call_reconnect,turn=args.call_turn,group=args.voice_room,share=args.window_share,camera=args.room_camera,ptt=args.room_ptt,layout=args.room_layout,multi_ring=args.multi_device_ring,dnd_ring=args.dnd_ring,muted_peer=args.muted_peer,native_dm=args.native_dm,unsupported_dm=args.unsupported_dm,dm_video=args.dm_video,element_video=args.element_video,switch_camera=args.switch_camera)
                 return
             if args.rtc_membership:
                 from qa_rtc_membership import test

@@ -81,7 +81,7 @@ rtc:
         yield secret
 
 
-def test(tmp, hs, name, jwt, root, backend, seed, http, service, *, desktop=False,incoming=False,controls=False,devices=False,reconnect=False,turn=False,group=False,share=False,camera=False,ptt=False,layout=False,multi_ring=False,dnd_ring=False,native_dm=False,unsupported_dm=False,dm_video=False,element_video=False,switch_camera=False):
+def test(tmp, hs, name, jwt, root, backend, seed, http, service, *, desktop=False,incoming=False,controls=False,devices=False,reconnect=False,turn=False,group=False,share=False,camera=False,ptt=False,layout=False,multi_ring=False,dnd_ring=False,muted_peer=False,native_dm=False,unsupported_dm=False,dm_video=False,element_video=False,switch_camera=False):
     if group:
         from qa_voice_room import test_group
         with call_services(tmp,name,jwt,service) as secret:
@@ -174,6 +174,9 @@ def test(tmp, hs, name, jwt, root, backend, seed, http, service, *, desktop=Fals
         stack.callback(browser.close)
         ctx=browser.new_context(permissions=["microphone","camera"])
         ctx.add_init_script(path=root/"scripts/qa_rtc_pcm.js")
+        if muted_peer:
+            from qa_desktop_dm import UNPLUGGED_MIC
+            ctx.add_init_script(script=UNPLUGGED_MIC)
         page=login_element(ctx,web,peer,room)
         if element_video:
             from qa_element_video import verify
@@ -190,7 +193,7 @@ def test(tmp, hs, name, jwt, root, backend, seed, http, service, *, desktop=Fals
                 endpoint=hs+"/_matrix/client/v3/pushrules/global/override/.m.rule.master/enabled"
                 http("PUT",endpoint,headers=hdr,json={"enabled":on})
                 assert http("GET",endpoint,headers=hdr).json()=={"enabled":on}
-            desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,incoming=incoming,controls=controls,devices=devices,network_ports=ports,relay_links=links,sibling=sibling,set_dnd=set_dnd if dnd_ring else None)
+            desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,incoming=incoming,controls=controls,devices=devices,network_ports=ports,relay_links=links,sibling=sibling,set_dnd=set_dnd if dnd_ring else None,muted_peer=muted_peer)
             return
         sockets=[]
         def watch_sfu(ws):

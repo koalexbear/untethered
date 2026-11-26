@@ -690,11 +690,14 @@ Gaps it found, not fixed:
 - Alerts and rings for late-decrypted messages (already listed under next
   steps): the QA log shows such events as `"redecrypted": true` entries, but
   the notification handler doesn't see them.
-- `--multi-device-ring`, with a second device on the ringing account: in 2 of
-  4 runs, after the ring checks passed, the answered second call stayed at
-  "Connecting" on the desktop and Element's audio never played (Element got
-  the desktop's). `--incoming-dm`, the same flow without the second device,
-  passed.
+- `--multi-device-ring` (since resolved): in 2 of 4 runs the answered second
+  call stayed at "Connecting" and Element's audio never played. Element Call
+  hadn't published a microphone: when its call view starts before the browser
+  lists the devices, it disables the microphone for good while its switch
+  reads on. The desktop was fine. The fixture now waits for Element's
+  microphone at LiveKit and switches it off and on when it's missing, and the
+  dock reads "Connected" once the peer is in the call, with or without a
+  microphone (`--muted-peer`).
 
 Run on 2026-11-26 with `experiments/rtc-audio/run_element.sh` (Synapse
 1.166.0, Element Web 1.12.35), each mode on the final build: `--room-alerts`,

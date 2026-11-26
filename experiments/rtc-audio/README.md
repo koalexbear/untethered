@@ -31,6 +31,23 @@ was created, even transiently. On the second, Iced **Accept** must open one
 microphone; both distinct tones and both GCM publications are checked again.
 Hanging up from Element must empty its roster and release both desktop streams.
 
+Before the desktop answers the second call, the fixture waits for Element's
+microphone at LiveKit. Element Call (Element Web 1.12.35) sometimes joins
+without publishing it: when its call view starts before the browser lists the
+devices, it disables the microphone and never publishes it, although its switch
+reads on. The fixture then switches it off and on and says so.
+
+### Verify a caller without a microphone
+
+`sh experiments/rtc-audio/run_element.sh --muted-peer` runs the same flow, but
+Element's second call starts without a microphone (the fixture hides its audio
+inputs), so Element joins without an audio track. After **Accept** the desktop's
+dock must read **Voice connected**, not **Connecting**, with a silent speaker
+while Element still decodes the desktop's 480 Hz. Once Element gets a
+microphone and switches it on, the desktop must play its 960 Hz; muting and
+unmuting Element mid-call must neither leave **Voice connected** nor reopen the
+desktop's microphone stream.
+
 ### Verify answering on another device
 
 Run `sh experiments/rtc-audio/run_element.sh --multi-device-ring` with the
