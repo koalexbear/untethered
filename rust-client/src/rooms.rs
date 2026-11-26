@@ -77,7 +77,14 @@ pub struct Post {
     pub reply: Option<String>,
     pub media: Option<crate::media::Media>,
     pub sender: String,
+    /// Plain text: what search, reply quotes, copying and notifications use.
     pub body: String,
+    /// The `org.matrix.custom.html` body, kept to reuse `rich` while it and
+    /// `body` stay the same across timeline snapshots.
+    pub(super) formatted: Option<String>,
+    /// The body with its formatting (rich.rs). None when it reads the same
+    /// as plain text.
+    pub rich: Option<std::sync::Arc<crate::rich::Doc>>,
     pub time: i64,
     pub day: NaiveDate,
     pub day_label: String,
@@ -240,10 +247,30 @@ impl Room {
         if redacted {
             body = "Message removed".into();
         }
-        if real_send_error(e) {
-            body.push_str("  ·  Failed to send");
+        let media = if redacted {
+            None
+        } else {
+            crate::media::Media::parse(content)
+        };
+        let formatted = content["formatted_body"]
+            .as_str()
+            .filter(|_| content["format"] == "org.matrix.custom.html")
+            .map(str::to_owned);
+        let mut rich = (!redacted && media.is_none())
+            .then(|| crate::rich::Doc::message(formatted.as_deref(), &body))
+            .flatten();
+        let note = if real_send_error(e) {
+            Some("  ·  Failed to send")
         } else if !confirmed && e["send_error"] == "not sent" {
-            body.push_str("  ·  Sending…");
+            Some("  ·  Sending…")
+        } else {
+            None
+        };
+        if let Some(note) = note {
+            body.push_str(note);
+            if let Some(doc) = &mut rich {
+                doc.note(note);
+            }
         }
         let event_id = confirmed.then(|| string(&e["event_id"]));
         if let Some(id) = &event_id {
@@ -273,13 +300,11 @@ impl Room {
             revision: None,
             event_id,
             reply,
-            media: if redacted {
-                None
-            } else {
-                crate::media::Media::parse(content)
-            },
+            media,
             sender: string(&e["sender"]),
             body,
+            formatted,
+            rich: rich.map(std::sync::Arc::new),
             time,
             day: stamp.date_naive(),
             day_label: stamp.format("%B %-d, %Y").to_string(),

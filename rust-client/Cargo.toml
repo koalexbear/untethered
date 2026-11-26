@@ -14,6 +14,9 @@ chrono = "0.4"
 futures-util = "0.3"
 serde_json = "1"
 url = "2"
+# Markdown in received messages that have no formatted_body (rich.rs). The
+# SDK uses the same version to send Markdown, and doesn't re-export it.
+pulldown-cmark = { version = "0.13", default-features = false }
 # The matrix-sdk engine's typed boundary, also across the browser worker.
 serde = { version = "1", features = ["derive"] }
 # MIME types for uploads on the matrix-sdk engine (engine/media.rs).

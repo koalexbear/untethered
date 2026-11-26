@@ -109,6 +109,10 @@ impl Replacements {
             .filter(|(_, r)| r.sender == p.sender && r.encrypted == p.encrypted)
             .max_by(|(a, x), (b, y)| x.timestamp.cmp(&y.timestamp).then(a.cmp(b)))
             .map(|(_, r)| r.clone());
+        // These revisions carry only the new plain body.
+        if p.revision.is_some() {
+            p.rich = None;
+        }
     }
 }
 impl Post {

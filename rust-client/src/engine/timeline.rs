@@ -12,7 +12,8 @@ use matrix_sdk::{
     ruma::{
         EventId, OwnedEventId, OwnedRoomId, RoomId,
         events::room::message::{
-            MessageType, RoomMessageEventContent, RoomMessageEventContentWithoutRelation,
+            FormattedBody, MessageFormat, MessageType, RoomMessageEventContent,
+            RoomMessageEventContentWithoutRelation,
         },
     },
     send_queue::RoomSendQueueUpdate,
@@ -280,6 +281,18 @@ impl Timelines {
     }
 }
 
+/// The HTML body of a text, notice or emote (`org.matrix.custom.html`).
+pub(super) fn html_body(msgtype: &MessageType) -> Option<String> {
+    match msgtype {
+        MessageType::Text(t) => t.formatted.as_ref(),
+        MessageType::Notice(n) => n.formatted.as_ref(),
+        MessageType::Emote(e) => e.formatted.as_ref(),
+        _ => None,
+    }
+    .filter(|f: &&FormattedBody| f.format == MessageFormat::Html)
+    .map(|f| f.body.clone())
+}
+
 fn is_attachment(msgtype: &MessageType) -> bool {
     matches!(
         msgtype,
@@ -406,6 +419,7 @@ fn message(item: &EventTimelineItem, row: i64, me: &str, sources: &Sources) -> O
     let mut text = false;
     let mut mentions = None;
     let mut media = None;
+    let mut formatted = None;
     let (kind, body, edited) = match &content.kind {
         MsgLikeKind::Message(m) => {
             let kind = match m.msgtype() {
@@ -420,6 +434,7 @@ fn message(item: &EventTimelineItem, row: i64, me: &str, sources: &Sources) -> O
                 _ => Kind::Text,
             };
             text = matches!(m.msgtype(), MessageType::Text(_));
+            formatted = html_body(m.msgtype());
             mentions = m
                 .mentions()
                 .map(|m| (m.user_ids.iter().map(ToString::to_string).collect(), m.room));
@@ -471,6 +486,7 @@ fn message(item: &EventTimelineItem, row: i64, me: &str, sources: &Sources) -> O
         },
         time: u64::from(item.timestamp().0) as i64,
         body,
+        formatted,
         kind,
         encrypted: item.encryption_info().is_some() || kind == Kind::Undecryptable,
         delivery,

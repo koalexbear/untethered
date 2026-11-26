@@ -105,7 +105,8 @@ fn read_order(messages: &[Message], sent: impl Fn(&Message) -> Option<String>) -
 impl Room {
     /// Replace the loaded timeline with the engine's snapshot.
     pub fn apply_engine(&mut self, messages: Vec<Message>, start_reached: bool) {
-        self.history.clear();
+        // The previous posts by row, to keep their parsed formatting.
+        let previous = std::mem::take(&mut self.history);
         self.order.clear();
         self.event_rows.clear();
         self.related.clear();
@@ -153,13 +154,13 @@ impl Room {
                 self.event_rows.insert(id.clone(), row);
             }
             self.order.push((time, row));
-            self.history.insert(row, post(m, time));
+            self.history.insert(row, post(m, time, previous.get(&row)));
         }
         self.end = start_reached;
     }
 }
 
-fn post(m: Message, time: i64) -> Post {
+fn post(m: Message, time: i64, previous: Option<&Post>) -> Post {
     let stamp = DateTime::from_timestamp_millis(m.time)
         .unwrap_or_default()
         .with_timezone(&Local);
@@ -176,11 +177,26 @@ fn post(m: Message, time: i64) -> Post {
         Kind::Redacted => "Message removed".into(),
         Kind::Undecryptable => "Waiting for encryption keys…".into(),
     };
-    match m.delivery {
-        Delivery::Sent => {}
-        Delivery::Sending => body.push_str("  ·  Sending…"),
-        Delivery::Failed => body.push_str("  ·  Failed to send"),
+    let content = body.len();
+    let note = match m.delivery {
+        Delivery::Sent => None,
+        Delivery::Sending => Some("  ·  Sending…"),
+        Delivery::Failed => Some("  ·  Failed to send"),
+    };
+    if let Some(note) = note {
+        body.push_str(note);
     }
+    // Every snapshot carries every loaded message; parse each body once.
+    let rich = match previous {
+        _ if m.kind != Kind::Text => None,
+        Some(p) if p.body == body && p.formatted == m.formatted => p.rich.clone(),
+        _ => crate::rich::Doc::message(m.formatted.as_deref(), &body[..content]).map(|mut doc| {
+            if let Some(note) = note {
+                doc.note(note);
+            }
+            std::sync::Arc::new(doc)
+        }),
+    };
     let event_id = m.event_id.filter(|_| m.delivery == Delivery::Sent);
     let revision = (m.edited && m.kind == Kind::Text).then(|| {
         let id = m.edit_id.or_else(|| event_id.clone()).unwrap_or_default();
@@ -207,6 +223,8 @@ fn post(m: Message, time: i64) -> Post {
         media,
         sender: m.sender,
         body,
+        formatted: m.formatted,
+        rich,
         time,
         day: stamp.date_naive(),
         day_label: stamp.format("%B %-d, %Y").to_string(),
@@ -243,6 +261,7 @@ mod tests {
             sender_avatar: None,
             time,
             body: body.into(),
+            formatted: None,
             kind: Kind::Text,
             encrypted: true,
             delivery: Delivery::Sent,
@@ -371,6 +390,35 @@ mod tests {
         assert_eq!(rooms.list["!v"].voice_users(), ["@a:x"].into());
         rooms.apply_engine(voice(vec![member("@a:x", "A", now, serde_json::json!({}))]));
         assert!(rooms.list["!v"].voice_users().is_empty());
+    }
+
+    #[test]
+    fn formatted_bodies_render_rich_and_parse_once() {
+        let mut room = Room::default();
+        let bold = |row| Message {
+            formatted: Some("<b>hi</b> there".into()),
+            ..message(row, 100, "**hi** there")
+        };
+        let mut sending = message(2, 200, "plain");
+        sending.formatted = Some("<i>plain</i>".into());
+        sending.delivery = Delivery::Sending;
+        room.apply_engine(vec![bold(1), sending, message(3, 300, "just text")], true);
+        let first = room.history[&1].rich.clone().expect("formatted");
+        assert_eq!(room.history[&1].text(), "**hi** there");
+        let Some(crate::rich::Block::Paragraph(runs)) =
+            room.history[&2].rich.as_ref().map(|d| &d.blocks[0])
+        else {
+            panic!("a paragraph");
+        };
+        assert_eq!(runs.last().unwrap().text, "  ·  Sending…");
+        assert!(room.history[&3].rich.is_none());
+        // The next snapshot keeps the parsed body; a changed one parses again.
+        room.apply_engine(vec![bold(1), message(2, 200, "edited")], true);
+        assert!(std::sync::Arc::ptr_eq(
+            &first,
+            room.history[&1].rich.as_ref().unwrap()
+        ));
+        assert!(room.history[&2].rich.is_none());
     }
 
     #[test]
