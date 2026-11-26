@@ -75,6 +75,11 @@
      "at": "2026-11-26T16:34:43Z",
      "by": "m1-rich-text",
      "text": "[M1] FYI: received <a href=\"https://matrix.to/#/@user:hs\">Name</a> links already render as mention pills (rust-client/src/rich.rs Link::User, styled in view/rich.rs styled(); not clickable yet). Pills sent in that form show as mentions here with no extra work. Our shared README edits are in different paragraphs (mine replaces the 'Messages render as plain text' sentence)."
+    },
+    {
+     "at": "2026-11-26T16:53:33Z",
+     "by": "m4-context-menus",
+     "text": "M4 also touches scripts/test-media-interop.py, three lines: one --context-menus add_argument (after --upload-cancel), args.context_menus added to the not-any((...)) tuple that guards the web dist assert, and a 4-line 'if args.context_menus: from qa_context_menus import test' dispatch just before the portal_drop branch. The fixture itself is the new scripts/qa_context_menus.py. Easy to merge by hand if your lines sit next to mine."
     }
    ],
    "owner": "m2-autocomplete",
