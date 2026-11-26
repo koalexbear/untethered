@@ -91,6 +91,7 @@ pub async fn resolve(drop: FileDrop) -> Result {
             }
             DropMime::Portal => {
                 let key = portal_key(&bytes)?;
+                crate::app_id::portal_ready().await;
                 let portal = ashpd::documents::FileTransfer::new()
                     .await
                     .map_err(|_| "The desktop file-transfer portal is unavailable.")?;

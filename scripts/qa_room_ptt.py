@@ -7,6 +7,7 @@ holds Right Ctrl while an xmessage window has focus: XInput2 raw events.
 while a PySide decoy has focus."""
 import json
 import os
+import re
 import subprocess as sp
 import time
 from pathlib import Path
@@ -219,3 +220,36 @@ def check_ptt(stack,desks,audio_counts,same_tracks,mode=None):
         assert minimum>500,(who,len(audit),minimum)
         print(f"{who}: audible in all {len(audit)} consecutive 100 ms windows across key, "
               f"focus, mute and deafen transitions (minimum tone amplitude {minimum:.0f}).",flush=True)
+    return keys
+
+
+def check_restart(alice,keys,joined,left):
+    """KWin keeps the bindings under the client's app ID: a restarted client
+    arms push-to-talk without another dialog, and the key still holds."""
+    from qa_kwin import APP_ID
+    kde=alice.kde
+    rc=Path(kde.env["XDG_CONFIG_HOME"])/"kglobalshortcutsrc"
+    group=wait_for(f"[{APP_ID}] in kglobalshortcutsrc",lambda:rc.is_file() and
+                   (m:=re.search(rf"^\[{re.escape(APP_ID)}\]\n(?:[^\[\n].*\n?)*",rc.read_text(),re.M)) and m[0],10)
+    assert re.search(r"^push-to-talk=Pause,",group,re.M),group
+    alice.restart()
+    alice.click("push-to-talk")
+    alice.click("join")
+    wait_for("rejoined after restart",joined,20)
+    keys.focus(keys.target)
+    def hint(held):
+        def shown():
+            assert not kde.shortcut_dialog(),"the restarted client got a second Global Shortcuts Requested dialog"
+            words={w for w,_,_ in alice.words()}
+            return {"pause","held"}<=words if held else {"hold","pause","talk"}<=words and "held" not in words
+        return shown
+    wait_for("Hold Pause to talk after restart, without a dialog",hint(False),25)
+    keys.key(True)
+    wait_for("Pause held after restart",hint(True),10)
+    keys.key(False)
+    wait_for("Pause released after restart",hint(False),10)
+    alice.click("leave")
+    wait_for("left after restart",left,20)
+    print(f"Restarted Alice's client on the same profile: kglobalshortcutsrc kept [{APP_ID}] "
+          "(push-to-talk=Pause); arming push-to-talk bound without a second dialog, and Pause held and released "
+          "the mic with the decoy focused.",flush=True)

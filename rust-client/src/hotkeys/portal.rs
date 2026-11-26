@@ -12,6 +12,7 @@ type Out = iced::futures::channel::mpsc::Sender<Event>;
 
 pub(super) async fn run(shortcuts: &[Shortcut], out: &mut Out) -> Result<(), String> {
     let error = |e: ashpd::Error| e.to_string();
+    crate::app_id::portal_ready().await;
     let portal = GlobalShortcuts::new().await.map_err(error)?;
     // The process holds one shortcuts session at a time (this subscription),
     // so every signal on the connection is ours.

@@ -3,6 +3,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess as sp
 import time
 from pathlib import Path
@@ -13,6 +14,7 @@ from qa_ui import CHAT_X, map_fixture, read, regions
 
 
 PORTAL_KDE = os.environ.get("KDE_PORTAL", "/usr/lib/xdg-desktop-portal-kde")
+APP_ID = "io.github.koalexbear.Untethered"
 
 
 class KWin:
@@ -37,6 +39,14 @@ class KWin:
                        XDG_STATE_HOME=str(tmp/"state"),XDG_SESSION_TYPE="wayland",
                        DBUS_SYSTEM_BUS_ADDRESS="unix:path="+str(runtime/"no-system-bus"))
         env["DBUS_SESSION_BUS_ADDRESS"] = "unix:path="+str(runtime/"bus")
+        binary=Path(os.getenv("UNTETHERED_QA_CLIENT") or root/"rust-client/target/debug/untethered-iced").resolve()
+        if global_shortcuts:
+            # Installed as a package installs it: the portal takes the client's
+            # app ID only from a desktop file whose Exec it can find.
+            apps=Path(env["XDG_DATA_HOME"])/"applications"
+            apps.mkdir(parents=True,exist_ok=True)
+            entry=(Path(root)/f"{APP_ID}.desktop").read_text()
+            (apps/f"{APP_ID}.desktop").write_text(re.sub(r"^Exec=.*$",f"Exec={binary}",entry,flags=re.M))
         (Path(env["XDG_CONFIG_HOME"])/"kdeglobals").write_text("[KDE]\nAnimationDurationFactor=0\nSingleClick=false\n")
         def log(name):
             dest=os.getenv("KWIN_QA_DEBUG")
@@ -76,9 +86,19 @@ class KWin:
         # Only KWin and the portal can reach their ordinary PipeWire socket
         # by name. The tested native client must use OpenPipeWireRemote's FD.
         native_env={**env,"PIPEWIRE_REMOTE":"no-ambient-qa-remote"} if screencast else env
-        binary=os.getenv("UNTETHERED_QA_CLIENT") or root/"rust-client/target/debug/untethered-iced"
-        self.native=stack.enter_context(child([*limit,binary],native_env,stderr=native_log or log("native")))
+        self.native_args=([*limit,binary],native_env,native_log or log("native"))
+        self.start_native()
         print(re.search(r"^KWin version: .+$",info,re.M)[0]+" · active virtual Wayland compositor · private D-Bus",flush=True)
+
+    def start_native(self):
+        args,env,stderr=self.native_args
+        self.native=self.stack.enter_context(child(args,env,stderr=stderr))
+
+    def restart_native(self):
+        """Quit the client and start it again on the same profile."""
+        os.killpg(self.native.pid,signal.SIGTERM)
+        self.native.wait(timeout=10)
+        self.start_native()
 
     def owner(self,name):
         return self.command("gdbus","call","--session","--dest","org.freedesktop.DBus","--object-path","/org/freedesktop/DBus",
@@ -86,11 +106,9 @@ class KWin:
 
     def accept_shortcuts(self,expected):
         """Accept the portal's "Global Shortcuts Requested" dialog after
-        checking it offers `expected` (trigger names, lowercase)."""
-        def dialog():
-            wid=self.window("^Global Shortcuts Requested$")
-            pid=wid and self.command("kdotool","getwindowpid",wid).stdout.strip()
-            return wid if pid and int(pid)==self.portal.pid else None
+        checking it offers `expected` (lowercase words: the app's name, the
+        trigger names)."""
+        dialog=self.shortcut_dialog
         wid=wait_for("KDE global shortcut dialog",dialog,25)
         geom=self.command("kdotool","getwindowgeometry",wid).stdout
         x,y=map(int,re.search(r"Position: (-?\d+),(-?\d+)",geom).groups())
@@ -104,6 +122,12 @@ class KWin:
         self.keys(("Down","\ue006"),("Up","\ue006"))  # Return: OK
         wait_for("shortcut dialog closed",lambda:not dialog(),10)
         return words
+
+    def shortcut_dialog(self):
+        """The portal's open "Global Shortcuts Requested" window, if any."""
+        wid=self.window("^Global Shortcuts Requested$")
+        pid=wid and self.command("kdotool","getwindowpid",wid).stdout.strip()
+        return wid if pid and int(pid)==self.portal.pid else None
 
     def command(self,*args,check=True):
         return sp.run(args,env=self.env,capture_output=True,text=True,timeout=12,check=check)

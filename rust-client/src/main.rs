@@ -3,6 +3,8 @@
 // rustc proves they are Send.
 #![recursion_limit = "256"]
 mod account;
+#[cfg(target_os = "linux")]
+mod app_id;
 mod backend;
 #[cfg(target_arch = "wasm32")]
 mod browser_verification;
@@ -372,7 +374,11 @@ struct App {
 }
 impl App {
     fn boot() -> (Self, Task<Msg>) {
-        Self::boot_engine()
+        let (app, task) = Self::boot_engine();
+        // Portal users await this too; starting it here keeps it off their path.
+        #[cfg(target_os = "linux")]
+        let task = Task::batch([Task::future(app_id::portal_ready()).discard(), task]);
+        (app, task)
     }
     fn new(commands: Sender<backend::Command>) -> Self {
         Self {
@@ -1202,6 +1208,8 @@ impl App {
                 #[cfg(not(target_arch = "wasm32"))]
                 return Task::perform(
                     async {
+                        #[cfg(target_os = "linux")]
+                        app_id::portal_ready().await;
                         let paths = rfd::AsyncFileDialog::new().pick_files().await?;
                         Some(
                             tokio::task::spawn_blocking(move || {
@@ -1244,6 +1252,8 @@ impl App {
                     let name = media.name.clone();
                     return Task::perform(
                         async move {
+                            #[cfg(target_os = "linux")]
+                            app_id::portal_ready().await;
                             rfd::AsyncFileDialog::new()
                                 .set_title("Save attachment")
                                 .set_file_name(name)
@@ -1716,6 +1726,11 @@ fn main() -> iced::Result {
             size: iced::Size::new(1180., 760.),
             min_size: Some(iced::Size::new(760., 500.)),
             exit_on_close_request: false,
+            #[cfg(target_os = "linux")]
+            platform_specific: iced::window::settings::PlatformSpecific {
+                application_id: app_id::APP_ID.into(),
+                ..Default::default()
+            },
             ..Default::default()
         })
         .subscription(|app| {

@@ -333,7 +333,11 @@ focus:
   (Ctrl+Shift+M) and **Toggle deafen** (Ctrl+Shift+D). Change or clear them
   in that dialog (on KDE, *Global Shortcuts Requested*; later under System
   Settings › Shortcuts). It needs the GlobalShortcuts portal (KDE Plasma
-  5.27 or later, GNOME 48 or later). The desktop keeps a bound key to
+  5.27 or later, GNOME 48 or later). The installed package names itself
+  to the portal as `io.github.koalexbear.Untethered`, so the dialog says
+  Untethered and later launches reuse your keys without asking again; a run
+  from the checkout has no installed desktop file, and the desktop names the
+  app after whatever launched it. The desktop keeps a bound key to
   itself: it no longer reaches the focused application, so choose one you
   don't type with. A modifier on its own, such as Right Ctrl, can't hold
   the microphone open there, because KDE fires those shortcuts on release.
@@ -406,7 +410,9 @@ disposable Synapse, and its `UNTETHERED_QA_ONLY=web` mode the browser test.
 
 Run `makepkg -s` in the checkout to build the **current local Git commit**.
 The package installs `/usr/bin/untethered` (and the camera helper in
-`/usr/lib/untethered`). Since `0.1.0-9` it no longer ships gomuks.
+`/usr/lib/untethered`). Since `0.1.0-9` it no longer ships gomuks. Since
+`0.1.0-10` its desktop file is `io.github.koalexbear.Untethered.desktop`,
+the app ID its window and desktop portal requests carry.
 The packaged app keeps its Matrix device in `$XDG_DATA_HOME/untethered-iced`
 (default `~/.local/share/untethered-iced`), separate from the development profile.
 An [in-place upgrade from `0.1.0-2` to `0.1.0-6`](scripts/linux-upgrade.md#recorded-run-2026-11-25)

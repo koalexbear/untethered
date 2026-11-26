@@ -250,16 +250,24 @@ window ends it. Refocusing Untethered afterwards still doesn't reopen capture.
 `--room-ptt --global wayland` runs Alice on the private KWin from the
 [isolated KWin prerequisites](../../scripts/kwin-element.md), with KWin's
 kglobalaccel left on (no `--no-global-shortcuts`) and the fixture's own
-`xdg-desktop-portal-kde`, plus PySide6 (`/usr/bin/python`). Arming
-push-to-talk must open KDE's *Global Shortcuts Requested* dialog listing
-Push to talk (Pause), Toggle mute and Toggle deafen; the fixture accepts it
-with KDE's input synthesizer. A PySide decoy window then keeps focus while
+`xdg-desktop-portal-kde`, plus PySide6 (`/usr/bin/python`). Alice's data
+directory gets `io.github.koalexbear.Untethered.desktop` with `Exec` set to
+the tested binary, as the package installs it, so the portal accepts the
+client's app ID registration. Arming push-to-talk must open KDE's *Global
+Shortcuts Requested* dialog naming Untethered and listing Push to talk
+(Pause), Toggle mute and Toggle deafen; the fixture accepts it with KDE's
+input synthesizer. A PySide decoy window then keeps focus while
 the synthesizer holds Pause (one helper process per hold, because KWin
 releases a fake input device's keys when its client exits), with the same
 measurements and inverted focus checks as on X11. At the end the decoy must
 have received an ordinary typed key and no Pause events: **a key bound
 through the portal no longer reaches the focused application**, which the
-main README tells users when they choose one.
+main README tells users when they choose one. After the final leave,
+KWin's `kglobalshortcutsrc` must hold an `[io.github.koalexbear.Untethered]`
+group with `push-to-talk=Pause`. Alice's client then restarts on the same
+profile, arms push-to-talk and rejoins: no second dialog may appear, the
+call bar must show *Hold Pause to talk.*, and a Pause hold in the decoy must
+show *Pause held* until release.
 
 Measured on 2026-11-26 with the host at a load of about 100 on 32 cores,
 key edge to stable windows at both peers: in-window 72–197 ms down and

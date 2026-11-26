@@ -66,20 +66,7 @@ class Desktop:
                 if (audit:=self.audit) is not None:audit.append((time.monotonic(),amps))
         for fn in (feed,listen):threading.Thread(target=fn,daemon=True).start()
         if kde:
-            self.client=kde.native
-            def opened():
-                assert self.client.poll() is None,"Wayland client exited"
-                return kde.window("^Untethered")
-            self.win=wait_for("Wayland call window",opened,35)
-            kde.position(self.win,0,0,1180,850)
-            def shown():
-                assert self.client.poll() is None,"Wayland client exited"
-                if room in kde.command("kdotool","getwindowname",self.win,check=False).stdout:return True
-                # As on X11, matrix-sdk may open another stored room first.
-                spot=next(((x,y) for w,x,y in self.words() if w==room.lower() and x<CHAT_X),None)
-                if spot:self.press(*spot)
-                return False
-            wait_for(f"Wayland client synced {room}",shown,35)
+            self.attach(room)
             return
         # Limit per-client rendering/codec parallelism in this three-GUI fixture.
         # Separate four-core sets, when available, stand in for separate machines.
@@ -101,6 +88,29 @@ class Desktop:
         wait_for(f"client {i+1} synced {room}",synced,35)
         self.cmd("xdotool","windowmove",self.win,"0","0")
         self.cmd("xdotool","windowsize",self.win,"1180","760")
+
+    def attach(self,room):
+        """Wait for KWin's client window and open `room` in it."""
+        kde=self.kde
+        self.client=kde.native
+        def opened():
+            assert self.client.poll() is None,"Wayland client exited"
+            return kde.window("^Untethered")
+        self.win=wait_for("Wayland call window",opened,35)
+        kde.position(self.win,0,0,1180,850)
+        def shown():
+            assert self.client.poll() is None,"Wayland client exited"
+            if room in kde.command("kdotool","getwindowname",self.win,check=False).stdout:return True
+            # As on X11, matrix-sdk may open another stored room first.
+            spot=next(((x,y) for w,x,y in self.words() if w==room.lower() and x<CHAT_X),None)
+            if spot:self.press(*spot)
+            return False
+        wait_for(f"Wayland client synced {room}",shown,35)
+
+    def restart(self,room="Atrium"):
+        """KWin desktops: quit the client and start it on the same profile."""
+        self.kde.restart_native()
+        self.attach(room)
 
     def cmd(self,*args,check=True):
         return sp.run(args,env=self.env,text=True,capture_output=True,timeout=8,check=check).stdout
@@ -336,9 +346,11 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
             if ptt:
                 desks[0].click("push-to-talk")
                 if ptt=="wayland":
-                    # Arming push-to-talk binds the portal shortcuts.
-                    offered=desks[0].kde.accept_shortcuts({"talk","pause","mute","deafen"})
-                    print("KDE's Global Shortcuts Requested dialog offered Push to talk (Pause), "
+                    # Arming push-to-talk binds the portal shortcuts. The
+                    # portal names the app from its registered app ID's
+                    # desktop file, not from the launcher's scope.
+                    offered=desks[0].kde.accept_shortcuts({"untethered","talk","pause","mute","deafen"})
+                    print("KDE's Global Shortcuts Requested dialog named Untethered and offered Push to talk (Pause), "
                           f"Toggle mute and Toggle deafen; accepted ({len(offered)} words read).",flush=True)
                 for d in desks[1:]:d.audit=[]
             for i,d in enumerate(desks):
@@ -362,7 +374,7 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
             print("Three joined devices, three GCM microphones, two playback streams per client; zero ring or other non-state events.",flush=True)
             if ptt:
                 from qa_room_ptt import check_ptt
-                check_ptt(stack,desks,audio_counts,lambda:publications(3)==tracks,None if ptt=="window" else ptt)
+                keys=check_ptt(stack,desks,audio_counts,lambda:publications(3)==tracks,None if ptt=="window" else ptt)
             elif layout:
                 from qa_room_layout import check_layout
                 check_layout(stack,desks,users,secret,tracks,publications)
@@ -393,6 +405,9 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
             wait_for("all desktop audio streams released",lambda:audio_counts()==[(0,0)]*3)
             no_ring()
             print("Final leave: 0 active memberships, 0 Untethered audio streams, 0 ring events.",flush=True)
+            if ptt=="wayland":
+                from qa_room_ptt import check_restart
+                check_restart(desks[0],keys,lambda:members()==users[:1],lambda:not members())
         except Exception:
             for d in desks:print("Desktop",d.i+1,"labels:",[w for w,_,_ in d.words()],"PCM amplitudes:",[int(n) for n in d.windows[-1]] if d.windows else [])
             print("Voice roster size:",len(members()),flush=True)
