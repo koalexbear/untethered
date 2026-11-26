@@ -2,7 +2,9 @@
 
 Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 
-Nothing claimed.
+| ID | Title | Agent | Branch | Status | Updated | Paths |
+|---|---|---|---|---|---|---|
+| single-instance | Single instance: a second launch shows the running window | main-session | `single-instance` | working | 2026-11-26T19:48:38Z | `README.md`, `ROADMAP.md`, `rust-client/src/instance.rs`, `rust-client/src/main.rs`, `rust-client/src/tray.rs`, `scripts/qa_tray.py`, `scripts/tray.md` |
 
 ## Done
 
