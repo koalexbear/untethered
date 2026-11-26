@@ -553,7 +553,6 @@ impl App {
 
     /// Mention `user` at the composer's cursor, as a menu's or profile's
     /// Mention action does: the same pill a pick from the popup makes.
-    #[allow(dead_code)] // For M4's user menu and M5's profile card.
     pub fn mention(&mut self, user: &str) -> Task<Msg> {
         let room = self.selected.clone();
         let Some(r) = self.rooms().list.get(&room) else {

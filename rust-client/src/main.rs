@@ -13,6 +13,7 @@ mod browser_verification;
 #[cfg(target_os = "linux")]
 mod call_devices;
 mod community;
+mod context_menu;
 #[cfg(target_os = "linux")]
 mod desktop_call;
 mod edits;
@@ -244,6 +245,8 @@ enum Msg {
     ServerMenu(bool),
     /// Close the topmost menu, dialog or settings page.
     Escape,
+    /// Right-click menus and what their entries do.
+    ContextMenu(context_menu::Event),
     /// Open an image or video in the media viewer.
     OpenViewer(String),
     /// The previous (-1) or next (+1) image or video.
@@ -328,6 +331,7 @@ enum Request {
     Mentions,
     ReadState(String, Option<String>),
     ShareReads(bool, u64),
+    LeaveRoom(String),
 }
 struct App {
     setup: Option<community::Form>,
@@ -398,6 +402,7 @@ struct App {
     account: bool,
     people: bool,
     server_menu: bool,
+    context_menu: context_menu::State,
     collapsed: BTreeSet<String>,
     directory: moderation::Directory,
     permission_panel: bool,
@@ -484,6 +489,7 @@ impl App {
             account: false,
             people: false,
             server_menu: false,
+            context_menu: Default::default(),
             collapsed: Default::default(),
             directory: Default::default(),
             permission_panel: false,
@@ -735,6 +741,7 @@ impl App {
             Msg::Setup(_) | Msg::Section(_) | Msg::Open(_) | Msg::Account | Msg::OpenMentions
         ) {
             self.server_menu = false;
+            self.context_menu.open = None;
         }
         #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
         if matches!(msg, Msg::SpaceAlerts) {
@@ -1444,6 +1451,8 @@ impl App {
                 }
             }
             Msg::ServerMenu(open) => self.server_menu = open,
+            Msg::Escape if self.context_menu.is_open() => self.context_menu.dismiss(),
+            Msg::ContextMenu(e) => return self.context_menu_event(e),
             Msg::Escape => {
                 if self.viewer.is_some() {
                     self.close_viewer();
@@ -1705,19 +1714,7 @@ impl App {
                         .map(|p| format!("{}: {}", r.display(&p.sender), p.text()))
                         .collect::<Vec<_>>()
                         .join("\n");
-                    #[cfg(not(target_arch = "wasm32"))]
-                    return iced::clipboard::write(text);
-                    #[cfg(target_arch = "wasm32")]
-                    return Task::perform(
-                        wasm_bindgen_futures::JsFuture::from(
-                            web_sys::window()
-                                .unwrap()
-                                .navigator()
-                                .clipboard()
-                                .write_text(&text),
-                        ),
-                        |r| Msg::ClipboardResult(r.is_ok()),
-                    );
+                    return context_menu::copy(text);
                 }
             }
             #[cfg(target_arch = "wasm32")]
@@ -1772,6 +1769,7 @@ impl App {
                 doc.set_title(&title);
             }
         }
+        self.prune_context_menu();
         // Previews and pictures for what's on screen now, also once a room's
         // messages arrive after it opened; both skip what they have.
         let task = self.schedule_inline();
@@ -1918,6 +1916,17 @@ fn main() -> iced::Result {
                         modifiers,
                         ..
                     } => Some(Msg::Tab(modifiers.shift())),
+                    // A hovered message, person or channel takes these first
+                    // (view/context_menu.rs); otherwise the newest message.
+                    iced::keyboard::Event::KeyPressed {
+                        key: iced::keyboard::Key::Named(iced::keyboard::key::Named::F10),
+                        modifiers,
+                        ..
+                    } if modifiers.shift() => Some(Msg::ContextMenu(context_menu::Event::Keyboard)),
+                    iced::keyboard::Event::KeyPressed {
+                        key: iced::keyboard::Key::Named(iced::keyboard::key::Named::ContextMenu),
+                        ..
+                    } => Some(Msg::ContextMenu(context_menu::Event::Keyboard)),
                     // The media viewer's keys, while no text field has them.
                     iced::keyboard::Event::KeyPressed {
                         key: iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowLeft),

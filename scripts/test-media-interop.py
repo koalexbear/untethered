@@ -178,6 +178,7 @@ def main():
     args.add_argument("--room-ptt",action="store_true",help="Verify key-gated microphone and uninterrupted peer audio in a three-client Linux voice room")
     args.add_argument("--global",dest="ptt_global",nargs="?",const="x11",choices=("x11","wayland"),help="With --room-ptt: hold the key while another window has focus (XInput2 on X11; the GlobalShortcuts portal under KWin)")
     args.add_argument("--upload-cancel",action="store_true",help="Test native and browser cancellation against a throttled Matrix upload")
+    args.add_argument("--context-menus",action="store_true",help="Drive the native right-click menus on a private KWin output; check the clipboard and the homeserver")
     args=args.parse_args()
     if args.room_kick and (args.room_ban or args.federated_ban):
         raise SystemExit("Run the kick and ban fixtures separately")
@@ -213,7 +214,7 @@ def main():
     dist = ROOT/"rust-client/web/dist"
     chat_test=args.composer_mentions or args.replies or args.reactions or args.room_search or args.room_alerts or args.room_permissions or args.room_ban or args.room_kick or args.message_report or args.mentions_inbox or args.space_alerts=="native" or args.community_setup
     web_chat="web" in (args.message_report,args.mentions_inbox,args.community_setup)
-    if web_chat or args.file_limits=="web" or not any((args.file_limits,args.native_paste,args.portal_drop,args.kwin_element,args.rtc_membership,args.rtc_audio,chat_test,args.linux_upgrade)):
+    if web_chat or args.file_limits=="web" or not any((args.file_limits,args.native_paste,args.portal_drop,args.kwin_element,args.rtc_membership,args.rtc_audio,chat_test,args.linux_upgrade,args.context_menus)):
         assert (dist/"engine-worker.js").is_file(), "Run scripts/rust-web.sh first"
     os.umask(0o077)
     with tempfile.TemporaryDirectory(prefix="untethered-media-",dir=os.environ.get("TMPDIR")) as d:
@@ -295,6 +296,10 @@ federation_domain_whitelist: []
             if args.kwin_element or args.file_limits=="native":
                 from qa_kwin_element import test
                 test(tmp,hs,gateway_port,ROOT,BACKEND,seed,plain=bool(args.file_limits))
+                return
+            if args.context_menus:
+                from qa_context_menus import test
+                test(tmp,hs,ROOT,BACKEND,seed,http)
                 return
             if args.portal_drop:
                 from qa_portal_drop import test

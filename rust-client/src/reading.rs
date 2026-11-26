@@ -178,13 +178,9 @@ impl App {
             Msg::ReadVisible(room.clone(), id.clone(), visible.clone(), at_tail)
         })
     }
+    /// Any room, not just the open one: the sidebar's menu marks others read.
     pub fn mark_room(&mut self, room: String, event: Option<String>) {
-        if self.selected != room
-            || !self.logged_in
-            || !self.verified
-            || !self.connected
-            || self.writing_read(&room)
-        {
+        if !self.logged_in || !self.verified || !self.connected || self.writing_read(&room) {
             return;
         }
         let public = self.read_sharing.public && !self.changing_read_sharing();
@@ -210,14 +206,21 @@ impl App {
         }
     }
     pub fn read_result(&mut self, room: String, event: Option<String>, ok: bool) {
-        if self.selected == room && !ok {
-            self.status = if event.is_some() {
-                "Could not mark this room read. Use Mark read to retry."
-            } else {
-                "Could not mark this room unread. Try again."
-            }
-            .into();
+        if ok {
+            return;
         }
+        self.status = if self.selected != room {
+            let name = self
+                .live
+                .list
+                .get(&room)
+                .map_or("a room", |r| r.name.as_str());
+            format!("Could not mark {name} read. Try again.")
+        } else if event.is_some() {
+            "Could not mark this room read. Use Mark read to retry.".into()
+        } else {
+            "Could not mark this room unread. Try again.".into()
+        };
     }
 }
 

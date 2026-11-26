@@ -50,7 +50,7 @@ impl Action {
             Self::Invite => "Invite",
         }
     }
-    fn applies(self, kind: Kind) -> bool {
+    pub fn applies(self, kind: Kind) -> bool {
         match self {
             Self::Kick => kind == Kind::Joined,
             Self::Ban => kind != Kind::Banned,
@@ -91,6 +91,8 @@ pub struct Directory {
     pub selected: Option<String>,
     pub reason: String,
     pub note: String,
+    /// A member to select once the list loads (a right-click Profile).
+    pub want: Option<String>,
     // Do not let a delayed snapshot undo a membership transition already
     // observed in sync while that snapshot was in flight.
     changed: BTreeSet<String>,
@@ -221,6 +223,9 @@ impl App {
             }
         }
         self.directory.users = users;
+        if let Some(user) = self.directory.want.take() {
+            self.directory.choose(Some(user));
+        }
         if let Some(c) = change {
             if !checked || !self.current_member_change(&c) {
                 self.directory.note =

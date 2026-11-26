@@ -1,7 +1,7 @@
 //! Joined rooms and space edges from the SDK's store, re-read whenever a sync
 //! response or room-info update arrives. Simplified Sliding Sync's default
 //! `required_state` includes `m.space.child`, so space edges are local reads.
-use super::{Event, RoomList, RoomSummary};
+use super::{Event, Failure, RoomList, RoomSummary, messaging};
 use crate::permissions::StateDoc;
 use async_channel::Sender;
 use matrix_sdk::{
@@ -42,6 +42,32 @@ pub async fn updates(client: Client, events: Sender<Event>) {
         while rooms.try_recv().is_ok() {}
         while info.try_recv().is_ok() {}
     }
+}
+
+/// Mark a room read at the newest event sync delivered to its event cache:
+/// the App knows a room's newest event only once its timeline is open.
+pub async fn mark_latest_read(client: &Client, room: &str, public: bool) -> Result<(), Failure> {
+    let joined = messaging::room(client, room)?;
+    let caches = client.event_cache().ok_or(Failure::Unavailable)?;
+    let (cache, _handles) = caches
+        .room(joined.room_id())
+        .await
+        .map_err(|_| Failure::Unavailable)?;
+    let events = cache.events().await.map_err(|_| Failure::Unavailable)?;
+    let latest = events
+        .iter()
+        .rev()
+        .find_map(|e| e.event_id())
+        .ok_or(Failure::Unavailable)?;
+    messaging::mark_read(client, room, latest.as_str(), public).await
+}
+
+/// Leave a joined room (or decline an invite).
+pub async fn leave(client: &Client, room: &str) -> Result<(), Failure> {
+    messaging::room(client, room)?
+        .leave()
+        .await
+        .map_err(|e| messaging::http(&e))
 }
 
 async fn snapshot(client: &Client) -> RoomList {
