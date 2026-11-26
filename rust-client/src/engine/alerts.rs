@@ -39,6 +39,8 @@ pub async fn register(client: &Client, events: Sender<Event>) {
                         return;
                     };
                     if let Some(notice) = notice(&notification, &room, me, since) {
+                        #[cfg(debug_assertions)]
+                        super::qa::alert(&notice);
                         // Sync waits for this handler; an alert isn't worth
                         // holding it up for.
                         let _ = events.try_send(Event::Notification(notice));

@@ -648,4 +648,68 @@ mod live {
             sync.abort();
         }
     }
+
+    /// Wait for the Element observer in `scripts/qa_rtc_membership.py` to
+    /// create `name` in the fixture directory.
+    async fn step(dir: &Path, name: &str) {
+        tokio::time::timeout(Duration::from_secs(25), async {
+            while !dir.join(name).is_file() {
+                tokio::time::sleep(Duration::from_millis(40)).await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("the Element observer did not write {name}"));
+    }
+
+    /// The seeded device in UNTETHERED_PROFILE (signed in and verified by the
+    /// fixture's `seed()`, opened with UNTETHERED_KEYRING=off) joins a
+    /// MatrixRTC call while a separate Element Web session watches the room's
+    /// roster: heartbeat, explicit leave, then a join it abandons, which only
+    /// the homeserver's delayed leave can end. UNTETHERED_RTC_QA holds
+    /// `rtc.json` and the files both sides pace each other with.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[ignore = "run scripts/test-media-interop.py --rtc-membership with local Element Web"]
+    async fn rtc_membership_seen_by_element() {
+        use super::super::session;
+        let dir = std::path::PathBuf::from(std::env::var_os("UNTETHERED_RTC_QA").unwrap());
+        let fixture: Value =
+            serde_json::from_slice(&std::fs::read(dir.join("rtc.json")).unwrap()).unwrap();
+        let room = fixture["room"].as_str().unwrap().to_owned();
+        let service = url::Url::parse(fixture["service"].as_str().unwrap()).unwrap();
+        assert_eq!(service.host_str(), Some("127.0.0.1"));
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let profile = session::Profile::open(session::profile_root().unwrap()).unwrap();
+        let client = session::restore(&profile)
+            .await
+            .unwrap()
+            .expect("the fixture seeded this profile");
+        let sync = syncing(&client);
+        let id = RoomId::parse(&room).unwrap();
+        tokio::time::timeout(Duration::from_secs(30), async {
+            while client.get_room(&id).is_none() {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+        })
+        .await
+        .expect("the seeded device synced its room");
+        let mut signal = SdkSignal::new(client.clone(), &room).unwrap();
+        let me = signal.identity().await.unwrap();
+        assert_eq!(me.user, client.user_id().unwrap().as_str());
+        std::fs::write(dir.join("rtc-device"), &me.device).unwrap();
+        let member = Membership::join(&room, &me.user, &me.device, &service, 8000, &mut signal)
+            .await
+            .unwrap();
+        step(&dir, "restart").await;
+        member.heartbeat(&mut signal).await.unwrap();
+        std::fs::write(dir.join("restarted"), "").unwrap();
+        step(&dir, "leave").await;
+        member.leave(&mut signal).await.unwrap();
+        step(&dir, "rejoin").await;
+        let _abandoned = Membership::join(&room, &me.user, &me.device, &service, 8000, &mut signal)
+            .await
+            .unwrap();
+        // Stop syncing and exit without a leave or any more heartbeats.
+        sync.abort();
+        println!("matrix-sdk: joined, renewed, left and abandoned a call membership");
+    }
 }

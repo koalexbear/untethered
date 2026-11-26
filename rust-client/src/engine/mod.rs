@@ -22,7 +22,7 @@ mod keyring;
 mod live_test;
 mod media;
 mod messaging;
-#[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
+#[cfg(debug_assertions)]
 pub mod qa;
 mod rooms;
 mod rt;
@@ -774,6 +774,9 @@ impl Engine {
     }
 
     async fn go_live(&mut self, client: Client) {
+        // Before the first sync, so the fixtures' log misses nothing.
+        #[cfg(debug_assertions)]
+        qa::watch(&client);
         let sync = match SyncService::builder(client.clone())
             .with_offline_mode()
             // Every room syncs its latest events, so opened timelines stay
@@ -811,6 +814,8 @@ impl Engine {
         calls::watch(&client, self.events.clone());
         alerts::register(&client, self.events.clone()).await;
         tasks.spawn(timeline::resume_after_errors(client.clone()));
+        #[cfg(debug_assertions)]
+        tasks.spawn(qa::redecrypted(client.clone()));
         tasks.spawn(sync_status(sync.clone(), self.events.clone()));
         tasks.spawn(session_changes(
             client.clone(),

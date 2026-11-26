@@ -71,6 +71,10 @@ enum FromWorker {
         name: String,
     },
     Stopped(String),
+    /// Debug builds: an entry of the QA event log (`qa.rs`). The page ignores
+    /// it; browser fixtures watch the worker's messages for it.
+    #[cfg(debug_assertions)]
+    Qa(serde_json::Value),
 }
 
 #[wasm_bindgen]
@@ -218,6 +222,8 @@ async fn relay(
                         let _ = events.send(Event::Done { id, result }).await;
                     }
                     Some(FromWorker::Stopped(why)) => return Err(why),
+                    #[cfg(debug_assertions)]
+                    Some(FromWorker::Qa(_)) => {}
                     Some(FromWorker::Ready) | None => {}
                 }
             }
@@ -262,6 +268,12 @@ fn post(json: &FromWorker, bytes: Option<Vec<u8>>) {
         }
         None => scope.post_message(&message),
     };
+}
+
+/// Post a QA event log entry to the page (`qa.rs`).
+#[cfg(debug_assertions)]
+pub(super) fn qa(entry: serde_json::Value) {
+    post(&FromWorker::Qa(entry), None);
 }
 
 fn persist(session: Option<&str>) {

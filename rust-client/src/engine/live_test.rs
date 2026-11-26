@@ -494,6 +494,67 @@ async fn stop(app: App, engine: tokio::task::JoinHandle<Result<(), String>>) {
         .unwrap();
 }
 
+/// The seeded device in UNTETHERED_PROFILE (opened with UNTETHERED_KEYRING=off)
+/// sends a 16 MiB file through the fixture's throttling gateway, cancels it
+/// mid-upload, then retries. `scripts/qa_upload_cancel.py` checks the
+/// transport, Synapse's media and events, and the decrypted event (from the
+/// QA event log); files in UNTETHERED_UPLOAD_QA pace both sides.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "run scripts/test-media-interop.py --upload-cancel (disposable throttled server)"]
+async fn throttled_encrypted_upload_cancel_retry() {
+    let dir = PathBuf::from(env::var_os("UNTETHERED_UPLOAD_QA").expect("throttle fixture"));
+    let f: Value =
+        serde_json::from_slice(&std::fs::read(dir.join("fixture.json")).unwrap()).unwrap();
+    let server = url::Url::parse(f["server"].as_str().unwrap()).unwrap();
+    assert_eq!(server.host_str(), Some("127.0.0.1"));
+    let room = f["room"].as_str().unwrap();
+    let (mut app, rx, engine) = session();
+    wait(&mut app, &rx, "the seeded device synced its room", |a| {
+        a.verified && a.live.list.contains_key(room) && !a.media_config_pending()
+    })
+    .await;
+    app.open(room.into());
+    app.editor = text_editor::Content::with_text("native cancel proof");
+    let file = crate::media::LocalFile::from_path(dir.join("throttled.bin")).unwrap();
+    let _ = app.update(Msg::Files(room.into(), vec![file]));
+    assert!(
+        app.outbox.rooms.get(room).is_some_and(|q| q.len() == 1),
+        "the file staged; limit={}",
+        app.media_limit
+    );
+    let _ = app.update(Msg::Send);
+    wait(&mut app, &rx, "upload progress short of complete", |a| {
+        a.outbox.rooms[room][0]
+            .upload
+            .as_ref()
+            .and_then(|u| u.percent)
+            .is_some_and(|p| (1..100).contains(&p))
+    })
+    .await;
+    let a = &app.outbox.rooms[room][0];
+    println!("Native attachment card: {}", a.status_label());
+    let (id, request) = (a.id, a.upload.as_ref().unwrap().request);
+    let _ = app.update(Msg::CancelUpload(room.into(), id, request));
+    assert!(app.outbox.rooms[room][0].cancelled && app.batch.is_none());
+    assert_eq!(app.editor.text(), "native cancel proof");
+    // The fixture sees the truncated request body and asks Synapse before
+    // letting this retry.
+    std::fs::write(dir.join("native.cancelled"), "").unwrap();
+    signal(&dir, "native.retry").await;
+    let _ = app.update(Msg::Send);
+    wait(&mut app, &rx, "one confirmed retry", |a| {
+        a.batch.is_none()
+            && a.outbox.rooms.is_empty()
+            && a.live.list[room].posts().any(|p| {
+                p.text() == "native cancel proof"
+                    && p.event_id.is_some()
+                    && p.media.as_ref().is_some_and(|m| m.encrypted)
+            })
+    })
+    .await;
+    stop(app, engine).await;
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "run scripts/qa_matrix_sdk.py (disposable Synapse and a gomuks peer)"]
 async fn matrix_sdk_login_restore_and_encrypted_round_trip() {
