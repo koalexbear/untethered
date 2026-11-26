@@ -16,25 +16,28 @@ use matrix_sdk::ruma::{
 
 /// A message that renders Markdown. Without pills it is what it always
 /// was: the source as `body`, and its HTML if the Markdown makes any.
+/// Trailing spaces go, like the one autocomplete leaves after a pick.
 pub fn markdown(body: String, pills: &[Pill]) -> Content {
-    let parts = pills::split(&body, pills);
+    let body = body.trim_end();
+    let parts = pills::split(body, pills);
     let content = if pills::any(&parts) {
         let html = FormattedBody::markdown(pills::markdown(&parts))
             .map_or_else(|| pills::html(&parts), |f| f.body);
         Content::text_html(pills::plain(&parts), html)
     } else {
-        Content::text_markdown(&body)
+        Content::text_markdown(body)
     };
     content.add_mentions(mentions(&parts))
 }
 
 /// A reply, whose text stays literal (no Markdown, no commands).
 pub fn literal(body: String, pills: &[Pill]) -> Content {
-    let parts = pills::split(&body, pills);
+    let body = body.trim_end();
+    let parts = pills::split(body, pills);
     let content = if pills::any(&parts) {
         Content::text_html(pills::plain(&parts), pills::html(&parts))
     } else {
-        Content::text_plain(&body)
+        Content::text_plain(body)
     };
     content.add_mentions(mentions(&parts))
 }
@@ -69,7 +72,7 @@ mod tests {
 
     #[test]
     fn a_mention_is_a_pill_and_notifies_through_m_mentions() {
-        let sent = json(markdown("hey **@Mira**, look".into(), &[mira()]));
+        let sent = json(markdown("hey **@Mira**, look \n".into(), &[mira()]));
         assert_eq!(sent["msgtype"], "m.text");
         assert_eq!(sent["body"], "hey **Mira**, look");
         assert_eq!(sent["format"], "org.matrix.custom.html");
@@ -85,8 +88,8 @@ mod tests {
 
     #[test]
     fn a_reply_keeps_its_text_literal_around_the_pill() {
-        let sent = json(literal("*not bold* @Mira".into(), &[mira()]));
-        assert_eq!(sent["body"], "*not bold* Mira");
+        let sent = json(literal("*not bold* @Mira ".into(), &[mira()]));
+        assert_eq!(sent["body"], "*not bold* Mira", "no trailing space");
         assert_eq!(
             sent["formatted_body"],
             "*not bold* <a href=\"https://matrix.to/#/@mira:example.org\">Mira</a>"
