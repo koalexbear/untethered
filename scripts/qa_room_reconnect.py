@@ -83,7 +83,7 @@ def check_reconnect(desks, users, names, link, logs, member_events, members, pub
         recovered = time.monotonic() - restored
         now = memberships()[users[1]]
         tracks = wait_for("three encrypted microphones at the SFU", lambda: publications(3), 10)
-        wait_for("two playback streams and one capture per client", lambda: audio_counts() == [(1, 2)] * 3, 10)
+        wait_for("one mixed playback stream and one capture per client", lambda: audio_counts() == [(1, 1)] * 3, 10)
         assert members() == sorted(users)
         # Only Bruno recovers; a short outage needs no rejoin at all.
         changes = [recoveries(log)[len(before):] for log, before in zip(logs, seen)]
