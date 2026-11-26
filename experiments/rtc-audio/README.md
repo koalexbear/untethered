@@ -207,12 +207,13 @@ unchanged. Setting Bruno to zero must silence only him for Alice; **Reset**
 must restore the baseline mix. The three GCM microphone track IDs must survive.
 
 It then feeds one microphone at a time, with silence between speakers. On
-each of the three rendered sidebars, the **Speaking** label must line up with
-the correct name and disappear during silence, while the participants and
-microphone track IDs stay the same. An overlapping pair must show two labels;
-when only one falls silent the other label must remain. Muting the remaining
-speaker while her test input is still loud must clear the last label, and
-unmuting must restore it. Each step checks the tones received by all three clients.
+each of the three rendered sidebars, the green speaking ring must surround the
+correct person’s avatar in the voice roster and disappear during silence,
+while the participants and microphone track IDs stay the same. An overlapping
+pair must show two rings; when only one falls silent the other ring must
+remain. Muting the remaining speaker while her test input is still loud must
+clear the last ring, and unmuting must restore it. Each step checks the tones
+received by all three clients.
 After one leaves, the remaining two must exchange newly injected tones on
 their original participant and track IDs. Final leave must clear call
 memberships and release all capture/playback streams.

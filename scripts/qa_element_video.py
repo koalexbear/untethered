@@ -66,7 +66,8 @@ def verify(stack,tmp,root,backend,page,room,alice,bob,secret,incoming,switch_cam
     def roster():return page.evaluate("""r=>{const c=window.mxMatrixClientPeg.get();return c.matrixRTC
         .getRoomSession(c.getRoom(r)).memberships.map(m=>m.userId)}""",room)
     def native_box(pair):return pattern_box(kde.capture().crop((283,275,1179,435)),pair)
-    def self_box(pair):return pattern_box(kde.capture().crop((283,440,1179,752)),pair)
+    # The self-preview is a thumbnail under the focused remote tile, down to the window's foot.
+    def self_box(pair):return pattern_box(kde.capture().crop((283,440,1179,850)),pair)
     def browser_box(pair):
         # Small overlaid labels/controls can occlude the edges of a tile.
         for v in widget().locator("video").all():

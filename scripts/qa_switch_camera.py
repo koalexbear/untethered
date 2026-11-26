@@ -3,6 +3,7 @@ import json
 from contextlib import ExitStack
 from qa_native_paste import wait_for
 from qa_room_camera import camera_source,dialog,grant_camera
+from qa_ui import CHAT_X,PICK_BELOW,RAIL,SIDEBAR
 
 
 def verify_switch(stack,desk,remote_box,local_box,fresh_audio,tracks,baseline,amber,first,local_user):
@@ -16,24 +17,31 @@ def verify_switch(stack,desk,remote_box,local_box,fresh_audio,tracks,baseline,am
         return [names.get(o["info"]["output-node-id"]) for o in data if o.get("type")=="PipeWire:Interface:Link"
                 and o["info"]["state"]=="active" and names.get(o["info"]["output-node-id"]) in ("qa-room-camera","qa-second-camera")]
     def words():
-        return [(w.strip("|:.,").lower(),x,y) for w,x,y in kde.words((313,380,1179,850))]
+        # The Devices panel is in the call dock at the foot of the sidebar.
+        return [(w.strip("|:.,").lower(),x,y) for w,x,y in kde.words((RAIL,380,CHAT_X,850))]
     def pos(name):
         return next(((x,y) for w,x,y in words() if w==name),None)
     def click(x,y):
         kde.command("kdotool","windowactivate",desk.win)
         kde.actions("pointer",[{"type":"pointerMove","x":x,"y":y},{"type":"pause","duration":250},
                               {"type":"pointerDown","button":0},{"type":"pause","duration":100},{"type":"pointerUp","button":0}])
+    def refresh_cameras(ws):
+        return any(w=="refresh" and any(v=="cameras" and x<xx<x+125 and abs(y-yy)<6 for v,xx,yy in ws) for w,x,y in ws)
     def choose(label):
-        # Align the picker click with the Refresh cameras button on its row.
+        # The camera pick list is on the line below the "Camera" label, with
+        # Refresh cameras under it, at the foot of the scrolling Devices panel.
         def picker():
+            desk.devices_panel("bottom")
             ws=words()
-            return next(((670,y) for w,x,y in ws if w=="refresh" and any(
-                w2=="cameras" and x<x2<x+125 and abs(y2-y)<6 for w2,x2,y2 in ws)),None)
+            # The lowest "camera": a camera status line above can say it too.
+            cam=max(((x,y) for w,x,y in ws if w=="camera"),key=lambda p:p[1],default=None)
+            return cam and refresh_cameras(ws) and (RAIL+SIDEBAR//2,cam[1]+PICK_BELOW)
         x,y=wait_for("camera picker",picker,12)
         def entry():
-            ws=kde.words((388,max(360,y-110),680,y-12)) + (kde.words((388,y+12,680,min(y+124,850))) if y+12<850 else [])
+            # Its menu opens upwards over the panel.
+            ws=kde.words((RAIL,max(380,y-150),CHAT_X,y-10))
             target=next(((xx,yy) for w,xx,yy in ws if w.strip("|:.,").lower()==label),None)
-            if not target and not any(w.lower() in ("amber","cobalt") for w,_,_ in ws):
+            if not target and not any(w.strip("|:.,").lower() in ("amber","cobalt") for w,_,_ in ws):
                 click(x,y)
             return target
         try:click(*wait_for(label+" in camera list",entry,10))
@@ -41,8 +49,9 @@ def verify_switch(stack,desk,remote_box,local_box,fresh_audio,tracks,baseline,am
     desk.click("devices")
     def listed():
         if dialog(kde):return False
+        desk.devices_panel("bottom")
         ws=words()
-        if any(w=="refresh" and any(v=="cameras" and x<xx<x+125 and abs(y-yy)<6 for v,xx,yy in ws) for w,x,y in ws):return True
+        if refresh_cameras(ws):return True
         button=next(((x,y) for w,x,y in ws if w=="list"),None)
         if button:click(*button)
         return False
@@ -63,7 +72,11 @@ def verify_switch(stack,desk,remote_box,local_box,fresh_audio,tracks,baseline,am
     choose("cobalt")
     grant_camera(kde,lambda:graph()==["qa-second-camera"] and remote_box(second[1]))
     removable.close()
-    wait_for("missing-camera feedback",lambda:pos("stopped") and (local_user,"CAMERA") not in tracks(),22)
+    def stopped():
+        # Camera status lines sit at the head of the Devices panel.
+        desk.devices_panel("top")
+        return pos("stopped")
+    wait_for("missing-camera feedback",lambda:stopped() and (local_user,"CAMERA") not in tracks(),22)
     remaining=tracks()
     missing=set(baseline)-set(remaining)
     assert missing=={(local_user,"CAMERA")} and all(remaining[k]==baseline[k] for k in remaining)

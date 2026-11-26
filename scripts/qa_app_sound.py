@@ -5,6 +5,7 @@ import math
 import subprocess as sp
 import threading
 from qa_native_paste import wait_for
+from qa_ui import CHAT_X,PICK_BELOW,RAIL,SIDEBAR
 
 def app_sound(stack,desk,w,tracks,user,baseline):
     kde=desk.kde
@@ -40,21 +41,29 @@ def app_sound(stack,desk,w,tracks,user,baseline):
         kde.command("kdotool","windowactivate",desk.win)
         kde.actions("pointer",[{"type":"pointerMove","x":x,"y":y},{"type":"pause","duration":300},
                                {"type":"pointerDown","button":0},{"type":"pause","duration":120},{"type":"pointerUp","button":0}])
+    def dock(end="top"):
+        # The shared window's audio controls head the details of the call
+        # dock at the foot of the sidebar, above its Devices panel.
+        desk.devices_panel(end)
+        return [(s.strip("|:.,").lower(),x,y) for s,x,y in kde.words((RAIL,380,CHAT_X,850))]
     def choose():
         # Use the actual device panel and selection menu; locate rows
-        # from the window, since the stage height varies with call state.
+        # from the window, since the dock's height varies with call state.
         def picker():
-            ws=[(s.strip("|:.,").lower(),x,y) for s,x,y in kde.words((285,390,1179,850))]
+            ws=dock()
             for s,x,y in ws:
-                if s=="send" and any(t=="from" and abs(yy-y)<6 for t,xx,yy in ws):return x+190,y
+                # The pick list is on the line below "Send sound from".
+                if s=="send" and any(t=="from" and abs(yy-y)<6 for t,xx,yy in ws):return RAIL+SIDEBAR//2,y+PICK_BELOW
             pt=next(((x,y) for s,x,y in ws if s=="choose" and any(t=="app" and abs(y-yy)<6 for t,xx,yy in ws)),None)
             if pt:click(*pt)
             return None
         x,y=wait_for("application picker",picker,15)
         def option():
             if key in tracks():return True
-            ws=kde.words((402,max(360,y-122),630,min(850,y+122)))
-            target=next(((xx,yy) for s,xx,yy in ws if s.lower().rstrip(".,:")=="prism" and abs(yy-y)>10),None)
+            # Its menu opens upwards over the dock. An item starts at the
+            # list's left edge, unlike "Sharing audio: Prism" in a status line.
+            ws=kde.words((RAIL,max(380,y-200),CHAT_X,y-10))
+            target=next(((xx,yy) for s,xx,yy in ws if s.lower().rstrip(".,:")=="prism" and xx<RAIL+SIDEBAR//3),None)
             if target:
                 click(*target)
                 try:return wait_for("selected audio started",lambda:key in tracks(),2)
@@ -75,9 +84,9 @@ def app_sound(stack,desk,w,tracks,user,baseline):
     assert tracks()==published and len(recorders())==1
     def stop_audio():
         if tracks()==baseline and not recorders():return True
-        ws=kde.words((285,380,1179,850))
-        btn=next(((x,y) for s,x,y in ws if s.lower()=="stop" and any(
-            s2.lower()=="app" and x<x2<x+50 and abs(y2-y)<6 for s2,x2,y2 in ws)),None)
+        ws=dock()
+        btn=next(((x,y) for s,x,y in ws if s=="stop" and any(
+            s2=="app" and x<x2<x+50 and abs(y2-y)<6 for s2,x2,y2 in ws)),None)
         if btn:click(*btn)
         return False
     wait_for("Stop app audio closes only app sound",stop_audio,15)
@@ -90,7 +99,13 @@ def app_sound(stack,desk,w,tracks,user,baseline):
     # second stream running must close its recording and publication too.
     play("Prism",730)
     wait_for("replacement playing alongside decoy",both)
-    desk.click("refresh")
+    def refresh():
+        # Refresh devices is below the fold of the Devices panel. Scroll on
+        # every try: a single wheel turn is occasionally lost.
+        ws=dock("bottom")
+        return max(((x,y) for s,x,y in ws if s=="refresh" and any(t=="devices" and abs(yy-y)<6 for t,_,yy in ws)),
+                   key=lambda p:p[1],default=None)
+    click(*wait_for("Refresh devices",refresh,12))
     choose()
     wait_for("fresh Prism selected again",lambda:measured(730),15)
     desk.click("devices")
