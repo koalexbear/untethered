@@ -571,6 +571,10 @@ pub struct Message {
     pub mentions: Option<(Vec<String>, bool)>,
     /// The newest edit's event ID, which reports refer to.
     pub edit_id: Option<String>,
+    /// When the newest edit was sent (ms since the epoch), to place it in the
+    /// room's read order: it has no message of its own.
+    #[serde(default)]
+    pub edit_time: Option<i64>,
     /// Read receipts on this event: (user, timestamp).
     pub receipts: Vec<(String, i64)>,
     /// An attachment's content (`msgtype`, `url` or `file`, `info`), for

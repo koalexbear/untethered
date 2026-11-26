@@ -479,6 +479,9 @@ fn message(item: &EventTimelineItem, row: i64, me: &str, sources: &Sources) -> O
         edit_id: item
             .latest_edit_json()
             .and_then(|raw| raw.get_field::<String>("event_id").ok().flatten()),
+        edit_time: item
+            .latest_edit_json()
+            .and_then(|raw| raw.get_field::<i64>("origin_server_ts").ok().flatten()),
         receipts: item
             .read_receipts()
             .iter()

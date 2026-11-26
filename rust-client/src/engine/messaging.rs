@@ -142,6 +142,7 @@ fn message(event: &TimelineEvent, row: i64, me: &str, sources: &Sources) -> Opti
         editable: false,
         mentions: None,
         edit_id: None,
+        edit_time: None,
         receipts: Vec::new(),
         media: None,
     };

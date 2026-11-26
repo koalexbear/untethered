@@ -77,6 +77,30 @@ impl Rooms {
     }
 }
 
+/// Sent events in the order reading reaches them: the messages in timeline
+/// order, and each message's latest edit after the last message sent before
+/// it. An edit has no message of its own, but a read marker can be on one.
+fn read_order(messages: &[Message], sent: impl Fn(&Message) -> Option<String>) -> Vec<String> {
+    let mut order: Vec<(String, i64)> = messages
+        .iter()
+        .filter_map(|m| Some((sent(m)?, m.time)))
+        .collect();
+    let mut edits: Vec<(String, i64)> = messages
+        .iter()
+        .filter(|m| sent(m).is_some())
+        .filter_map(|m| Some((m.edit_id.clone()?, m.edit_time?)))
+        .collect();
+    edits.sort_by_key(|(_, time)| *time);
+    for (edit, time) in edits {
+        let at = order
+            .iter()
+            .rposition(|(_, t)| *t <= time)
+            .map_or(0, |p| p + 1);
+        order.insert(at, (edit, time));
+    }
+    order.into_iter().map(|(id, _)| id).collect()
+}
+
 impl Room {
     /// Replace the loaded timeline with the engine's snapshot.
     pub fn apply_engine(&mut self, messages: Vec<Message>, start_reached: bool) {
@@ -85,7 +109,7 @@ impl Room {
         self.event_rows.clear();
         self.related.clear();
         let sent = |m: &Message| m.event_id.clone().filter(|_| m.delivery == Delivery::Sent);
-        let events: Vec<String> = messages.iter().filter_map(sent).collect();
+        let events = read_order(&messages, sent);
         let receipts: Vec<(String, String, i64)> = messages
             .iter()
             .filter_map(|m| Some((sent(m)?, &m.receipts)))
@@ -224,9 +248,44 @@ mod tests {
             editable: false,
             mentions: None,
             edit_id: None,
+            edit_time: None,
             receipts: Vec::new(),
             media: None,
         }
+    }
+
+    /// A read marker on an edit, which has no row, keeps its place: the
+    /// divider goes before the first message sent after the edit.
+    #[test]
+    fn read_marker_on_an_edit_keeps_its_place() {
+        let mut room = Room::default();
+        let edited = |mut m: Message, time| {
+            m.edit_id = Some(format!("{}-edit", m.event_id.clone().unwrap()));
+            m.edit_time = Some(time);
+            m
+        };
+        // The newest message was edited, then another message arrived.
+        room.apply_engine(
+            vec![
+                message(1, 100, "first"),
+                edited(message(2, 200, "revised"), 250),
+                message(3, 300, "after"),
+            ],
+            true,
+        );
+        room.read.fully_read = Some("$2-edit".into());
+        assert_eq!(room.read.divider(&room), Some("$3"));
+        // An older message edited after newer ones: they are read too.
+        room.apply_engine(
+            vec![
+                edited(message(1, 100, "first"), 350),
+                message(2, 200, "second"),
+                message(3, 300, "third"),
+            ],
+            true,
+        );
+        room.read.fully_read = Some("$1-edit".into());
+        assert_eq!(room.read.divider(&room), None);
     }
 
     #[test]
