@@ -41,7 +41,7 @@ pub struct Change {
     enable_next: bool,
 }
 /// The Matrix push rule kinds the App writes.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub enum RuleKind {
     Override,
     Room,
@@ -57,7 +57,7 @@ impl RuleKind {
     }
 }
 /// A change to one push rule, as the Matrix push rules API makes it.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
 pub enum RuleChange {
     Enabled(bool),
     Delete,

@@ -13,11 +13,12 @@ notifications, moderation, permissions and spaces → call signaling → web
 build → remove gomuks. Throughout, the UI keeps reading
 `rooms::{Rooms, Room, Post}`; that model is the seam.
 
-## Status: steps 1 to 6 are in
+## Status: steps 1 to 7 are in
 
-The native client has a second engine built on `matrix-sdk` and
-`matrix-sdk-ui` **0.20.0**. gomuks stays the default. The wasm32 build doesn't
-compile the SDK.
+The native and web clients have a second engine built on `matrix-sdk` and
+`matrix-sdk-ui` **0.20.0**. gomuks stays the default. In the browser the
+engine runs in a Web Worker on IndexedDB stores (see
+[step 7](#step-7-the-web-client-on-the-sdk)).
 
 **0.20.0 since step 4.** Steps 1 to 3 stayed on 0.19.1 because 0.20.0 failed
 the restart check every time. That failure was the engine's own pagination
@@ -33,6 +34,9 @@ UNTETHERED_ENGINE=matrix-sdk bash scripts/rust-client.sh
 Any other value, or no value, starts gomuks. An unknown value also prints a
 warning. The variable is read at startup, so one binary can run either
 engine for side-by-side testing.
+
+In the browser, open the page once with `?engine=matrix-sdk`. The page
+remembers the choice; `?engine=gomuks` switches back.
 
 **Why an environment variable rather than a Cargo feature:** QA and
 day-to-day comparison need both engines in the same build, and the default
@@ -113,7 +117,10 @@ many more; the step sections below say what closed them):
 - OAuth 2.0 / MAS sign-in is untested.
 - No full media call has run on this engine yet; the Element Call
   fixtures assume gomuks profiles (see [step 6](#step-6-call-signaling-behind-a-seam)).
-- The web build still runs gomuks (step 7).
+- In the browser, sign-in is by password only: single sign-on and OAuth
+  return to a loopback listener, which a page can't run. Emoji verification
+  isn't reachable there either, because the recovery key dialog covers the
+  page (see [step 7](#things-worth-knowing-step-7)).
 
 ## Step 2: account and verification
 
@@ -481,6 +488,76 @@ as `Event::CallFrame`, so the call UI is unchanged.
 - **The experimental to-device feature** is on a user-facing path; pin the
   SDK version and treat each bump as a call regression test.
 
+## Step 7: the web client on the SDK
+
+The web build compiles the engine for wasm32 and runs it in a dedicated Web
+Worker, like gomuks's web build, so sync, decryption and IndexedDB work stay
+off the thread where Iced draws. The page and the worker exchange the same
+typed `Command`s and `Event`s as on the desktop, now serialized with serde.
+
+| Piece | Implementation |
+| --- | --- |
+| Stores | matrix-sdk's IndexedDB stores, encrypted with a random passphrase. Each sign-in gets its own database name (`untethered-sdk-…`), so wiping an old store never waits on a connection that is still closing. Signing out or signing in again deletes every `untethered-sdk-` database (`indexedDB.databases()`) |
+| Session | The same JSON as `session.json` (tokens, homeserver, store name and passphrase) in the page's `localStorage`. A worker has no `localStorage`, so the page hands the JSON over at start and saves whatever the worker sends back. Like gomuks's browser database, scripts on the origin can read it |
+| One tab per device | The page holds a Web Lock (`untethered:matrix-sdk-profile`), like gomuks's profile lock. A second tab waits and says why |
+| Starting the worker | The page posts its own compiled module (`wasm_bindgen::module()`) and the URL of its wasm-bindgen glue (`import.meta.url`) to `web/engine-worker.js`, which loads them and calls `untethered_engine_worker`. In a worker, `main()` returns at once. The module's JS snippets must not touch the DOM at load time, so `verification.js` now looks its elements up on first use |
+| The boundary (`engine/worker.rs`) | Messages are `{json, bytes?, file?}`: commands and events as serde JSON, attachment bytes as transferred `Uint8Array`s, picked files as `File`s. The worker answers only after it signals that it is listening |
+| Attachments | Uploads read the `File` in the worker. Previews and downloads come back as bytes: the page decodes previews (canvas) and offers downloads as browser downloads |
+| Runtime (`engine/rt.rs`) | matrix-sdk's executor (`spawn_local` in the browser) and timer, and `web-time` clocks, because `std::time::Instant` panics on wasm32. Blocking work (image decoding) runs inline |
+| Sign-in and verification | Password sign-in. The recovery key goes through the page's HTML dialog, as with gomuks, so browser paste and password managers work. The account screens (devices, recovery, sign-out) render on the web |
+| Alerts | The SDK evaluates push rules in the worker; the page shows browser notifications. Room alert modes, Do Not Disturb and space alerts use the engine's push rule commands |
+
+The desktop engine is unchanged in behavior. The session and media code now
+keep their platform parts behind small helpers, and the desktop QA passes
+unchanged.
+
+### Step 7 verification
+
+- `scripts/qa_matrix_sdk_web.py`, run by `qa_matrix_sdk.py` with
+  `UNTETHERED_QA_ONLY=web` and a release Trunk build in
+  `UNTETHERED_QA_WEB_DIST`, drives Chromium (Playwright, 1180×760) against
+  the disposable Synapse:
+
+  ```text
+  matrix-sdk in Chromium: signed in and verified with the recovery key, in a worker
+  gomuks peer decrypted the browser's message
+  matrix-sdk in Chromium: decrypted and showed the peer's message
+  gomuks peer decrypted the browser's pasted image byte for byte
+  matrix-sdk in Chromium: saved the peer's encrypted image byte for byte
+  matrix-sdk in Chromium: previewed the peer's encrypted image inline
+  matrix-sdk in Chromium: a browser notification for the other room's message
+  matrix-sdk in Chromium: reload restored the session and the room's history
+  PASS matrix-sdk engine in Chromium
+  ```
+
+  "In a worker" is checked: the page must have a worker running
+  `engine-worker.js`.
+- The desktop `qa_matrix_sdk.py` run (all four live tests), `cargo test`,
+  clippy, the wasm32 check and the Windows build.
+
+### Things worth knowing (step 7)
+
+- **Size:** the release build is one 40.5 MB module (13.3 MB gzip, 7.8 MB
+  brotli) holding the UI and the engine. For comparison, gomuks's web build
+  ships a 30.4 MB gomuks module and a 0.9 MB SQLite module (7.4 MB gzip
+  together) next to the UI module. Trunk doesn't run wasm-opt here yet
+  (`data-wasm-opt`); that is the first thing to try for size. The engine's
+  share of the module wasn't measured separately.
+- **Two instances:** the page and the worker each instantiate the module.
+  They share one download and one compilation, but the memory is double.
+- **Emoji verification on the web:** the recovery key dialog is modal over
+  the canvas, so the Iced "Verify with another device" option can't be
+  reached while it's open. Recovery keys work.
+- **Single sign-on and OAuth on the web** need a redirect back to the page
+  instead of the desktop's loopback listener. Until then, the sign-in
+  options offer the password only.
+- **CORS:** the page fetches from the homeserver directly. Synapse allows
+  any origin for the client API; a homeserver behind a stricter proxy needs
+  the page's origin allowed.
+- **Building:** `scripts/rust-web.sh` still builds the gomuks worker, since
+  gomuks is the default. The engine needs nothing extra; Trunk copies
+  `engine-worker.js`.
+
 ## (a) gomuks calls and their matrix-sdk equivalents
 
 Status: **Done** = implemented on the new engine; **Available**
@@ -644,9 +721,10 @@ old device out.**
 
 ### Web
 
-**Run the SDK in a dedicated Web Worker with IndexedDB, keep the Iced UI on
-the main thread, and talk across a serde-derived version of the same
-`Command`/`Event` types.**
+**Done in [step 7](#step-7-the-web-client-on-the-sdk) as recommended here:**
+the SDK runs in a dedicated Web Worker on IndexedDB, the Iced UI stays on the
+main thread, and the two exchange serde versions of `Command` and `Event`.
+The reasoning:
 
 - It builds. A probe crate with `matrix-sdk` 0.19.1 (`e2e-encryption`,
   `indexeddb`, `js`), `matrix-sdk-ui` (`js`) and getrandom's `wasm_js` feature
@@ -748,8 +826,9 @@ discarded. Both binaries are the Linux `untethered-iced`.
 
 What this means:
 - Most of the build cost is optimizing the SDK in release builds. Dev
-  builds and edit-compile cycles barely change. The wasm32 build doesn't
-  compile the SDK, so it is unaffected.
+  builds and edit-compile cycles barely change. Since step 7 the wasm32
+  build compiles the SDK too; [step 7](#things-worth-knowing-step-7) has
+  the module size. Web build times weren't measured.
 - Every native build pays this while gomuks stays the default, because the
   engine is chosen at runtime. If that becomes a problem before the switch,
   put the SDK behind a Cargo feature.
@@ -832,7 +911,9 @@ UNTETHERED_BACKEND=/path/to/gomuks uv run --python 3.13 --with matrix-synapse \
 5. **Calls:** signaling done in step 6. Left: a media call on the new
    engine through the Element Call fixtures (they need an engine switch),
    and rings for late-decrypted events.
-6. **Web build** on the SDK (wasm32, IndexedDB stores).
+6. **Web build:** done in step 7. Left: single sign-on and OAuth with a
+   redirect back to the page, emoji verification on the web, and a smaller
+   module (wasm-opt).
 7. **Remove gomuks:** delete `backend/`, `GomuksSignal` and the gomuks
    scripts, and move the remaining call sites off `engine_rpc` to typed
    commands.

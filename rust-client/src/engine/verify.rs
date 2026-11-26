@@ -227,7 +227,8 @@ async fn watch(me: Weak<Verifier>, request: VerificationRequest) {
                     let _ = request.cancel().await;
                     return verifier
                         .publish(Stage::Cancelled(
-                            "The other device chose a method Untethered doesn’t support yet. Use emoji.",
+                            "The other device chose a method Untethered doesn’t support yet. Use emoji."
+                                .into(),
                         ))
                         .await;
                 };
@@ -240,7 +241,9 @@ async fn watch(me: Weak<Verifier>, request: VerificationRequest) {
             }
             VerificationRequestState::Done => return verifier.publish(Stage::Done).await,
             VerificationRequestState::Cancelled(info) => {
-                return verifier.publish(Stage::Cancelled(reason(info))).await;
+                return verifier
+                    .publish(Stage::Cancelled(reason(info).into()))
+                    .await;
             }
         }
         drop(verifier);
@@ -278,7 +281,9 @@ async fn watch_sas(me: Weak<Verifier>, sas: SasVerification) {
             SasState::Confirmed => verifier.publish(Stage::Confirmed).await,
             SasState::Done { .. } => return verifier.publish(Stage::Done).await,
             SasState::Cancelled(info) => {
-                return verifier.publish(Stage::Cancelled(reason(info))).await;
+                return verifier
+                    .publish(Stage::Cancelled(reason(info).into()))
+                    .await;
             }
         }
         drop(verifier);

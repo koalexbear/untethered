@@ -207,7 +207,7 @@ pub fn size(n: u64) -> String {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct Media {
     pub name: String,
     pub size: Option<u64>,
@@ -215,7 +215,7 @@ pub struct Media {
     pub encrypted: bool,
     pub preview: Option<PreviewRef>,
 }
-#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, serde::Serialize, serde::Deserialize)]
 pub struct PreviewRef {
     pub mxc: String,
     pub encrypted: bool,

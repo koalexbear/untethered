@@ -2141,6 +2141,12 @@ impl App {
     }
 }
 fn main() -> iced::Result {
+    // The matrix-sdk engine's browser worker loads this module too. It starts
+    // through `untethered_engine_worker` instead (engine/worker.rs).
+    #[cfg(target_arch = "wasm32")]
+    if web_sys::window().is_none() {
+        return Ok(());
+    }
     #[cfg(not(target_arch = "wasm32"))]
     fonts::configure();
     iced::application(App::boot, App::update, App::view)

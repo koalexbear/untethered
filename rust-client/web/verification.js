@@ -1,10 +1,16 @@
 // Keep the editable value in a real, masked HTML input. A normal user paste
 // then works without asynchronously reading the system clipboard.
-const dialog = document.getElementById("verify-dialog");
-const form = document.getElementById("verify-form");
-const input = document.getElementById("verify-secret");
-const button = form.querySelector("button");
-const feedback = document.getElementById("verify-feedback");
+// Looked up on first use: the matrix-sdk engine's worker imports this module
+// too, and a worker has no document.
+let dialog, form, input, button, feedback;
+function elements() {
+    if (dialog) return;
+    dialog = document.getElementById("verify-dialog");
+    form = document.getElementById("verify-form");
+    input = document.getElementById("verify-secret");
+    button = form.querySelector("button");
+    feedback = document.getElementById("verify-feedback");
+}
 let available = false;
 let submitting = false;
 
@@ -12,6 +18,7 @@ function updateButton() {
     button.disabled = !available || submitting || !input.value.trim();
 }
 export function install(submit) {
+    elements();
     input.addEventListener("input", updateButton);
     dialog.addEventListener("cancel", event => event.preventDefault());
     form.addEventListener("submit", event => {
@@ -23,6 +30,7 @@ export function install(submit) {
     });
 }
 export function render(show, user, enabled, busy, status, gomuks) {
+    elements();
     // The note is about gomuks's verification; the matrix-sdk engine has none.
     document.getElementById("verify-gomuks-note").hidden = !gomuks;
     if (!show) {

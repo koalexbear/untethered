@@ -30,6 +30,8 @@ mod timeline;
 mod verify;
 #[cfg(target_arch = "wasm32")]
 mod web;
+#[cfg(target_arch = "wasm32")]
+mod worker;
 
 use async_channel::{Receiver, Sender};
 use matrix_sdk::Client;
@@ -73,6 +75,7 @@ pub fn selected() -> bool {
 
 /// Requests from the UI. `id` matches `App::pending`; every command with an
 /// `id` is answered by exactly one [`Event::Done`].
+#[derive(serde::Serialize, serde::Deserialize)]
 pub enum Command {
     Login {
         id: i64,
@@ -289,7 +292,7 @@ pub enum Command {
     },
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub enum BrowserMethod {
     /// Homeserver single sign-on, optionally with one identity provider.
     Sso { provider: Option<String> },
@@ -297,7 +300,7 @@ pub enum BrowserMethod {
     OAuth,
 }
 
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub enum Event {
     Account(Account),
     Rooms(RoomList),
@@ -308,7 +311,7 @@ pub enum Event {
     },
     Connection(Connection),
     /// Engine-written text for the status line. Never contains server text.
-    Status(&'static str),
+    Status(String),
     /// The current emoji verification, or `None` when there is none.
     Verification(Option<Verification>),
     /// A new recovery key. The engine keeps no copy; show it once.
@@ -405,7 +408,7 @@ pub enum Event {
 
 /// A stored message found by search or for the mentions inbox, with its
 /// current (edited) text.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Found {
     pub room: String,
     pub event_id: String,
@@ -414,7 +417,7 @@ pub struct Found {
     pub time: i64,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Alert {
     pub room: String,
     pub event_id: String,
@@ -424,7 +427,7 @@ pub struct Alert {
     pub sound: bool,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Verification {
     /// The other device asked; otherwise this device did.
     pub incoming: bool,
@@ -433,7 +436,7 @@ pub struct Verification {
     pub stage: Stage,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub enum Stage {
     /// Another device asks to verify; accept or decline.
     Requested,
@@ -447,10 +450,10 @@ pub enum Stage {
     Confirmed,
     Done,
     /// Engine-written reason.
-    Cancelled(&'static str),
+    Cancelled(String),
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub struct DeviceInfo {
     pub id: String,
     pub name: Option<String>,
@@ -462,7 +465,7 @@ pub struct DeviceInfo {
     pub current: bool,
 }
 
-#[derive(Clone, Default, PartialEq, Eq, Debug)]
+#[derive(Clone, Default, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub struct LoginOptions {
     pub homeserver: String,
     pub password: bool,
@@ -472,7 +475,7 @@ pub struct LoginOptions {
     pub oauth: bool,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub enum Connection {
     Online,
     /// SyncService's offline mode is polling `/versions` until the server answers.
@@ -481,7 +484,7 @@ pub enum Connection {
     Retrying,
 }
 
-#[derive(Clone, Default, PartialEq, Eq)]
+#[derive(Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Account {
     pub logged_in: bool,
     pub user_id: String,
@@ -494,7 +497,7 @@ pub struct Account {
     pub recovery: Recovery,
 }
 
-#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub enum Recovery {
     #[default]
     Unknown,
@@ -504,14 +507,14 @@ pub enum Recovery {
     Incomplete,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct RoomList {
     pub rooms: Vec<RoomSummary>,
     /// Current `m.space.child` edges (non-empty `via`) of joined spaces.
     pub children: BTreeMap<String, BTreeSet<String>>,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct RoomSummary {
     pub id: String,
     pub name: String,
@@ -548,7 +551,7 @@ pub struct RoomSummary {
     pub space_alerts: Option<serde_json::Value>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct TimelineSnapshot {
     pub room: String,
     /// Messages in timeline order, oldest first.
@@ -556,7 +559,7 @@ pub struct TimelineSnapshot {
     pub start_reached: bool,
 }
 
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct Message {
     /// Stable for the lifetime of the timeline item, including local echoes
     /// that later receive an event ID. Always positive.
@@ -588,7 +591,7 @@ pub struct Message {
     pub media: Option<serde_json::Value>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub enum Kind {
     Text,
     /// A file, image, audio or video message; `body` is its caption or name.
@@ -598,21 +601,21 @@ pub enum Kind {
     Undecryptable,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub enum Delivery {
     Sent,
     Sending,
     Failed,
 }
 
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct Reply {
     pub event_id: String,
     /// Present once the timeline has the replied-to event.
     pub quoted: Option<(String, String)>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub enum Failure {
     /// The homeserver rejected the username or password.
     Forbidden,
@@ -636,6 +639,32 @@ pub enum Failure {
     Failed,
 }
 
+/// Attachment work besides commands. On the desktop these are the App's
+/// gomuks-shaped transfer commands, which the engine answers too.
+#[cfg(not(target_arch = "wasm32"))]
+pub type Transfer = crate::backend::Command;
+
+/// Attachment work the page hands the browser worker (`worker.rs`). Images
+/// decode and downloads save on the page, so these answer with bytes.
+#[cfg(target_arch = "wasm32")]
+pub enum Transfer {
+    Inline {
+        source: crate::media::PreviewRef,
+        result: Sender<Option<Vec<u8>>>,
+    },
+    Upload {
+        id: i64,
+        cancel: Receiver<()>,
+        file: crate::media::LocalFile,
+        encrypt: bool,
+        limit: u64,
+    },
+    Download {
+        media: crate::media::Media,
+        result: Sender<Result<Vec<u8>, Failure>>,
+    },
+}
+
 /// `backend` carries the App's gomuks-shaped transfer commands (uploads,
 /// inline previews, downloads), which this engine answers too.
 #[cfg(not(target_arch = "wasm32"))]
@@ -654,23 +683,9 @@ pub async fn run(
     .await
 }
 
-/// In the browser: the session the page kept, one tab at a time.
+/// In the browser the engine runs in a worker; this starts it from the page.
 #[cfg(target_arch = "wasm32")]
-pub async fn run(
-    commands: Receiver<Command>,
-    backend: Receiver<crate::backend::Command>,
-    events: Sender<Event>,
-) -> Result<(), String> {
-    let waiting = events.clone();
-    web::hold_profile(move || {
-        let _ = waiting.try_send(Event::Status(
-            "Another Untethered tab is using this Matrix device. Use that tab, or close it and this one will connect automatically.",
-        ));
-    })
-    .await?;
-    let profile = session::Profile::web(web::saved_session(), web::persist_session);
-    run_with(profile, browser::system(), commands, backend, events).await
-}
+pub use worker::run;
 
 /// Run on an explicit profile directory; tests run several engines at once
 /// and replace the system browser.
@@ -692,7 +707,7 @@ async fn run_with(
     profile: session::Profile,
     opener: Opener,
     commands: Receiver<Command>,
-    backend: Receiver<crate::backend::Command>,
+    backend: Receiver<Transfer>,
     events: Sender<Event>,
 ) -> Result<(), String> {
     let profile = Arc::new(profile);
@@ -712,7 +727,7 @@ async fn run_with(
         Ok(None) => engine.emit(Event::Account(Account::default())).await,
         Err(why) => {
             engine.emit(Event::Account(Account::default())).await;
-            engine.emit(Event::Status(why)).await;
+            engine.emit(Event::Status(why.into())).await;
         }
     }
     loop {
@@ -786,7 +801,7 @@ impl Engine {
             Err(_) => {
                 self.emit(Event::Account(Account::default())).await;
                 self.emit(Event::Status(
-                    "The matrix-sdk engine couldn’t start syncing.",
+                    "The matrix-sdk engine couldn’t start syncing.".into(),
                 ))
                 .await;
                 return;
@@ -1243,17 +1258,19 @@ impl Engine {
 
     /// The App's transfer commands, which go to the gomuks backend on that
     /// engine. Calls (`Voice`) aren't on this engine yet.
-    async fn transfer(&self, command: crate::backend::Command) {
-        use crate::backend::Command as Transfer;
+    async fn transfer(&self, command: Transfer) {
         let live = self.live.as_ref().map(|l| l.client.clone());
         let (sources, events) = (self.sources.clone(), self.events.clone());
         match command {
             Transfer::Inline { source, result } => {
                 rt::spawn(async move {
-                    let image = match live {
-                        Some(client) => media::inline(client, sources, source).await,
-                        None => None,
+                    let Some(client) = live else {
+                        return drop(result.send(None).await);
                     };
+                    #[cfg(not(target_arch = "wasm32"))]
+                    let image = media::inline(client, sources, source).await;
+                    #[cfg(target_arch = "wasm32")]
+                    let image = media::inline_bytes(client, sources, source).await;
                     let _ = result.send(image).await;
                 });
             }
@@ -1290,15 +1307,16 @@ impl Engine {
                 });
             }
             #[cfg(target_arch = "wasm32")]
-            Transfer::Download { id, media } => {
+            Transfer::Download { media, result } => {
                 rt::spawn(async move {
-                    let result = match live {
-                        Some(client) => media::download(client, sources, media).await,
+                    let bytes = match live {
+                        Some(client) => media::whole_file(client, sources, &media).await,
                         None => Err(Failure::Unavailable),
                     };
-                    let _ = events.send(Event::Done { id, result }).await;
+                    let _ = result.send(bytes).await;
                 });
             }
+            #[cfg(not(target_arch = "wasm32"))]
             Transfer::Rpc(_) => {}
             #[cfg(target_os = "linux")]
             Transfer::Voice {
@@ -1442,7 +1460,8 @@ impl Engine {
         self.emit(Event::Account(Account::default())).await;
         if !matches!(server, Ok(Ok(()))) {
             self.emit(Event::Status(
-                "Signed out on this device. The homeserver couldn’t be reached, so it may still list this device.",
+                "Signed out on this device. The homeserver couldn’t be reached, so it may still list this device."
+                    .into(),
             ))
             .await;
         }
@@ -1478,7 +1497,7 @@ impl Engine {
                 session::forget(&self.profile).await;
                 self.emit(Event::Account(Account::default())).await;
                 self.emit(Event::Status(
-                    "The homeserver signed this device out. Sign in again.",
+                    "The homeserver signed this device out. Sign in again.".into(),
                 ))
                 .await;
             }

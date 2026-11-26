@@ -284,7 +284,7 @@ impl App {
                 wide("Continue", primary, Some(sdk(Action::CloseVerification))),
             ],
             Stage::Cancelled(reason) => column![
-                heading("Verification stopped", (*reason).into()),
+                heading("Verification stopped", reason.clone()),
                 wide("Close", secondary, Some(sdk(Action::CloseVerification))),
             ],
         };

@@ -29,7 +29,7 @@ fn level(map: &Value, key: &str, default: i64) -> Option<i64> {
     map.get(key).map_or(Some(default), number)
 }
 /// A Matrix state event as the App keeps it, without an engine's envelope.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StateDoc {
     pub event_id: String,
     pub sender: String,

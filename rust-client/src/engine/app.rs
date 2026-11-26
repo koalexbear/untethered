@@ -340,7 +340,7 @@ impl App {
             }
             Event::Status(text) => {
                 if self.connected {
-                    self.status = text.into();
+                    self.status = text;
                 }
             }
             Event::Verification(view) => self.sdk_verification(view),

@@ -76,13 +76,23 @@ fn uri(source: &MediaSource) -> &MxcUri {
     }
 }
 
-/// A small image for the timeline. Plain images use the homeserver's
-/// thumbnail; encrypted ones can only be fetched whole.
+/// A small image for the timeline, decoded.
+#[cfg(not(target_arch = "wasm32"))]
 pub async fn inline(
     client: Client,
     sources: Arc<Sources>,
     preview: PreviewRef,
 ) -> Option<iced::widget::image::Handle> {
+    crate::preview::inline(inline_bytes(client, sources, preview).await?).await
+}
+
+/// The bytes of a small image for the timeline. Plain images use the
+/// homeserver's thumbnail; encrypted ones can only be fetched whole.
+pub async fn inline_bytes(
+    client: Client,
+    sources: Arc<Sources>,
+    preview: PreviewRef,
+) -> Option<Vec<u8>> {
     let source = sources.get(&preview.mxc, preview.encrypted)?;
     let media = client.media();
     let bytes = match source {
@@ -101,10 +111,7 @@ pub async fn inline(
         }
         MediaSource::Encrypted(_) => whole(&media, source).await?,
     };
-    if bytes.len() > INLINE_BYTES {
-        return None;
-    }
-    crate::preview::inline(bytes).await
+    (bytes.len() <= INLINE_BYTES).then_some(bytes)
 }
 
 async fn whole(media: &matrix_sdk::Media, source: MediaSource) -> Option<Vec<u8>> {
@@ -136,15 +143,8 @@ pub async fn download(
     .ok_or(Failure::Failed)?
 }
 
-/// Offer an attachment (decrypted) as a browser download.
-#[cfg(target_arch = "wasm32")]
-pub async fn download(client: Client, sources: Arc<Sources>, media: Media) -> Result<(), Failure> {
-    let bytes = whole_file(client, sources, &media).await?;
-    crate::web_files::save_bytes(&bytes, &media.name);
-    Ok(())
-}
-
-async fn whole_file(
+/// An attachment, decrypted.
+pub async fn whole_file(
     client: Client,
     sources: Arc<Sources>,
     media: &Media,

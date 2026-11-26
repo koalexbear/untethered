@@ -137,7 +137,8 @@ def check_web(dist, fixture, peer, png, room_name="sdk-proof"):
             secret.fill(fixture["key"], timeout=90000)
             secret.press("Enter")
             page.wait_for_function("!document.title.includes('Account')", timeout=90000)
-            print("matrix-sdk in Chromium: signed in and verified with the recovery key", flush=True)
+            assert any(w.url.endswith("/engine-worker.js") for w in page.workers), [w.url for w in page.workers]
+            print("matrix-sdk in Chromium: signed in and verified with the recovery key, in a worker", flush=True)
             open_room(page, room_name)
             mine = f"web to gomuks {secrets.token_hex(6)}"
             page.mouse.click(545, 690)

@@ -13,7 +13,7 @@ use crate::{
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default, Debug, serde::Serialize, serde::Deserialize)]
 pub struct RoomState {
     pub create: Option<StateDoc>,
     pub power: Option<StateDoc>,
