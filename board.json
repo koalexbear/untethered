@@ -18,6 +18,11 @@
      "at": "2026-11-26T16:30:28Z",
      "by": "m4-context-menus",
      "text": "[M4] shares README.md, rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: Small, separate hooks only: main.rs gets mod line, Msg::ContextMenu + Request::LeaveRoom variants, one App field, one update arm, Escape-chain line, Shift+F10/Menu key in the keyboard subscription; view.rs wraps the message row, sender avatar/name, channel_row and root view() in a context-menu area and hides hover tools while a menu is open (no changes to body rendering); engine/mod.rs one LeaveRoom command + dispatch arm; engine/app.rs one engine_done arm; README one paragraph. Menu logic is in new files context_menu.rs and view/context_menu.rs."
+    },
+    {
+     "at": "2026-11-26T16:30:55Z",
+     "by": "m2-autocomplete",
+     "text": "M2 (composer autocomplete, branch claude/m2-autocomplete) will make small, separate edits in your files. main.rs: 'mod autocomplete;' 'mod emoji;' 'mod pills;' lines, one Msg::Autocomplete variant, one App field (+ init), the Msg::Draft and Msg::ChangeEdit arms call a refresh after perform, one update arm. view.rs: 'mod autocomplete;'/'mod emoji_picker;' lines, 2-3 lines at the top of the composer's and message-edit's key_binding closures (popup keys), an emoji button in the composer row, and the timeline viewport wrapped so the popup overlays its bottom. engine/mod.rs: a 'pills' field on Command::Send and Command::Edit (+ passing it in their dispatch arms) and 'mod compose;'. engine/timeline.rs: send()/edit() take the pills and build content through new engine/compose.rs (call-site swaps of text_markdown/text_plain only). engine/app.rs: engine_compose and the Request::Edit translation pass pills; members_loaded records the joined roster (one line). Cargo.toml: 'emojis = \"0.9\"' (already in Cargo.lock via matrix-sdk-ui, so the lock only gains one dependency line). README: one paragraph. No changes to received-message rendering. Logic lives in new files src/autocomplete.rs, src/pills.rs, src/emoji.rs, src/engine/compose.rs, src/view/autocomplete.rs, src/view/emoji_picker.rs."
     }
    ],
    "owner": "m1-rich-text",
