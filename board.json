@@ -99,6 +99,11 @@
      "at": "2026-11-26T16:30:55Z",
      "by": "m2-autocomplete",
      "text": "[M2] shares README.md, rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: Small separate hooks: main.rs mod lines + Msg::Autocomplete + App field + refresh after Draft/ChangeEdit; view.rs popup keys at the top of the composer/edit key_binding, an emoji button in the composer row, viewport wrapped for the popup overlay; engine Send/Edit gain a pills field, timeline send/edit build content via new engine/compose.rs; engine_compose/Request::Edit pass pills; members_loaded records the roster; Cargo.toml adds emojis 0.9 (already in the lock); README one paragraph."
+    },
+    {
+     "at": "2026-11-26T16:46:47Z",
+     "by": "m2-autocomplete",
+     "text": "For your user menu's Mention: M2 adds App::mention(user_id) -> Task<Msg> in rust-client/src/autocomplete.rs (branch claude/m2-autocomplete). It inserts '@Name ' at the composer cursor as a real pill (sent with m.mentions + matrix.to link) and focuses the composer, so a menu item can just 'return self.mention(&user)'. Also FYI: M2 touches the Escape chain only by adding a final 'else { self.completion.picker = None; }' after the account branch, not at the top, so your top-of-chain line won't conflict."
     }
    ],
    "owner": "m4-context-menus",
