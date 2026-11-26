@@ -741,7 +741,7 @@ impl App {
             false,
             active.then_some(Msg::EndCall),
         ));
-        let mut options = row![
+        let options = row![
             button(text(if mode.deafened { "Undeafen" } else { "Deafen" }).size(12))
                 .padding([3, 5])
                 .style(nav(mode.deafened))
@@ -750,16 +750,12 @@ impl App {
                 .padding([3, 5])
                 .style(nav(call.picker))
                 .on_press_maybe(active.then_some(Msg::AudioDevices)),
+            button(text("Mixer").size(12))
+                .padding([3, 5])
+                .style(nav(call.mixer))
+                .on_press_maybe(active.then_some(Msg::ToggleMixer)),
         ]
         .spacing(3);
-        if call.group {
-            options = options.push(
-                button(text("Mixer").size(12))
-                    .padding([3, 5])
-                    .style(nav(call.mixer))
-                    .on_press_maybe(active.then_some(Msg::ToggleMixer)),
-            );
-        }
         let indicator = container(Space::new())
             .width(8)
             .height(8)
@@ -870,7 +866,10 @@ impl App {
         {
             let id = call.id;
             let mut rows = Column::new().spacing(6);
-            let mut peers = room.voice_users();
+            let mut peers = match &call.peer {
+                Some(peer) => std::collections::BTreeSet::from([peer.as_str()]),
+                None => room.voice_users(),
+            };
             peers.remove(self.matrix_id.as_str());
             for &user in &peers {
                 let gain = mode.volume(user);

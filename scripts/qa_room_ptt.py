@@ -42,7 +42,7 @@ def check_ptt(stack,desks,audio_counts,same_tracks):
         sent={tone} if tone else set()
         expect=(set() if deaf else {670,1030},{1030}|sent,{670}|sent)
         wait_for(stage,lambda:all(d.hears(hz) for d,hz in zip(desks,expect)),10)
-        assert audio_counts()==[(int(tone is not None),2),(1,2),(1,2)] and same_tracks()
+        assert audio_counts()==[(int(tone is not None),1),(1,1),(1,1)] and same_tracks()
         print(f"{stage}: Bruno heard {sorted(expect[1])} Hz; Clara heard {sorted(expect[2])} Hz; "
               f"Alice mic streams: {int(tone is not None)}.",flush=True)
 

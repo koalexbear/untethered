@@ -217,7 +217,7 @@ impl Subscriptions {
         &mut self,
         lk: &Room,
         keys: &GroupKeys,
-        mode: &watch::Receiver<AudioMode>,
+        mixer: &Mixer,
         notices: &DeviceNotices,
         previews: &Previews,
     ) -> Result<BTreeSet<String>> {
@@ -254,12 +254,10 @@ impl Subscriptions {
                     }
                     live.insert(sid.clone());
                     self.tracks.entry(sid).or_insert_with(|| match track {
-                        RemoteTrack::Audio(track) => self.jobs.spawn(play(
+                        RemoteTrack::Audio(track) => self.jobs.spawn(mixer.play(
                             track,
-                            publication.source(),
+                            publication.source().into(),
                             Some(keys.members[&id.0].user.clone()),
-                            mode.clone(),
-                            notices.clone(),
                         )),
                         RemoteTrack::Video(track) => self.jobs.spawn(room_video::display(
                             track,
@@ -379,11 +377,20 @@ async fn live<S: CallSignal>(
         room: w.room.to_owned(),
     };
     let devices = mode.clone();
-    let capture = |mic: &LocalTrackPublication| {
-        controlled_capture(src.clone(), mic.clone(), devices.clone(), notices.clone())
-    };
     // Keep capture paced by the audio device while membership and key RPCs
-    // are in flight. Dropping either task set releases its pacat children.
+    // are in flight. Dropping the task set releases its pacat child; every
+    // peer plays through the one mixer output.
+    let io = audio::platform();
+    let mixer = Mixer::start(io.clone(), mode.clone(), notices.clone());
+    let capture = |mic: &LocalTrackPublication| {
+        controlled_capture(
+            io.clone(),
+            src.clone(),
+            mic.clone(),
+            devices.clone(),
+            notices.clone(),
+        )
+    };
     let mut input = JoinSet::new();
     input.spawn(capture(&mic));
     let mut subscriptions = Subscriptions::default();
@@ -425,7 +432,7 @@ async fn live<S: CallSignal>(
         keys.receive(w)?;
         let mut speaking = BTreeSet::new();
         if online {
-            speaking = subscriptions.sync(lk, keys, &mode, &notices, &views.previews)?;
+            speaking = subscriptions.sync(lk, keys, &mixer, &notices, &views.previews)?;
             if lk.local_participant().is_speaking() && !mic.is_muted() && !mode.borrow().mic_off() {
                 speaking.insert(s.user.clone());
             }

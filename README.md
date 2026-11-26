@@ -318,8 +318,8 @@ uses three Linux clients on the same MatrixRTC LiveKit service.
 Room permissions must allow publishing call membership and, for the first
 participant, opening the voice slot if it is not already open.
 
-Open **Mixer** in the voice-room call bar to change how loud each person
-sounds to you for this call. Drag their slider from **0%** (silent for you)
+Open **Mixer** in the call bar, in a voice room or a DM call, to change how
+loud each person sounds to you for this call. Drag their slider from **0%** (silent for you)
 to **200%**, or click **Reset** to return to **100%**. Other listeners keep
 their own mixes.
 

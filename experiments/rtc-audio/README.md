@@ -159,11 +159,11 @@ RTC_QA_AUDIO_SERVER=pipewire-pulse sh experiments/rtc-audio/run_element.sh --ele
 
 Element also shares a changing browser tab with audio back to Untethered.
 The tab plays 1030 Hz independently of the 670 Hz Element microphone. The
-native speaker must reproduce both, then only the microphone when **Play
-shared audio** is unchecked. With the tab changed to 830 Hz, **Deafen** and
+native speaker must reproduce both through its one playback stream, then only
+the microphone when **Play shared audio** is unchecked. With the tab changed to 830 Hz, **Deafen** and
 **Undeafen** must preserve that choice. Re-enabling share playback must recover
-the new tab tone. Stopping the share must close its output stream and return
-the stage to the peer's camera without replacing the microphone tracks.
+the new tab tone. Stopping the share must keep that playback stream for the
+microphone and return the stage to the peer's camera without replacing the microphone tracks.
 Chromium and Untethered use separate private PulseAudio servers; sound cannot
 reach the listener through a local desktop loopback.
 
@@ -212,7 +212,7 @@ separate displays and dedicated virtual microphones/speaker monitors. It
 clicks **Join voice** in the encrypted *Atrium* call room. The first two must
 exchange audio before the third joins. With all three present, every speaker
 must contain the other two frequencies and exclude its own for twelve
-consecutive 100 ms windows. The test checks two local playback streams per
+consecutive 100 ms windows. The test checks one mixed playback stream per
 client, three GCM microphone publications, the names under the channel, and
 the room history (no non-state timeline messages, including encrypted rings).
 With all three mics still active, the test opens Alice’s **Mixer** and drives
@@ -351,7 +351,10 @@ ends: a through-tone or silence (Element FFT peak below −65 dB; desktop peak
 below 32 in signed 16-bit PCM). It also checks the actual capture-stream
 count and the SFU mute flags. Throughout the test the browser receiver, track,
 SSRC and signaling sockets stay the same, and both participants keep their
-original GCM publications on the SFU.
+original GCM publications on the SFU. Last, it opens the dock's **Mixer** and
+sets Element to 25%: Element's 960 Hz at the desktop speaker must drop to a
+quarter of a steady reference for 12 fresh 100 ms windows, still in one
+playback stream, and **Reset** must restore it.
 
 ### Verify microphone and speaker selection
 
