@@ -47,7 +47,7 @@ Each step names the check that says it's done; add it to the QA scripts
 | **M6. Delete and drafts** | Delete (redact) your own messages and, with permission, others'; drafts and staged-file captions survive a restart; a "N new messages since 14:02" bar at the top with Mark as read. | A redaction from either client removes the message in both; a draft typed before quitting is still there after restarting. |
 | **M7. Link previews** | URL embeds through the homeserver's `preview_url`, off by default in encrypted rooms, with a per-room switch; image links show inline. | A link to a page with Open Graph tags shows its title, description and image; turning previews off stops the request. |
 
-### Phase 2 — navigation
+### Phase 2 — navigation and the desktop
 
 | Step | Deliverable | Done when |
 |---|---|---|
@@ -56,6 +56,7 @@ Each step names the check that says it's done; add it to the QA scripts
 | **N3. Pins and threads** | Pinned messages panel (`m.room.pinned_events`); Matrix threads in a side panel with a thread list per channel. | A thread started in Element shows its replies in the panel; pinning here shows in Element. |
 | **N4. Presence** | Online/idle/offline dots and custom status where the homeserver enables presence; hide them cleanly where it doesn't. | Going idle in Element turns the dot amber here within a minute. |
 | **N5. Channel order** | Drag to reorder channels and categories, writing `m.space.child` `order`. | The order made here appears in Element's space view. |
+| **N6. System tray** | A tray icon (StatusNotifierItem on KDE and GNOME, for example with `ksni`; the notification area on Windows) with an unread and mention badge. Closing the window keeps Untethered running in the tray, as Discord does (a setting, on by default), so messages, notifications, ringing and calls carry on. The tray menu offers Open, Mute, Deafen, Do Not Disturb and Quit; optionally start at login (XDG autostart, the Windows Run key) minimised to the tray. Not applicable on the web. | Close the window during a call: audio continues, the tray shows the call and a mention badge, Mute in the tray menu mutes, an incoming DM call still rings, and Quit leaves the call and exits cleanly. |
 
 ### Phase 3 — media follow-ups
 
