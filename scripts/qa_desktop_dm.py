@@ -17,7 +17,13 @@ from urllib.parse import urlsplit
 from PIL import Image
 import requests
 from qa_native_paste import child, isolated_env, start_display, wait_for
-from qa_ui import Ui
+from qa_ui import CHAT_X, PICK_BELOW, RAIL, SIDEBAR, Ui, clean, icon_buttons, read
+
+# Since 76d6e43 a call's controls, status and Devices panel are in a dock at the
+# foot of the sidebar. These controls are icons, named only by their tooltips:
+DOCK_ICONS=("mute","unmute","hang")
+# and these words are dock text:
+DOCK_TEXT=("deafen","undeafen","devices","refresh","reconnecting","connected")
 
 
 def sfu_participants(secret,*,allow_empty=False):
@@ -128,18 +134,35 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
     win=wait_for("desktop verified DM",window,40).splitlines()[0]
     cmd("xdotool","windowmove",win,"0","0",check=True)
     cmd("xdotool","windowsize",win,"1180","760",check=True)
+    def shot():
+        return Image.open(io.BytesIO(cmd("import","-window",win,"png:-",check=True).stdout)).convert("RGB")
     def words():
-        h=480 if devices else 190
-        im=Image.open(io.BytesIO(cmd("import","-window",win,"png:-",check=True).stdout)).crop((0,0,1180,h)).resize((2360,h*2))
+        # The header and the incoming-call banner.
+        im=shot().crop((0,0,1180,190)).resize((2360,380))
         buf=io.BytesIO();im.save(buf,"PNG")
         data=sp.run(["tesseract","stdin","stdout","--psm","11","tsv"],input=buf.getvalue(),capture_output=True,check=True).stdout.decode()
         return [(s[11],(int(s[6])+int(s[8])//2)//2,(int(s[7])+int(s[9])//2)//2) for line in data.splitlines()
                 if len(s:=line.split("\t"))==12 and s[0]=="5" and s[11].strip()]
+    def dock_words():
+        # The sidebar column, whose foot holds the call dock. Its grey labels
+        # need the shared reader's sidebar pass.
+        im=shot()
+        return [(clean(w),x,y) for w,x,y in read(im.crop((0,0,CHAT_X,im.height)),dialogs=False,sidebar=True) if x>RAIL]
+    def sidebar_room(name):
+        # A channel or DM row: the topmost match, since the call dock below the
+        # room list names the call's room too. The DM row sits below 190 px.
+        return min(((x,y) for t,x,y in dock_words() if name in t),key=lambda p:p[1],default=None)
     def find(label):
         if label=="Voice":return call_ready()
-        return next(((x,y) for t,x,y in words() if re.sub(r"^\W+|\W+$","",t).lower()==label.lower()),None)
+        key=label.lower()
+        if key in DOCK_ICONS:
+            buttons=icon_buttons(shot())  # microphone first, hang up last
+            return dock.pick(buttons[::-1] if key=="hang" else buttons,label,"above")
+        if key in DOCK_TEXT:return next(((x,y) for t,x,y in dock_words() if t==key),None)
+        return next(((x,y) for t,x,y in words() if clean(t)==key),None)
     def hover(pos):cmd("xdotool","mousemove","--window",win,*map(str,pos),check=True)
     ui=Ui(words,hover,width=1180,height=760)
+    dock=Ui(dock_words,hover,width=1180,height=760)
     def call_ready():
         # The DM header's phone icon (tooltip "Start Voice Call") starts a call.
         return ui.header("start voice call")
@@ -194,27 +217,31 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
             reconnect_call(page,widget,room,lambda:speakers[0],new_tone,outage,find,streams,secret,alice,bob)
         elif devices:
             def select(port,option):
-                # Click the actual pick list next to the label; then click a
-                # matching item in its overlay (not the other closed pick list).
-                x,y=wait_for(port+" picker",lambda:next(((x,y) for t,x,y in reversed(words())
-                                                         if t.lower()==port.lower()),None))
-                cmd("xdotool","mousemove","--window",win,str(x+160),str(y),"click","1",check=True)
+                # Click the actual pick list on the line below the label (the
+                # lowest match: a device error above the pickers can also say
+                # "Microphone"). Its overlay opens upwards from the dock at the
+                # foot of the window, so click a matching item above the list,
+                # not a word in the other, closed pick list below it.
+                _,y=wait_for(port+" picker",lambda:max(((x,y) for t,x,y in dock_words() if t==port.lower()),
+                                                       key=lambda p:p[1],default=None))
+                y+=PICK_BELOW
+                cmd("xdotool","mousemove","--window",win,str(RAIL+SIDEBAR//2),str(y),"click","1",check=True)
                 def item():
-                    return next(((px,py) for t,px,py in words() if t.strip(".,:|[]").lower()==option.lower()
-                                 and px>x+45 and py>y+12),None)
+                    return next(((px,py) for t,px,py in dock_words() if t==option.lower() and y-200<py<y-10),None)
                 px,py=wait_for(option+" in "+port+" menu",item,8)
                 cmd("xdotool","mousemove","--window",win,str(px),str(py),"click","1",check=True)
             click("Devices")
             device_switch(widget,select,click,speakers,streams,cmd,secret,sockets,alice,bob,spare)
         elif controls:
             def change_room():
-                click("Sidechat")
+                x,y=wait_for("Sidechat sidebar entry",lambda:sidebar_room("sidechat"))
+                cmd("xdotool","mousemove","--window",win,str(x),str(y),"click","1",check=True)
                 wait_for("browsing another room",lambda:"Sidechat" in cmd("xdotool","getwindowname",win,text=True).stdout)
                 assert set(roster())=={alice,bob}
                 print("Switched the desktop to Sidechat during mute; DM call bar remained active.",flush=True)
             audio_controls(widget,click,lambda:speakers[0],streams,secret,sockets,alice,bob,change_room)
             # Return to the DM so the final assertion checks its Voice call button.
-            x,y=wait_for("original DM sidebar entry",lambda:next(((x,y) for t,x,y in words() if "media-proof" in t.lower() and x<265),None))
+            x,y=wait_for("original DM sidebar entry",lambda:sidebar_room("media-proof"))
             cmd("xdotool","mousemove","--window",win,str(x),str(y),"click","1",check=True)
             wait_for("original DM selected",lambda:"media-proof" in cmd("xdotool","getwindowname",win,text=True).stdout)
         else:
@@ -240,6 +267,7 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
             print("Relay-only counters:",{k:counters(v) for k,v in relay_links.items()},flush=True)
             print("Native ICE:",[l for l in native_log.read_text(errors="replace").splitlines() if l.startswith("RTC selected audio")][-8:],flush=True)
         print("Desktop visible labels:", " ".join(t for t,_,_ in words()),flush=True)
+        print("Desktop sidebar and call dock:", " ".join(t for t,_,_ in dock_words()),flush=True)
         print("Element roster:",roster(),"incoming toast:",page.locator(".mx_IncomingCallToast_content").all_text_contents(),flush=True)
         print("Membership timeline:",page.evaluate("""room=>window.mxMatrixClientPeg.get().getRoom(room)
             .getLiveTimeline().getEvents().filter(e=>e.getType()==="org.matrix.msc3401.call.member")
