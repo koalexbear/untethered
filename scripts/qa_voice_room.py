@@ -67,8 +67,19 @@ class Desktop:
         for fn in (feed,listen):threading.Thread(target=fn,daemon=True).start()
         if kde:
             self.client=kde.native
-            self.win=wait_for("Wayland call window",lambda:kde.window("Untethered.*"+re.escape(room)),35)
+            def opened():
+                assert self.client.poll() is None,"Wayland client exited"
+                return kde.window("^Untethered")
+            self.win=wait_for("Wayland call window",opened,35)
             kde.position(self.win,0,0,1180,850)
+            def shown():
+                assert self.client.poll() is None,"Wayland client exited"
+                if room in kde.command("kdotool","getwindowname",self.win,check=False).stdout:return True
+                # As on X11, matrix-sdk may open another stored room first.
+                spot=next(((x,y) for w,x,y in self.words() if w==room.lower() and x<CHAT_X),None)
+                if spot:self.press(*spot)
+                return False
+            wait_for(f"Wayland client synced {room}",shown,35)
             return
         # Limit per-client rendering/codec parallelism in this three-GUI fixture.
         # Separate four-core sets, when available, stand in for separate machines.

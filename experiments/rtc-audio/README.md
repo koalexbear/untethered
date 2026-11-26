@@ -261,6 +261,12 @@ have received an ordinary typed key and no Pause events: **a key bound
 through the portal no longer reaches the focused application**, which the
 main README tells users when they choose one.
 
+Measured on 2026-11-26 with the host at a load of about 100 on 32 cores,
+key edge to stable windows at both peers: in-window 72–197 ms down and
+282–390 ms up; X11 desktop-wide 121–146 ms down and 335–426 ms up; KWin
+portal 243–335 ms down (including the input helper's start-up) and
+296–351 ms up.
+
 ### Verify portal window sharing
 
 Use the three-client setup above, plus `pipewire`, `wireplumber`, `pw-dump`,

@@ -100,9 +100,11 @@ def check_ptt(stack,desks,audio_counts,same_tracks,mode=None):
     alice,bruno,clara=desks
     # Both peers recorded every speaker window from before the first join.
     for peer in (bruno,clara):
-        peak=max(((f[0],t) for t,f in peer.audit),default=None)
-        assert peak and peak[0]<200,("Alice audible before first press",peer.i,
-                                     peak and (round(peak[0]),round(peak[1]-peer.audit[0][0],1)),len(peer.audit))
+        peak=max(range(len(peer.audit)),key=lambda i:peer.audit[i][1][0],default=None)
+        if peak is None or peer.audit[peak][1][0]>=200:
+            start=peer.audit[0][0] if peer.audit else 0
+            near=[(round(t-start,1),[round(a) for a in f]) for t,f in peer.audit[max(0,(peak or 0)-3):(peak or 0)+4]]
+            raise AssertionError(("Alice audible before first press",peer.i,len(peer.audit),near))
         peer.audit=[]
 
     keys=PortalKeys(stack,alice) if mode=="wayland" else X11Keys(stack,alice)
