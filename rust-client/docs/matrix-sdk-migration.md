@@ -637,15 +637,85 @@ QA scripts after the removal:
   and the Element Call fixtures' shared harness: every native client gets
   its matrix-sdk session from `seed()`. `--native-dm` and `--voice-room`
   pass this way.
-- Not ported yet: fixture modes that read the client's gomuks database
-  (decrypted events or notification flags) or ran the deleted gomuks client
-  tests: `qa_account_dnd`, `qa_dm_video`, `qa_kwin_element`,
-  `qa_linux_upgrade`, `qa_multi_device_ring`, `qa_native_paste`,
-  `qa_portal_drop`, `qa_read_state`, `qa_room_alerts`, `qa_room_search`,
-  `qa_rtc_membership`, `qa_space_alerts` and `qa_upload_cancel`. A
-  debug-only engine log of decrypted events and alert decisions, like
-  `UNTETHERED_QA_CALL_EVENTS`, would cover most of them. The driver's
-  default mode now points to `qa_matrix_sdk.py`.
+- The fixture modes that read the client's gomuks database or ran the
+  deleted gomuks client tests are ported; see "QA fixtures on matrix-sdk"
+  below. The driver's default mode points to `qa_matrix_sdk.py`.
+
+### QA fixtures on matrix-sdk
+
+Debug builds keep a QA event log (`engine/qa.rs`), in the style of
+`UNTETHERED_QA_CALL_EVENTS`: every timeline event sync brings, decrypted
+where the SDK could, with the actions its push rule evaluation gave it
+(`notify`, `highlight`, `sound`: gomuks's `unread_type` flags); a second
+entry for an event the event cache decrypted later (its key came on the
+separate encryption sync); global account data; and each notification the
+engine passed to the App. On the desktop `UNTETHERED_QA_EVENTS` names the
+file; `scripts/qa_events.py` keeps it in the profile folder and every
+fixture client runs with it (`isolated_env`). In the browser the worker
+posts each entry to the page as a `{"Qa": entry}` message, which the page
+ignores and `qa_events.WORKER_HOOK` collects. The scripts read it where they
+read gomuks's database: decrypted events and push rule decisions (room,
+space and account DND alerts, room search, read state, kwin-element, portal
+drop, native paste, DM video, multi-device ring) and account data (the read
+receipt preference). Device IDs come from `matrix-sdk/session.json`.
+`check_browser_alerts` watches the worker's QA entries instead of gomuks's
+worker frames.
+
+The two client tests that went with gomuks are engine tests now:
+`engine::calls::live::rtc_membership_seen_by_element` (`--rtc-membership`:
+the seeded device joins, renews, leaves and abandons a call membership while
+Element watches) and
+`engine::live_test::throttled_encrypted_upload_cancel_retry`
+(`--upload-cancel`, through the App). `--linux-upgrade` compares two
+matrix-sdk packages (pkgrel 9 or later); an older package that bundles gomuks
+is refused, since that move takes a new sign-in by design.
+
+Bugs the port found, fixed:
+
+- Push rules and the read receipt preference arrived from the store before a
+  restored session's first account state, and `apply_account` then reset
+  them: after a restart the alert settings stayed on "Loading push rules…"
+  (and DND and space alert rules weren't applied), and a public receipt
+  preference read as private, until they changed.
+- After a fresh sign-in the room selected while the device was still
+  unverified never loaded its history: it showed only "Earlier messages"
+  until another room was opened or the app restarted.
+
+Gaps it found, not fixed:
+
+- No upload progress in the browser: matrix-sdk's wasm HTTP client drops
+  send progress, so the attachment card shows "Preparing…" for the whole
+  upload (gomuks's worker reported progress). `--upload-cancel` now waits for
+  the bytes at its throttling gateway instead of a percentage.
+- Alerts and rings for late-decrypted messages (already listed under next
+  steps): the QA log shows such events as `"redecrypted": true` entries, but
+  the notification handler doesn't see them.
+- `--multi-device-ring`, with a second device on the ringing account: in 2 of
+  4 runs, after the ring checks passed, the answered second call stayed at
+  "Connecting" on the desktop and Element's audio never played (Element got
+  the desktop's). `--incoming-dm`, the same flow without the second device,
+  passed.
+
+Run on 2026-11-26 with `experiments/rtc-audio/run_element.sh` (Synapse
+1.166.0, Element Web 1.12.35), each mode on the final build: `--room-alerts`,
+`--room-search`, `--space-alerts native` and `web`, `--account-dnd`,
+`--read-state`, `--browser-alerts`, `--kwin-element`, `--file-limits native`
+and `web`, `--portal-drop`, `--native-paste x11` and `wayland`,
+`--rtc-membership`, `--upload-cancel`, `--dm-video`, `--incoming-dm` and
+`--multi-device-ring` pass (the last with the caveat above);
+`--linux-upgrade` passed with 0.1.0-9 → 0.1.0-10 (`scripts/linux-upgrade.md`).
+`qa_matrix_sdk.py` passes, with 52 unit tests; clippy has only the existing
+`rooms.rs` lint, and the wasm32 check is clean.
+
+Fixture changes from the Discord-style UI (not from the engine): the small
+grey "(edited)" label needs a 4× line pass (`qa_ui.line_words`); two
+returned image previews are counted as blocks; sign-in fields are found by
+their uppercase captions (`qa_web_login.caption_field`); the dock's
+disconnect button and the sidebar rows moved; the Orchard badge is checked
+by color. A search hit the timeline already holds opens in place, without
+`/context`. `run_element.sh` adds a mount namespace so `--portal-drop`'s
+document portal can mount FUSE. The dock fixes from
+`claude/zealous-darwin-aa65ff` are merged.
 
 ## (a) gomuks calls and their matrix-sdk equivalents
 
@@ -1004,6 +1074,7 @@ UNTETHERED_BACKEND=/path/to/gomuks uv run --python 3.13 --with matrix-synapse \
    redirect back to the page, emoji verification on the web, and a smaller
    module (wasm-opt).
 7. **Default:** matrix-sdk since step 8.
-8. **gomuks removed** from the client. Left: port the remaining QA fixture
-   modes, move the call sites off `engine_rpc` to typed commands, and build
-   the signed-out preview from engine messages.
+8. **gomuks removed** from the client, and the QA fixtures ported. Left:
+   move the call sites off `engine_rpc` to typed commands, build the
+   signed-out preview from engine messages, and upload progress in the
+   browser.
