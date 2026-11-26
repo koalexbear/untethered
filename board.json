@@ -105,9 +105,9 @@
     "scripts/replies-element.md",
     "scripts/test-media-interop.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Composer autocomplete",
-   "updated": "2026-11-26T16:52:40Z",
+   "updated": "2026-11-26T16:56:43Z",
    "worktree": ".claude/worktrees/m2-autocomplete"
   },
   "M4": {
