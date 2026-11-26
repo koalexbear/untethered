@@ -205,44 +205,43 @@ pub(super) fn view(app: &App) -> El<'_> {
         for (id, name) in members {
             let selected = d.selected.as_ref() == Some(id);
             let dim = kind != Kind::Joined;
-            list = list.push(
-                button(
-                    row![
-                        face(name, app.member_picture(id), 32.),
-                        column![
-                            text(name).size(15).wrapping(text::Wrapping::None),
-                            text(id.as_str())
-                                .size(12)
-                                .color(CHANNEL)
-                                .wrapping(text::Wrapping::None)
-                        ]
-                        .spacing(1)
+            let entry = button(
+                row![
+                    face(name, app.member_picture(id), 32.),
+                    column![
+                        text(name).size(15).wrapping(text::Wrapping::None),
+                        text(id.as_str())
+                            .size(12)
+                            .color(CHANNEL)
+                            .wrapping(text::Wrapping::None)
                     ]
-                    .spacing(12)
-                    .align_y(Center),
-                )
-                .width(Fill)
-                .padding([5, 8])
-                .on_press(Msg::SelectMember(id.clone()))
-                .style(move |_, s| button::Style {
-                    background: if selected {
-                        Some(ACTIVE.into())
-                    } else if s == button::Status::Hovered {
-                        Some(HOVER.into())
-                    } else {
-                        None
-                    },
-                    text_color: if selected || s == button::Status::Hovered {
-                        TEXT
-                    } else if dim {
-                        color!(0x80848e)
-                    } else {
-                        BODY
-                    },
-                    border: Border::default().rounded(4),
-                    ..Default::default()
-                }),
-            );
+                    .spacing(1)
+                ]
+                .spacing(12)
+                .align_y(Center),
+            )
+            .width(Fill)
+            .padding([5, 8])
+            .on_press(Msg::SelectMember(id.clone()))
+            .style(move |_, s| button::Style {
+                background: if selected {
+                    Some(ACTIVE.into())
+                } else if s == button::Status::Hovered {
+                    Some(HOVER.into())
+                } else {
+                    None
+                },
+                text_color: if selected || s == button::Status::Hovered {
+                    TEXT
+                } else if dim {
+                    color!(0x80848e)
+                } else {
+                    BODY
+                },
+                border: Border::default().rounded(4),
+                ..Default::default()
+            });
+            list = list.push(app.user_area(id, entry));
         }
     }
     if total == 0 && !busy {

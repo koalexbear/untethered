@@ -65,6 +65,19 @@ the bottom left for **User Settings**. Escape closes menus, dialogs and
 settings. Category headers collapse; a collapsed category still lists unread
 and selected channels.
 
+**Right-click menus:** Right-click a message for everything its toolbar does
+plus **Copy Text**, **Copy Message Link** (a matrix.to link) and **Mark
+Unread** (Matrix receipts can't move back, so this marks the room unread).
+Right-click a person (their picture or name on a message, or a member-list
+entry) for **Profile** (their member card), **Mention**, **Message** (when
+you already have a DM with them), **Copy User ID**, and **Kick…** / **Ban…**
+when your power level allows; those open the member card, where you can add
+a reason. Right-click a channel or DM in the sidebar for **Mark as Read**,
+**Notification Settings**, **Copy Link** and **Leave**, which asks first.
+Shift+F10 or the Menu key opens the menu for whatever is under the pointer,
+or the newest message; arrow keys and Enter choose, Escape or a click
+elsewhere closes it. Deleting messages comes with redaction support.
+
 **Replies:** Hover a message, click **Reply**, type your response, and send.
 The bar above the composer shows who you’re replying to; its **×** (Cancel
 reply) keeps your text. Click the quoted line above a reply to jump to the

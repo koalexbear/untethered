@@ -554,6 +554,7 @@ impl App {
             (Request::ReadState(room, event), result) => {
                 self.read_result(room, event, result.is_ok())
             }
+            (Request::LeaveRoom(room), result) => self.left_room(&room, result.is_ok()),
             (Request::Context(..), Ok(())) => {}
             (Request::Context(..), Err(_)) => {
                 self.status =

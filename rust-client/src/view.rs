@@ -4,6 +4,7 @@ mod call_controls;
 #[cfg(target_os = "linux")]
 mod call_stage;
 mod community;
+mod context_menu;
 mod hover;
 mod icons;
 mod mentions;
@@ -552,47 +553,32 @@ fn rail_button<'a>(
 }
 
 impl App {
-    /// Reactions, reply, edit and report, shown while a message is hovered.
-    fn message_tools<'a>(&'a self, r: &'a Room, p: &'a crate::rooms::Post) -> Option<El<'a>> {
-        if !self.logged_in {
+    /// Reactions, reply, edit and report, shown while a message is hovered:
+    /// the entries of its right-click menu that have a toolbar icon.
+    fn message_tools<'a>(&'a self, p: &'a crate::rooms::Post) -> Option<El<'a>> {
+        // An open menu covers the window; a toolbar would catch its clicks.
+        if self.context_menu.open.is_some() {
             return None;
         }
         let id = p.event_id.as_ref()?;
+        let items = self.message_items(&self.selected, p);
+        if items.is_empty() {
+            return None;
+        }
         let mut tools = Row::new();
-        if p.reactable {
-            let open = self
-                .reaction_picker
-                .as_ref()
-                .is_some_and(|picker| &picker.target == id);
-            tools = tools.push(tool(
-                Icon::Smile,
-                "Add Reaction",
-                open,
-                (self.verified && self.connected).then(|| Msg::ReactionPicker(id.clone())),
-            ));
-        }
-        tools = tools.push(tool(
-            Icon::Reply,
-            "Reply",
-            false,
-            Some(Msg::Reply(id.clone())),
-        ));
-        if p.may_edit(&self.matrix_id) && r.has_metadata && r.encrypted == p.encrypted {
-            tools = tools.push(tool(
-                Icon::Pencil,
-                "Edit",
-                false,
-                (self.connected && self.editing.is_none()).then(|| Msg::Edit(id.clone())),
-            ));
-        }
-        if self.verified && p.report_id(&self.matrix_id).is_some() {
-            tools = tools.push(tool(
-                Icon::Flag,
-                "Report Message",
-                false,
-                (self.connected && self.reporting.is_none() && !self.report_pending())
-                    .then(|| Msg::Report(self.selected.clone(), id.clone())),
-            ));
+        for item in items {
+            let (Some(hint), Some(glyph)) = (
+                item.entry.toolbar_hint(),
+                context_menu::tool_glyph(item.entry),
+            ) else {
+                continue;
+            };
+            let open = item.entry == crate::context_menu::Entry::AddReaction
+                && self
+                    .reaction_picker
+                    .as_ref()
+                    .is_some_and(|picker| &picker.target == id);
+            tools = tools.push(tool(glyph, hint, open, item.msg));
         }
         Some(toolbar(tools))
     }
@@ -1187,6 +1173,9 @@ impl App {
             ]
             .into();
         }
+        if let Some(dialog) = self.leave_dialog() {
+            base = stack![base, dialog].into();
+        }
         if let Some(v) = &self.viewer {
             return stack![base, viewer::view(self, v)].into();
         }
@@ -1384,6 +1373,7 @@ impl App {
                 border: Border::default().rounded(4),
                 ..Default::default()
             });
+        let link = self.menu_area(link, crate::context_menu::Target::Channel(id.clone()), None);
         row![container(pill(if unread { 8. } else { 0. })).width(8), link]
             .align_y(Center)
             .into()
@@ -2717,17 +2707,23 @@ impl App {
             }
             block = block.push(if group {
                 let head = row![
-                    text(name)
-                        .size(16)
-                        .font(BOLD)
-                        .color(TEXT)
-                        .wrapping(text::Wrapping::None),
+                    self.user_area(
+                        &p.sender,
+                        text(name)
+                            .size(16)
+                            .font(BOLD)
+                            .color(TEXT)
+                            .wrapping(text::Wrapping::None)
+                    ),
                     text(stamp(p)).size(12).color(CHANNEL)
                 ]
                 .spacing(8)
                 .align_y(Center);
                 row![
-                    container(face(name, self.user_picture(r, &p.sender), 40.)).padding(Padding {
+                    container(
+                        self.user_area(&p.sender, face(name, self.user_picture(r, &p.sender), 40.))
+                    )
+                    .padding(Padding {
                         top: 2.,
                         ..Padding::ZERO
                     }),
@@ -2779,10 +2775,7 @@ impl App {
                     })
                     .into()
             };
-            let tools = editing
-                .is_none()
-                .then(|| self.message_tools(r, p))
-                .flatten();
+            let tools = editing.is_none().then(|| self.message_tools(p)).flatten();
             prev = Some((p.sender.as_str(), p.time, p.day));
             let (_, row) = history.key_at(index).expect("timeline index is in range");
             let id = p
@@ -2790,7 +2783,7 @@ impl App {
                 .as_ref()
                 .map_or_else(|| format!("post-row-{row}"), |id| format!("post-{id}"));
             feed = feed.push(
-                container(hover::row(body, gutter, tools, ROW_HOVER))
+                container(self.message_area(p, hover::row(body, gutter, tools, ROW_HOVER)))
                     .width(Fill)
                     .padding(Padding {
                         top: if group { 14. } else { 0. },

@@ -1,7 +1,7 @@
 //! Joined rooms and space edges from the SDK's store, re-read whenever a sync
 //! response or room-info update arrives. Simplified Sliding Sync's default
 //! `required_state` includes `m.space.child`, so space edges are local reads.
-use super::{Event, RoomList, RoomSummary};
+use super::{Event, Failure, RoomList, RoomSummary, messaging};
 use crate::permissions::StateDoc;
 use async_channel::Sender;
 use matrix_sdk::{
@@ -42,6 +42,14 @@ pub async fn updates(client: Client, events: Sender<Event>) {
         while rooms.try_recv().is_ok() {}
         while info.try_recv().is_ok() {}
     }
+}
+
+/// Leave a joined room (or decline an invite).
+pub async fn leave(client: &Client, room: &str) -> Result<(), Failure> {
+    messaging::room(client, room)?
+        .leave()
+        .await
+        .map_err(|e| messaging::http(&e))
 }
 
 async fn snapshot(client: &Client) -> RoomList {

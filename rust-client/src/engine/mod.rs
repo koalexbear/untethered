@@ -167,6 +167,11 @@ pub enum Command {
         id: i64,
         room: String,
     },
+    /// Leave a room; it drops out of the next room list.
+    LeaveRoom {
+        id: i64,
+        room: String,
+    },
     /// Messages around an event outside the loaded timeline, as
     /// [`Event::Context`].
     Context {
@@ -1075,6 +1080,12 @@ impl Engine {
             Command::MarkUnread { id, room } => {
                 self.job(id, move |client, _, _| async move {
                     messaging::mark_unread(&client, &room).await
+                })
+                .await
+            }
+            Command::LeaveRoom { id, room } => {
+                self.job(id, move |client, _, _| async move {
+                    rooms::leave(&client, &room).await
                 })
                 .await
             }
