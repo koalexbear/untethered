@@ -30,7 +30,11 @@ def browser_roundtrip(tmp,hs,browser,fixture,element,room,alice,bob,hdr,uploads,
         picker.value.set_files([str(p) for p in paths])
     def skipped(ws):
         line={t for t,x,y in ws if x>CHAT_X and y>440}
-        return {"oversize.bin","65537","65536-byte"}<=line
+        if not {"65537","65536-byte"}<=line:return False
+        if "oversize.bin" in line:return True
+        # The notice's file name is small; read its line at four times its size.
+        y=next(y for t,x,y in ws if t=="65537" and x>CHAT_X and y>440)
+        return any(w=="oversize.bin" for w,_,_ in line_words(image(),CHAT_X+80,y,width=700))
     caption="Browser boundary proof"
     # The composer's grey "Message #media-proof" placeholder needs a 4x
     # reading; the whole-page passes make it "roams media-proat".
