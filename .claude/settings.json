@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"$CLAUDE_PROJECT_DIR/scripts/work.py\" ] && python3 \"$CLAUDE_PROJECT_DIR/scripts/work.py\" list --done 3 2>/dev/null || true",
+            "timeout": 20,
+            "statusMessage": "Reading the work board"
+          }
+        ]
+      }
+    ]
+  }
+}
