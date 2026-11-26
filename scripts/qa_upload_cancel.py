@@ -205,14 +205,18 @@ def test(tmp, hs, port, web, backend, root, seed):
                 return subprocess.run(["tesseract","stdin","stdout","--psm","6"],input=buf.getvalue(),capture_output=True,check=True).stdout.decode()
             until("staged browser file",lambda:"Ready" in card())
             page.mouse.click(1140,708)  # Send arrow
-            def in_flight():
-                # matrix-sdk has no upload progress in the browser (its fetch
-                # transport reports none), so the card says "Preparing…" until
-                # the upload ends. Wait for its bytes at the gateway instead.
-                text=card()
-                if len(uploads)>2 and uploads[2]["received"]>0 and re.search(r"Prepar|Upload",text):
-                    return " ".join(text.split()[:3])
-            print("Chromium attachment card:",until("browser upload in flight",in_flight),flush=True)
+            # The engine uploads browser media over XHR for its progress
+            # (engine/xhr.rs): the card's percentage must move while the
+            # throttled upload runs, not just appear once.
+            seen=[]
+            def climbing():
+                m=re.search(r"Upload\s+([1-9]\d?)\s*%",card(),re.I)
+                if m and int(m.group(1)) not in seen:
+                    seen.append(int(m.group(1)))
+                return len(seen)>=2 and seen
+            shown=until("changing upload percentages",climbing)
+            assert uploads[2]["received"]<SIZE, f"browser upload finished before the card showed progress: {uploads}"
+            print("Chromium attachment card:"," → ".join(f"Upload {n}%" for n in shown),flush=True)
             page.mouse.click(465,560)  # The card's Cancel control
             until("visible cancelled draft",lambda:"Cancelled" in card())
             assert_cancel("Chromium",2)

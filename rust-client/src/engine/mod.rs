@@ -35,6 +35,8 @@ mod verify;
 mod web;
 #[cfg(target_arch = "wasm32")]
 mod worker;
+#[cfg(target_arch = "wasm32")]
+mod xhr;
 
 use async_channel::{Receiver, Sender};
 use matrix_sdk::Client;

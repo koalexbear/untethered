@@ -284,7 +284,7 @@ get the same file card, inline preview and Save button as on gomuks.
 
 | Feature | Implementation | How it was verified |
 | --- | --- | --- |
-| Upload | Reads the file (path, portal or clipboard paste) and checks its size again. The MIME type comes from the content for images and from the name otherwise. `Encryption::upload_encrypted_file` in encrypted rooms, `Media::upload` elsewhere; progress in whole percents from the request's send-progress observable; dropping the App's lease cancels it. Images get `w`/`h` (after EXIF rotation) and, above 800×600, a JPEG thumbnail uploaded the same way. The result is the content gomuks's `/_gomuks/upload` returns | The gomuks peer decrypted the image, its thumbnail and the file, byte for byte |
+| Upload | Reads the file (path, portal or clipboard paste) and checks its size again. The MIME type comes from the content for images and from the name otherwise. Encrypted rooms get the SDK's `AttachmentEncryptor`, as in `Encryption::upload_encrypted_file`. The bytes go up with `Media::upload` on the desktop, with progress from its send-progress observable, and over `XMLHttpRequest` in the browser (`engine/xhr.rs`), with progress from `upload.onprogress`, because the SDK's wasm transport reports none. Progress is in whole percents; dropping the App's lease cancels the upload and closes its connection. Images get `w`/`h` (after EXIF rotation) and, above 800×600, a JPEG thumbnail uploaded the same way. The result is the content gomuks's `/_gomuks/upload` returns | The gomuks peer decrypted the image, its thumbnail and the file, byte for byte |
 | Sending | `send_message` with `base_content` becomes `Command::SendMedia`: the content goes through the room's send queue via the Timeline (`send`, or `send_reply` for replies), so it shows as a local echo. The command ends when the send queue reports the event sent; on a send error the event leaves the queue and the tray offers the retry | As above; the caption went with the first file and left the composer |
 | Received attachments | Timeline items carry their content (`Message::media`), so posts get a `media::Media`. Each attachment's `MediaSource`, with the keys of an encrypted file, is remembered by mxc URI, because the App's `Media` carries only the URI | The peer's encrypted image showed inline and saved byte for byte |
 | Inline previews | Encrypted: the file or its thumbnail, decrypted, through the SDK media cache. Plain: the homeserver's 800×600 thumbnail, or the file if there is none | Both, in the encrypted room and an unencrypted one |
@@ -680,13 +680,15 @@ Bugs the port found, fixed:
 - After a fresh sign-in the room selected while the device was still
   unverified never loaded its history: it showed only "Earlier messages"
   until another room was opened or the app restarted.
+- No upload progress in the browser: matrix-sdk's wasm HTTP client drops
+  send progress, so the attachment card showed "Preparing…" for the whole
+  upload (gomuks's worker reported progress). The engine now uploads media
+  over `XMLHttpRequest` in the browser (`engine/xhr.rs`), and `--upload-cancel`
+  again waits for the card's percentage, which must change, before
+  cancelling.
 
 Gaps it found, not fixed:
 
-- No upload progress in the browser: matrix-sdk's wasm HTTP client drops
-  send progress, so the attachment card shows "Preparing…" for the whole
-  upload (gomuks's worker reported progress). `--upload-cancel` now waits for
-  the bytes at its throttling gateway instead of a percentage.
 - Alerts and rings for late-decrypted messages (already listed under next
   steps): the QA log shows such events as `"redecrypted": true` entries, but
   the notification handler doesn't see them.
@@ -762,7 +764,7 @@ endpoint, which is covered under recommendations (b).
 
 | gomuks endpoint | Where | matrix-sdk equivalent | Status |
 | --- | --- | --- | --- |
-| `POST /_gomuks/upload` | Desktop uploads with progress and encryption (`backend/native.rs`) | `Encryption::upload_encrypted_file` / `Media::upload` with their send-progress observables, plus a thumbnail for large images; `Timeline::send_attachment` would also do it, but would bypass the App's attachment tray | Done (`engine/media.rs`) |
+| `POST /_gomuks/upload` | Desktop uploads with progress and encryption (`backend/native.rs`) | `AttachmentEncryptor` and `Media::upload` with its send-progress observable (an XHR upload in the browser, `engine/xhr.rs`), plus a thumbnail for large images; `Timeline::send_attachment` would also do it, but would bypass the App's attachment tray | Done (`engine/media.rs`) |
 | `GET /_gomuks/media/…` | Inline thumbnails and downloads (`backend/native.rs`) | `Media::get_media_content(&MediaRequestParameters { source, format }, use_cache)`. gomuks looks an encrypted file's keys up by mxc in its database; the engine remembers each attachment's `MediaSource` from timeline items | Done |
 
 ### Frames
@@ -1078,6 +1080,5 @@ UNTETHERED_BACKEND=/path/to/gomuks uv run --python 3.13 --with matrix-synapse \
    module (wasm-opt).
 7. **Default:** matrix-sdk since step 8.
 8. **gomuks removed** from the client, and the QA fixtures ported. Left:
-   move the call sites off `engine_rpc` to typed commands, build the
-   signed-out preview from engine messages, and upload progress in the
-   browser.
+   move the call sites off `engine_rpc` to typed commands, and build the
+   signed-out preview from engine messages.
