@@ -3,7 +3,13 @@
   "M3": {
    "branch": "claude/m3-typing",
    "claimed": "2026-11-26T23:47:37Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-26T23:53:43Z",
+     "by": "claude/room-upgrades",
+     "text": "room-upgrades (upgraded rooms as one chat) will touch shared files in small, separate places: engine/mod.rs (new RoomSummary fields successor/predecessor, Message.from, TimelineSnapshot.seams, Command::FollowUpgrade), engine/timeline.rs (Timelines become chains of room segments; forward() is replaced by a segment mirror + emitter), engine/rooms.rs (two summary fields), engine/app.rs (one Command route, Context mapping), rooms/engine.rs (apply_engine drops superseded rooms; seams), main.rs (one Msg variant, open()/reconcile() resolve the newest room), view.rs (seam divider in conversation(), upgrade banner in the composer tray), README feature line. New logic lives in src/upgrades.rs, src/engine/upgrades.rs, src/view/upgrades.rs."
+    }
+   ],
    "owner": "m3-typing",
    "paths": [
     "README.md",
