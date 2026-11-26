@@ -47,6 +47,8 @@ mod room_state;
 mod rooms;
 mod search;
 mod transfers;
+#[cfg(not(target_arch = "wasm32"))]
+mod tray;
 mod view;
 mod viewer;
 #[cfg(target_os = "linux")]
@@ -291,6 +293,9 @@ enum Msg {
     SubmitWebRecovery(String),
     Tab(bool),
     Close,
+    /// The system tray and its settings (tray.rs).
+    #[cfg(not(target_arch = "wasm32"))]
+    Tray(tray::Event),
     #[cfg(target_arch = "wasm32")]
     WebPaste(Field),
     #[cfg(target_arch = "wasm32")]
@@ -428,13 +433,19 @@ struct App {
     recovery_unavailable: bool,
     closing: bool,
     stopped: bool,
+    #[cfg(not(target_arch = "wasm32"))]
+    tray: tray::Tray,
 }
 impl App {
     fn boot() -> (Self, Task<Msg>) {
-        let (app, task) = Self::boot_engine();
+        #[allow(unused_mut)]
+        let (mut app, task) = Self::boot_engine();
         // Portal users await this too; starting it here keeps it off their path.
         #[cfg(target_os = "linux")]
         let task = Task::batch([Task::future(app_id::portal_ready()).discard(), task]);
+        // The window, unless this is a start at sign-in, and the tray icon.
+        #[cfg(not(target_arch = "wasm32"))]
+        let task = Task::batch([task, app.boot_tray()]);
         (app, task)
     }
     fn new(commands: Sender<backend::Command>) -> Self {
@@ -517,6 +528,8 @@ impl App {
             recovery_unavailable: false,
             closing: false,
             stopped: false,
+            #[cfg(not(target_arch = "wasm32"))]
+            tray: Default::default(),
         }
     }
     fn rooms(&self) -> &Rooms {
@@ -740,7 +753,7 @@ impl App {
                         self.status = call.label.clone();
                         self.call = None;
                         if self.closing {
-                            self.commands.close();
+                            self.stop_engine();
                         }
                     }
                 }
@@ -882,23 +895,13 @@ impl App {
                     return iced::exit();
                 }
             }
-            Msg::Close => {
-                self.closing = true;
-                #[cfg(target_os = "linux")]
-                self.clear_ring();
-                #[cfg(target_os = "linux")]
-                if let Some(call) = &self.call {
-                    call.cancel.close();
-                    return Task::none();
-                }
-                self.commands.close();
-                if let Some(sdk) = &self.sdk {
-                    sdk.close();
-                }
-                if self.stopped {
-                    return iced::exit();
-                }
-            }
+            // The desktop may close to the tray instead (tray.rs).
+            #[cfg(not(target_arch = "wasm32"))]
+            Msg::Close => return self.close_requested(),
+            #[cfg(target_arch = "wasm32")]
+            Msg::Close => return self.quit(),
+            #[cfg(not(target_arch = "wasm32"))]
+            Msg::Tray(event) => return self.tray_event(event),
             #[cfg(target_os = "linux")]
             Msg::DecideRing(id, accept) => self.decide_ring(&id, accept),
             #[cfg(target_os = "linux")]
@@ -1800,7 +1803,32 @@ impl App {
         let task = Task::batch([task, self.start_ringtone()]);
         #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
         let task = Task::batch([task, self.send_alerts()]);
+        #[cfg(not(target_arch = "wasm32"))]
+        let task = Task::batch([task, self.sync_tray()]);
         task
+    }
+    /// Quit: end the call first (its last frame stops the engine), then stop
+    /// the engine, and exit once it has stopped.
+    fn quit(&mut self) -> Task<Msg> {
+        self.closing = true;
+        #[cfg(target_os = "linux")]
+        self.clear_ring();
+        #[cfg(target_os = "linux")]
+        if let Some(call) = &self.call {
+            call.cancel.close();
+            return Task::none();
+        }
+        self.stop_engine();
+        if self.stopped {
+            return iced::exit();
+        }
+        Task::none()
+    }
+    fn stop_engine(&self) {
+        self.commands.close();
+        if let Some(sdk) = &self.sdk {
+            sdk.close();
+        }
     }
     /// The MSC4143 transports a homeserver advertises, for "Check call server
     /// support".
@@ -1838,6 +1866,30 @@ impl App {
             if self.logged_in { "" } else { "  ·  Preview" }
         )
     }
+    /// The daemon's view and title for its one window.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn window_view(&self, _: iced::window::Id) -> iced::Element<'_, Msg> {
+        self.view()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    fn window_title(&self, _: iced::window::Id) -> String {
+        self.title()
+    }
+}
+/// The main window. On the desktop it opens at start and again from the
+/// tray (tray.rs).
+fn main_window() -> iced::window::Settings {
+    iced::window::Settings {
+        size: iced::Size::new(1180., 760.),
+        min_size: Some(iced::Size::new(760., 500.)),
+        exit_on_close_request: false,
+        #[cfg(target_os = "linux")]
+        platform_specific: iced::window::settings::PlatformSpecific {
+            application_id: app_id::APP_ID.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
 }
 fn main() -> iced::Result {
     // The matrix-sdk engine's browser worker loads this module too. It starts
@@ -1853,26 +1905,23 @@ fn main() -> iced::Result {
     }
     #[cfg(not(target_arch = "wasm32"))]
     fonts::configure();
-    iced::application(App::boot, App::update, App::view)
+    // On the desktop Untethered keeps running in the tray with no window
+    // (tray.rs), which an iced daemon allows; it opens the window itself.
+    #[cfg(not(target_arch = "wasm32"))]
+    let app = iced::daemon(App::boot, App::update, App::window_view)
+        .title(App::window_title)
+        .theme(Theme::Dark);
+    #[cfg(target_arch = "wasm32")]
+    let app = iced::application(App::boot, App::update, App::view)
         .title(App::title)
-        .font(include_bytes!("../assets/LiberationSans-Regular.ttf").as_slice())
+        .theme(Theme::Dark)
+        .window(main_window());
+    app.font(include_bytes!("../assets/LiberationSans-Regular.ttf").as_slice())
         .font(include_bytes!("../assets/LiberationSans-Bold.ttf").as_slice())
         // Italics and code in messages (rich.rs), the same on every platform.
         .font(include_bytes!("../assets/LiberationSans-Italic.ttf").as_slice())
         .font(include_bytes!("../assets/LiberationMono-Regular.ttf").as_slice())
         .default_font(iced::Font::with_name("Liberation Sans"))
-        .theme(|_: &App| Theme::Dark)
-        .window(iced::window::Settings {
-            size: iced::Size::new(1180., 760.),
-            min_size: Some(iced::Size::new(760., 500.)),
-            exit_on_close_request: false,
-            #[cfg(target_os = "linux")]
-            platform_specific: iced::window::settings::PlatformSpecific {
-                application_id: app_id::APP_ID.into(),
-                ..Default::default()
-            },
-            ..Default::default()
-        })
         .subscription(|app| {
             iced::Subscription::batch([
                 if app.auto_target().is_some(){

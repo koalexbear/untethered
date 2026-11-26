@@ -125,6 +125,25 @@ updates. On Linux you can answer or decline an incoming call without a ringtone.
 Choose **Resume alerts** on either Linux or web to restore the existing room
 settings. [Cross-device and call tests](scripts/room-alerts.md#verify-account-wide-do-not-disturb).
 
+**System tray:** On Linux and Windows Untethered keeps an icon in the system
+tray: a chat bubble with a red dot for mentions (every unread direct message
+counts, as on the server rail) or a white dot for other unread messages, and a
+green dot at the bottom during a call or while one rings (grey while you're
+muted or deafened). Hover it for the counts and the call; click it to open the
+window. Its menu has **Open Untethered**, **Mute**, **Deafen**, **Do Not
+Disturb** and **Quit Untethered**, plus **Answer** and **Decline** while a call
+rings. Closing the window keeps Untethered running in the tray, as on Discord,
+so sync, notifications, ringing and calls carry on; **Quit** leaves any call
+and exits. **User Settings → System tray** has the two switches: **Close to
+tray** (on by default) and **Start at sign-in** (off by default), which adds an
+XDG autostart entry (`~/.config/autostart/io.github.koalexbear.Untethered.desktop`)
+or a Windows Run key entry that starts Untethered in the tray. Close to tray is
+kept in the profile directory (`desktop.json`); the autostart entry is its own
+record. On Linux the icon is a StatusNotifierItem: KDE Plasma and most panels
+show it, GNOME needs the AppIndicator extension. On a desktop without a tray,
+closing the window quits. Windows has no calls or notifications yet, so there
+the menu's Mute, Deafen and Do Not Disturb stay disabled.
+
 **Mentions inbox:** Choose **Mentions** in the sidebar to see messages that
 address your Matrix ID across joined rooms. Select an entry to open that
 exact message in context. The inbox uses history readable on this device,

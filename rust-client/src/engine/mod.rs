@@ -29,6 +29,9 @@ mod rooms;
 mod rt;
 mod search;
 mod session;
+// The desktop's own settings live beside the profile (tray.rs).
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) use session::profile_root;
 mod state;
 mod timeline;
 mod verify;

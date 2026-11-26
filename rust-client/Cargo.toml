@@ -63,6 +63,9 @@ ashpd = { version = "0.11.1", default-features = false, features = ["tokio"] }
 # Desktop-wide push-to-talk on X11: XInput2 raw key events (hotkeys/x11.rs).
 x11rb = { version = "0.13.2", features = ["xinput"] }
 libc = "0.2"
+# The system tray as a StatusNotifierItem over D-Bus (tray/linux.rs): no GTK,
+# and the same zbus the portals use.
+ksni = "0.3.7"
 # Video playback in the media viewer (player.rs).
 gstreamer = "0.25"
 gstreamer-app = "0.25"
@@ -76,6 +79,10 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["e
 
 [target.'cfg(windows)'.dependencies]
 windows-native-keyring-store = "1"
+# The notification-area icon (tray/windows.rs), its thread's message loop and
+# the Run key for starting at sign-in (tray/autostart.rs).
+tray-icon = { version = "0.25", default-features = false }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Registry", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging"] }
 
 [patch.crates-io]
 smithay-clipboard = { path = "vendor/smithay-clipboard" }
