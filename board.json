@@ -15,11 +15,16 @@
     "rust-client/src/tray.rs",
     "rust-client/src/tray/**",
     "rust-client/src/view.rs",
-    "rust-client/src/view/tray.rs"
+    "rust-client/src/view/tray.rs",
+    "scripts/qa_kwin.py",
+    "scripts/qa_rtc_audio.py",
+    "scripts/qa_tray.py",
+    "scripts/test-media-interop.py",
+    "scripts/tray*.md"
    ],
    "status": "working",
    "title": "System tray",
-   "updated": "2026-11-26T18:18:51Z",
+   "updated": "2026-11-26T18:21:33Z",
    "worktree": ".claude/worktrees/n6-system-tray"
   }
  },
