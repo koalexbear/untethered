@@ -55,8 +55,8 @@ def check_native_dm(stack,tmp,hs,name,jwt,root,backend,room,users,headers,secret
                              log=stack.enter_context(logs[i].open("w"))))
 
     a,b=desks
-    def words(d):return {w for w,x,_ in d.words() if x>CHAT_X}
-    def label(d,text):wait_for("on-screen "+text,lambda:text in words(d),12)
+    def words(d,dock=False):return {w for w,x,_ in d.words() if (x<CHAT_X if dock else x>CHAT_X)}
+    def label(d,text,dock=False):wait_for("on-screen "+text,lambda:text in words(d,dock),12)
     def ready_ui():
         for d in desks:
             # Idle: no call bar or ring, and the header's phone icon is back.
@@ -178,7 +178,9 @@ def check_native_dm(stack,tmp,hs,name,jwt,root,backend,room,users,headers,secret
                 with outage(links[1]):
                     down=time.monotonic()
                     hears([],[])
-                    label(b,"reconnecting")
+                    # While the call stage is closed, a DM call's status is
+                    # only in the call dock at the bottom of the sidebar.
+                    label(b,"reconnecting",dock=True)
                     a.tone=3;b.tone=4
                     wait_for("six-second full outage",lambda:time.monotonic()-down>=6.5,8)
                     assert set(roster())==set(ids)
