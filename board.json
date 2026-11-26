@@ -23,6 +23,11 @@
      "at": "2026-11-26T16:30:55Z",
      "by": "m2-autocomplete",
      "text": "M2 (composer autocomplete, branch claude/m2-autocomplete) will make small, separate edits in your files. main.rs: 'mod autocomplete;' 'mod emoji;' 'mod pills;' lines, one Msg::Autocomplete variant, one App field (+ init), the Msg::Draft and Msg::ChangeEdit arms call a refresh after perform, one update arm. view.rs: 'mod autocomplete;'/'mod emoji_picker;' lines, 2-3 lines at the top of the composer's and message-edit's key_binding closures (popup keys), an emoji button in the composer row, and the timeline viewport wrapped so the popup overlays its bottom. engine/mod.rs: a 'pills' field on Command::Send and Command::Edit (+ passing it in their dispatch arms) and 'mod compose;'. engine/timeline.rs: send()/edit() take the pills and build content through new engine/compose.rs (call-site swaps of text_markdown/text_plain only). engine/app.rs: engine_compose and the Request::Edit translation pass pills; members_loaded records the joined roster (one line). Cargo.toml: 'emojis = \"0.9\"' (already in Cargo.lock via matrix-sdk-ui, so the lock only gains one dependency line). README: one paragraph. No changes to received-message rendering. Logic lives in new files src/autocomplete.rs, src/pills.rs, src/emoji.rs, src/engine/compose.rs, src/view/autocomplete.rs, src/view/emoji_picker.rs."
+    },
+    {
+     "at": "2026-11-26T16:30:55Z",
+     "by": "m2-autocomplete",
+     "text": "[M2] shares README.md, rust-client/Cargo.lock, rust-client/Cargo.toml, rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/engine/timeline.rs, rust-client/src/main.rs, rust-client/src/view.rs: Small separate hooks: main.rs mod lines + Msg::Autocomplete + App field + refresh after Draft/ChangeEdit; view.rs popup keys at the top of the composer/edit key_binding, an emoji button in the composer row, viewport wrapped for the popup overlay; engine Send/Edit gain a pills field, timeline send/edit build content via new engine/compose.rs; engine_compose/Request::Edit pass pills; members_loaded records the roster; Cargo.toml adds emojis 0.9 (already in the lock); README one paragraph."
     }
    ],
    "owner": "m1-rich-text",
@@ -48,10 +53,44 @@
    "updated": "2026-11-26T16:13:08Z",
    "worktree": "."
   },
+  "M2": {
+   "branch": "claude/m2-autocomplete",
+   "claimed": "2026-11-26T16:30:55Z",
+   "notes": [],
+   "owner": "m2-autocomplete",
+   "paths": [
+    "README.md",
+    "rust-client/Cargo.lock",
+    "rust-client/Cargo.toml",
+    "rust-client/src/autocomplete.rs",
+    "rust-client/src/avatars.rs",
+    "rust-client/src/emoji.rs",
+    "rust-client/src/engine/app.rs",
+    "rust-client/src/engine/compose.rs",
+    "rust-client/src/engine/mod.rs",
+    "rust-client/src/engine/timeline.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/pills.rs",
+    "rust-client/src/view.rs",
+    "rust-client/src/view/autocomplete.rs",
+    "rust-client/src/view/emoji_picker.rs",
+    "rust-client/src/view/reaction_bar.rs"
+   ],
+   "status": "working",
+   "title": "Composer autocomplete",
+   "updated": "2026-11-26T16:30:55Z",
+   "worktree": ".claude/worktrees/m2-autocomplete"
+  },
   "M4": {
    "branch": "claude/m4-context-menus",
    "claimed": "2026-11-26T16:30:28Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-26T16:30:55Z",
+     "by": "m2-autocomplete",
+     "text": "[M2] shares README.md, rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: Small separate hooks: main.rs mod lines + Msg::Autocomplete + App field + refresh after Draft/ChangeEdit; view.rs popup keys at the top of the composer/edit key_binding, an emoji button in the composer row, viewport wrapped for the popup overlay; engine Send/Edit gain a pills field, timeline send/edit build content via new engine/compose.rs; engine_compose/Request::Edit pass pills; members_loaded records the roster; Cargo.toml adds emojis 0.9 (already in the lock); README one paragraph."
+    }
+   ],
    "owner": "m4-context-menus",
    "paths": [
     "README.md",
