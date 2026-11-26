@@ -177,7 +177,7 @@ def verify(stack,tmp,root,backend,page,room,alice,bob,secret,incoming,switch_cam
                     return len([s for s in json.loads(kde.command("pactl","-f","json","list","sink-inputs").stdout)
                                 if s["properties"].get("application.name")=="Untethered"])
                 mix({670,1030})
-                assert outputs()==2
+                assert outputs()==1,"tab audio and speech share the one mixed playback stream"
                 desk.click("play");mix({670})
                 tab.evaluate("window.tabTone.frequency.value=830")
                 desk.click("deafen");mix(set())
@@ -190,11 +190,11 @@ def verify(stack,tmp,root,backend,page,room,alice,bob,secret,incoming,switch_cam
                 share_button.click()
                 wait_for("Element tab unpublished",lambda:tracks()==share_base)
                 mix({670})
-                wait_for("share playback closed without closing mic playback",lambda:outputs()==1)
+                assert outputs()==1,"the tab's end closed the mixed playback stream"
                 wait_for("native stage returned to camera",lambda:not stage(1) and any(
                     (r:=native_box(p)) and r[2]-r[0]>400 for p in BROWSER))
                 tab.close()
-                print("Element shared a changing Chromium tab with GCM audio. Linux heard 670 Hz mic + 1030 Hz tab; "
+                print("Element shared a changing Chromium tab with GCM audio. Linux heard 670 Hz mic + 1030 Hz tab in one playback stream; "
                       "Play shared audio off retained only speech, on restored the changed 830 Hz tab. Deafen silenced both. "
                       "Stop returned to the original camera and microphone publications.",flush=True)
             camera_button(w).click(timeout=7000)

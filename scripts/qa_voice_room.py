@@ -332,12 +332,13 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
                 for tones in expected:tones.discard(410)
             wait_for("three-client decoded audio",lambda:all(d.hears(h) for d,h in zip(desks,expected)),25)
             assert {u:tracks[u] for u in original}==original
-            assert audio_counts()==[(int(not ptt),2),(1,2),(1,2)]
+            # One mixed playback stream per client, however many peers it hears.
+            assert audio_counts()==[(int(not ptt),1),(1,1),(1,1)]
             wait_for("participant names under the voice channel",lambda:all(sidebar(d,3) for d in desks),8)
             no_ring()
             for i,heard in enumerate(expected):
                 print(f"Client {i+1}: input {TONES[i]} Hz; speaker received {sorted(heard)} Hz, no self tone (12 consecutive 100 ms windows).",flush=True)
-            print("Three joined devices, three GCM microphones, two playback streams per client; zero ring or other non-state events.",flush=True)
+            print("Three joined devices, three GCM microphones, one mixed playback stream per client; zero ring or other non-state events.",flush=True)
             if ptt:
                 from qa_room_ptt import check_ptt
                 check_ptt(stack,desks,audio_counts,lambda:publications(3)==tracks)
@@ -347,7 +348,7 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
             elif not share and not camera:
                 from qa_room_volume import check_volume
                 check_volume(desks)
-                assert publications(3)==tracks and audio_counts()==[(1,2)]*3
+                assert publications(3)==tracks and audio_counts()==[(1,1)]*3
                 check_speaking(desks,names)
                 assert publications(3)==tracks
             if share:
