@@ -324,10 +324,39 @@ to **200%**, or click **Reset** to return to **100%**. Other listeners keep
 their own mixes.
 
 For **Push-to-talk**, check the box beside **Join voice** or in the call bar.
-Hold **Right Ctrl** while Untethered is focused to send your voice. Releasing
-the key or switching applications closes your microphone; you still hear
-the room. **Mute** and **Deafen** override the key. The choice carries over
-to your next voice room until you quit the app.
+Hold the key the call bar names to send your voice. Your microphone closes
+100 ms after you let go, so the end of a word isn't cut off; you still hear
+the room. **Mute** and **Deafen** override the key, and after either you
+press it again to talk. The choice carries over to your next voice room
+until you quit the app.
+
+While push-to-talk is on, the key also works when another application has
+focus:
+
+- **X11:** hold **Right Ctrl**. Untethered only listens (XInput2 raw key
+  events), so the focused application still gets the key too.
+- **Wayland:** turning push-to-talk on asks your desktop to bind three
+  shortcuts: **Push to talk** (Pause suggested), **Toggle mute**
+  (Ctrl+Shift+M) and **Toggle deafen** (Ctrl+Shift+D). Change or clear them
+  in that dialog (on KDE, *Global Shortcuts Requested*; later under System
+  Settings › Shortcuts). It needs the GlobalShortcuts portal (KDE Plasma
+  5.27 or later, GNOME 48 or later). The installed package names itself
+  to the portal as `io.github.koalexbear.Untethered`, so the dialog says
+  Untethered and later launches reuse your keys without asking again; a run
+  from the checkout has no installed desktop file, and the desktop names the
+  app after whatever launched it. The desktop keeps a bound key to
+  itself: it no longer reaches the focused application, so choose one you
+  don't type with. A modifier on its own, such as Right Ctrl, can't hold
+  the microphone open there, because KDE fires those shortcuts on release.
+- **Right Ctrl** always works while Untethered is focused. Without a
+  desktop-wide key (no portal, or you cancel the dialog), switching
+  applications closes your microphone.
+
+`UNTETHERED_GLOBAL_SHORTCUTS=0` keeps only the in-window key.
+`UNTETHERED_PTT_KEY` replaces the desktop-wide push-to-talk key, written as
+the desktop shortcut format writes it (`Pause`, `F9`, `CTRL+grave`). On X11
+it accepts modifier keys, Pause, Scroll_Lock, Insert, Menu, F1 to F35 and
+single characters.
 
 In the voice-room call bar, click **Share screen** and pick a screen or a
 window in your desktop's chooser. Other participants see it live; **Open call
@@ -388,7 +417,9 @@ disposable Synapse, and its `UNTETHERED_QA_ONLY=web` mode the browser test.
 
 Run `makepkg -s` in the checkout to build the **current local Git commit**.
 The package installs `/usr/bin/untethered` (and the camera helper in
-`/usr/lib/untethered`). Since `0.1.0-9` it no longer ships gomuks.
+`/usr/lib/untethered`). Since `0.1.0-9` it no longer ships gomuks. Since
+`0.1.0-10` its desktop file is `io.github.koalexbear.Untethered.desktop`,
+the app ID its window and desktop portal requests carry.
 The packaged app keeps its Matrix device in `$XDG_DATA_HOME/untethered-iced`
 (default `~/.local/share/untethered-iced`), separate from the development profile.
 An [in-place upgrade from `0.1.0-2` to `0.1.0-6`](scripts/linux-upgrade.md#recorded-run-2026-11-25)

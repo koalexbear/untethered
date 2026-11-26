@@ -1,8 +1,9 @@
 [Desktop Entry]
 Type=Application
-Name=untethered
+Name=Untethered
 Comment=Native Matrix chat prototype
 Exec=untethered
 Icon=internet-chat
 Categories=Network;InstantMessaging;
 Terminal=false
+StartupWMClass=io.github.koalexbear.Untethered

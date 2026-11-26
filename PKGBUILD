@@ -1,7 +1,7 @@
 # Local package: build the current checkout's committed Rust frontend.
 pkgname=untethered
 pkgver=0.1.0
-pkgrel=9
+pkgrel=10
 pkgdesc='Native Rust/Iced Matrix client'
 arch=('x86_64')
 conflicts=('gomuks-native' 'unteathered')
@@ -35,7 +35,7 @@ package() {
     cd "$srcdir/untethered-src"
     install -Dm755 "$srcdir/target/release/untethered-iced" "$pkgdir/usr/bin/untethered"
     install -Dm755 "$srcdir/target/release/untethered-cameras" "$pkgdir/usr/lib/untethered/untethered-cameras"
-    install -Dm644 untethered.desktop "$pkgdir/usr/share/applications/untethered.desktop"
+    install -Dm644 io.github.koalexbear.Untethered.desktop "$pkgdir/usr/share/applications/io.github.koalexbear.Untethered.desktop"
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/untethered/LICENSE"
     install -Dm644 rust-client/assets/LICENSE "$pkgdir/usr/share/licenses/untethered/Liberation-fonts"
     install -Dm644 rust-client/vendor/smithay-clipboard/LICENSE "$pkgdir/usr/share/licenses/untethered/smithay-clipboard"

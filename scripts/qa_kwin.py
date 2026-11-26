@@ -3,6 +3,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess as sp
 import time
 from pathlib import Path
@@ -12,8 +13,13 @@ from qa_native_paste import child, isolated_env, wait_for
 from qa_ui import CHAT_X, map_fixture, read, regions
 
 
+PORTAL_KDE = os.environ.get("KDE_PORTAL", "/usr/lib/xdg-desktop-portal-kde")
+APP_ID = "io.github.koalexbear.Untethered"
+
+
 class KWin:
-    def __init__(self, stack, tmp, root, backend, *, env=None, screencast=False, native_log=None):
+    def __init__(self, stack, tmp, root, backend, *, env=None, screencast=False, native_log=None,
+                 global_shortcuts=False):
         self.tmp = tmp
         self.stack = stack
         self.env = env = env if env is not None else isolated_env(tmp, backend, "wayland")
@@ -33,6 +39,14 @@ class KWin:
                        XDG_STATE_HOME=str(tmp/"state"),XDG_SESSION_TYPE="wayland",
                        DBUS_SYSTEM_BUS_ADDRESS="unix:path="+str(runtime/"no-system-bus"))
         env["DBUS_SESSION_BUS_ADDRESS"] = "unix:path="+str(runtime/"bus")
+        binary=Path(os.getenv("UNTETHERED_QA_CLIENT") or root/"rust-client/target/debug/untethered-iced").resolve()
+        if global_shortcuts:
+            # Installed as a package installs it: the portal takes the client's
+            # app ID only from a desktop file whose Exec it can find.
+            apps=Path(env["XDG_DATA_HOME"])/"applications"
+            apps.mkdir(parents=True,exist_ok=True)
+            entry=(Path(root)/f"{APP_ID}.desktop").read_text()
+            (apps/f"{APP_ID}.desktop").write_text(re.sub(r"^Exec=.*$",f"Exec={binary}",entry,flags=re.M))
         (Path(env["XDG_CONFIG_HOME"])/"kdeglobals").write_text("[KDE]\nAnimationDurationFactor=0\nSingleClick=false\n")
         def log(name):
             dest=os.getenv("KWIN_QA_DEBUG")
@@ -45,8 +59,10 @@ class KWin:
             stack.enter_context(child(["wireplumber","--profile","policy"],env,stderr=log("wp")))
         # Screencast fixtures place a 1600x900 pattern window beside the client.
         width = "3300" if screencast else "2100"
+        # KWin hosts kglobalaccel, which the GlobalShortcuts portal binds to.
+        shortcuts = [] if global_shortcuts else ["--no-global-shortcuts"]
         self.kw = stack.enter_context(child(["kwin_wayland","--virtual","--width",width,"--height","1000",
-                                            "--socket","kwin-proof","--no-lockscreen","--no-global-shortcuts","--no-kactivities"],env))
+                                            "--socket","kwin-proof","--no-lockscreen",*shortcuts,"--no-kactivities"],env))
         def ready():
             assert self.kw.poll() is None, "isolated KWin could not initialize a virtual output"
             r = self.command("qdbus6","org.kde.KWin","/KWin","org.kde.KWin.supportInformation",check=False)
@@ -56,15 +72,62 @@ class KWin:
                            "--object-path","/org/freedesktop/DBus","--method",
                            "org.freedesktop.DBus.GetConnectionUnixProcessID","org.kde.KWin").stdout
         assert re.search(rf"\b{self.kw.pid}\b",owner), "Refusing to drive a compositor not owned by this test"
+        self.portal=None
+        if global_shortcuts:
+            assert re.search(rf"\b{self.kw.pid}\b",self.owner("org.kde.kglobalaccel")), "kglobalaccel is not KWin's"
+            # Started here rather than D-Bus activated, so its dialogs can be
+            # told apart from any other process's windows.
+            self.portal=stack.enter_context(child([PORTAL_KDE],env,stderr=log("portal-kde")))
+            wait_for("private xdg-desktop-portal-kde",lambda:self.portal.poll() is None and
+                     re.search(rf"\b{self.portal.pid}\b",self.owner("org.freedesktop.impl.portal.desktop.kde")))
         # No XWayland server or DISPLAY is started. Both clients use kwin-proof.
         env["QT_QPA_PLATFORM"]="wayland"
         limit=["taskset","-c",",".join(map(str,sorted(os.sched_getaffinity(0))[:4]))] if screencast else []
         # Only KWin and the portal can reach their ordinary PipeWire socket
         # by name. The tested native client must use OpenPipeWireRemote's FD.
         native_env={**env,"PIPEWIRE_REMOTE":"no-ambient-qa-remote"} if screencast else env
-        binary=os.getenv("UNTETHERED_QA_CLIENT") or root/"rust-client/target/debug/untethered-iced"
-        self.native=stack.enter_context(child([*limit,binary],native_env,stderr=native_log or log("native")))
+        self.native_args=([*limit,binary],native_env,native_log or log("native"))
+        self.start_native()
         print(re.search(r"^KWin version: .+$",info,re.M)[0]+" · active virtual Wayland compositor · private D-Bus",flush=True)
+
+    def start_native(self):
+        args,env,stderr=self.native_args
+        self.native=self.stack.enter_context(child(args,env,stderr=stderr))
+
+    def restart_native(self):
+        """Quit the client and start it again on the same profile."""
+        os.killpg(self.native.pid,signal.SIGTERM)
+        self.native.wait(timeout=10)
+        self.start_native()
+
+    def owner(self,name):
+        return self.command("gdbus","call","--session","--dest","org.freedesktop.DBus","--object-path","/org/freedesktop/DBus",
+                            "--method","org.freedesktop.DBus.GetConnectionUnixProcessID",name,check=False).stdout
+
+    def accept_shortcuts(self,expected):
+        """Accept the portal's "Global Shortcuts Requested" dialog after
+        checking it offers `expected` (lowercase words: the app's name, the
+        trigger names)."""
+        dialog=self.shortcut_dialog
+        wid=wait_for("KDE global shortcut dialog",dialog,25)
+        geom=self.command("kdotool","getwindowgeometry",wid).stdout
+        x,y=map(int,re.search(r"Position: (-?\d+),(-?\d+)",geom).groups())
+        w,h=map(int,re.search(r"Geometry: (\d+)x(\d+)",geom).groups())
+        def offered():
+            words={t.strip("|:").lower() for t,_,_ in self.words((x,y,x+w,y+h))}
+            return words if set(expected)<=words else None
+        words=wait_for("requested shortcuts listed",offered,10)
+        self.command("kdotool","windowactivate",wid)
+        time.sleep(.4)
+        self.keys(("Down","\ue006"),("Up","\ue006"))  # Return: OK
+        wait_for("shortcut dialog closed",lambda:not dialog(),10)
+        return words
+
+    def shortcut_dialog(self):
+        """The portal's open "Global Shortcuts Requested" window, if any."""
+        wid=self.window("^Global Shortcuts Requested$")
+        pid=wid and self.command("kdotool","getwindowpid",wid).stdout.strip()
+        return wid if pid and int(pid)==self.portal.pid else None
 
     def command(self,*args,check=True):
         return sp.run(args,env=self.env,capture_output=True,text=True,timeout=12,check=check)

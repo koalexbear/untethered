@@ -246,13 +246,51 @@ Key-up must silence just Alice and remove her capture stream while her
 input tone keeps playing. Each measured key edge must settle at both
 receivers within 800 ms (includes 100 ms speaker-analysis windows).
 
-The test moves focus to another window mid-hold, returns focus with the key
-still held, and separately delivers key-up to the other window. Neither case
-may reopen capture. Manual mute and deafen override the key and require a new
-press afterwards. Every consecutive 100 ms window across the exercise is
-checked for Bruno’s tone at Clara and Clara’s at Bruno. Their original GCM
-tracks must remain in place. This fixture covers an in-window key, not a
-desktop-wide shortcut.
+Plain `--room-ptt` covers the in-window fallback: Alice runs with
+`UNTETHERED_GLOBAL_SHORTCUTS=0`. The test moves focus to another window
+(an `xmessage` below the client, clear of the call dock's tooltips) mid-hold,
+returns focus with the key still held, and separately delivers key-up to the
+other window. Neither case may reopen capture. Manual mute and deafen
+override the key and require a new press afterwards. Every consecutive
+100 ms window across the exercise is checked for Bruno’s tone at Clara and
+Clara’s at Bruno. Their original GCM tracks must remain in place. The edge
+timings include the 100 ms release delay.
+
+`--room-ptt --global` repeats it desktop-wide on X11 (XInput2 raw key
+events). Focus moves to the `xmessage` window before the first press and
+stays there for every hold; clicking Alice's Mute and Deafen must not move
+it. Both peers must decode Alice's tone only while Right Ctrl is held, within
+the same 800 ms edges. The focus assertions invert: moving focus to
+Untethered and back during a hold keeps her talking, and key-up in the other
+window ends it. Refocusing Untethered afterwards still doesn't reopen capture.
+
+`--room-ptt --global wayland` runs Alice on the private KWin from the
+[isolated KWin prerequisites](../../scripts/kwin-element.md), with KWin's
+kglobalaccel left on (no `--no-global-shortcuts`) and the fixture's own
+`xdg-desktop-portal-kde`, plus PySide6 (`/usr/bin/python`). Alice's data
+directory gets `io.github.koalexbear.Untethered.desktop` with `Exec` set to
+the tested binary, as the package installs it, so the portal accepts the
+client's app ID registration. Arming push-to-talk must open KDE's *Global
+Shortcuts Requested* dialog naming Untethered and listing Push to talk
+(Pause), Toggle mute and Toggle deafen; the fixture accepts it with KDE's
+input synthesizer. A PySide decoy window then keeps focus while
+the synthesizer holds Pause (one helper process per hold, because KWin
+releases a fake input device's keys when its client exits), with the same
+measurements and inverted focus checks as on X11. At the end the decoy must
+have received an ordinary typed key and no Pause events: **a key bound
+through the portal no longer reaches the focused application**, which the
+main README tells users when they choose one. After the final leave,
+KWin's `kglobalshortcutsrc` must hold an `[io.github.koalexbear.Untethered]`
+group with `push-to-talk=Pause`. Alice's client then restarts on the same
+profile, arms push-to-talk and rejoins: no second dialog may appear, the
+call bar must show *Hold Pause to talk.*, and a Pause hold in the decoy must
+show *Pause held* until release.
+
+Measured on 2026-11-26 with the host at a load of about 100 on 32 cores,
+key edge to stable windows at both peers: in-window 72–197 ms down and
+282–390 ms up; X11 desktop-wide 121–146 ms down and 335–426 ms up; KWin
+portal 243–335 ms down (including the input helper's start-up) and
+296–351 ms up.
 
 ### Verify portal window sharing
 

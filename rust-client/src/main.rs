@@ -3,6 +3,8 @@
 // rustc proves they are Send.
 #![recursion_limit = "256"]
 mod account;
+#[cfg(target_os = "linux")]
+mod app_id;
 mod backend;
 #[cfg(target_arch = "wasm32")]
 mod browser_verification;
@@ -15,6 +17,8 @@ mod edits;
 mod engine;
 #[cfg(not(target_arch = "wasm32"))]
 mod fonts;
+#[cfg(target_os = "linux")]
+mod hotkeys;
 #[cfg(target_os = "linux")]
 mod incoming;
 mod inline;
@@ -129,6 +133,10 @@ enum Msg {
     RoomPtt(bool),
     #[cfg(target_os = "linux")]
     TalkKey(bool),
+    #[cfg(target_os = "linux")]
+    Hotkey(hotkeys::Event),
+    #[cfg(target_os = "linux")]
+    TalkRelease(tokio::time::Instant),
     #[cfg(target_os = "linux")]
     ToggleVideo(desktop_call::VideoInput),
     #[cfg(target_os = "linux")]
@@ -307,6 +315,8 @@ struct App {
     #[cfg(target_os = "linux")]
     room_ptt: bool,
     #[cfg(target_os = "linux")]
+    hotkeys: hotkeys::State,
+    #[cfg(target_os = "linux")]
     drop_epoch: u64,
     #[cfg(not(target_arch = "wasm32"))]
     paste_seq: u64,
@@ -364,7 +374,11 @@ struct App {
 }
 impl App {
     fn boot() -> (Self, Task<Msg>) {
-        Self::boot_engine()
+        let (app, task) = Self::boot_engine();
+        // Portal users await this too; starting it here keeps it off their path.
+        #[cfg(target_os = "linux")]
+        let task = Task::batch([Task::future(app_id::portal_ready()).discard(), task]);
+        (app, task)
     }
     fn new(commands: Sender<backend::Command>) -> Self {
         Self {
@@ -379,6 +393,8 @@ impl App {
             call: None,
             #[cfg(target_os = "linux")]
             room_ptt: false,
+            #[cfg(target_os = "linux")]
+            hotkeys: Default::default(),
             #[cfg(target_os = "linux")]
             inbox: Default::default(),
             #[cfg(target_os = "linux")]
@@ -673,7 +689,7 @@ impl App {
                 self.focused = focused;
                 #[cfg(target_os = "linux")]
                 if !focused {
-                    return self.update(Msg::TalkKey(false));
+                    return self.talk_key(hotkeys::Source::Window, false);
                 }
             }
             #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
@@ -879,6 +895,7 @@ impl App {
             #[cfg(target_os = "linux")]
             Msg::RoomPtt(enabled) => {
                 self.room_ptt = enabled;
+                self.hotkeys.reset();
                 if let Some(call) = &self.call
                     && call.group
                     && !call.cancel.is_closed()
@@ -888,14 +905,11 @@ impl App {
                 }
             }
             #[cfg(target_os = "linux")]
-            Msg::TalkKey(down) => {
-                if let Some(call) = &self.call
-                    && call.group
-                    && !call.cancel.is_closed()
-                {
-                    call.audio.send_if_modified(|s| s.hold(down));
-                }
-            }
+            Msg::TalkKey(down) => return self.talk_key(hotkeys::Source::Window, down),
+            #[cfg(target_os = "linux")]
+            Msg::Hotkey(event) => return self.hotkey(event),
+            #[cfg(target_os = "linux")]
+            Msg::TalkRelease(until) => self.talk_release(until),
             #[cfg(target_os = "linux")]
             Msg::ReturnToCall(id) => {
                 if let Some(c) = &self.call
@@ -1200,6 +1214,8 @@ impl App {
                 #[cfg(not(target_arch = "wasm32"))]
                 return Task::perform(
                     async {
+                        #[cfg(target_os = "linux")]
+                        app_id::portal_ready().await;
                         let paths = rfd::AsyncFileDialog::new().pick_files().await?;
                         Some(
                             tokio::task::spawn_blocking(move || {
@@ -1242,6 +1258,8 @@ impl App {
                     let name = media.name.clone();
                     return Task::perform(
                         async move {
+                            #[cfg(target_os = "linux")]
+                            app_id::portal_ready().await;
                             rfd::AsyncFileDialog::new()
                                 .set_title("Save attachment")
                                 .set_file_name(name)
@@ -1714,6 +1732,11 @@ fn main() -> iced::Result {
             size: iced::Size::new(1180., 760.),
             min_size: Some(iced::Size::new(760., 500.)),
             exit_on_close_request: false,
+            #[cfg(target_os = "linux")]
+            platform_specific: iced::window::settings::PlatformSpecific {
+                application_id: app_id::APP_ID.into(),
+                ..Default::default()
+            },
             ..Default::default()
         })
         .subscription(|app| {
@@ -1761,6 +1784,8 @@ fn main() -> iced::Result {
                     _ => None,
                 }),
                 iced::window::close_requests().map(|_| Msg::Close),
+                #[cfg(target_os = "linux")]
+                hotkeys::subscription(app.room_ptt).map(Msg::Hotkey),
                 iced::keyboard::listen().filter_map(|event| match event {
                     iced::keyboard::Event::KeyPressed {
                         key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Tab),

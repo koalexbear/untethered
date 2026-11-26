@@ -66,9 +66,7 @@ class Desktop:
                 if (audit:=self.audit) is not None:audit.append((time.monotonic(),amps))
         for fn in (feed,listen):threading.Thread(target=fn,daemon=True).start()
         if kde:
-            self.client=kde.native
-            self.win=wait_for("Wayland call window",lambda:kde.window("Untethered.*"+re.escape(room)),35)
-            kde.position(self.win,0,0,1180,850)
+            self.attach(room)
             return
         # Limit per-client rendering/codec parallelism in this three-GUI fixture.
         # Separate four-core sets, when available, stand in for separate machines.
@@ -90,6 +88,29 @@ class Desktop:
         wait_for(f"client {i+1} synced {room}",synced,35)
         self.cmd("xdotool","windowmove",self.win,"0","0")
         self.cmd("xdotool","windowsize",self.win,"1180","760")
+
+    def attach(self,room):
+        """Wait for KWin's client window and open `room` in it."""
+        kde=self.kde
+        self.client=kde.native
+        def opened():
+            assert self.client.poll() is None,"Wayland client exited"
+            return kde.window("^Untethered")
+        self.win=wait_for("Wayland call window",opened,35)
+        kde.position(self.win,0,0,1180,850)
+        def shown():
+            assert self.client.poll() is None,"Wayland client exited"
+            if room in kde.command("kdotool","getwindowname",self.win,check=False).stdout:return True
+            # As on X11, matrix-sdk may open another stored room first.
+            spot=next(((x,y) for w,x,y in self.words() if w==room.lower() and x<CHAT_X),None)
+            if spot:self.press(*spot)
+            return False
+        wait_for(f"Wayland client synced {room}",shown,35)
+
+    def restart(self,room="Atrium"):
+        """KWin desktops: quit the client and start it on the same profile."""
+        self.kde.restart_native()
+        self.attach(room)
 
     def cmd(self,*args,check=True):
         return sp.run(args,env=self.env,text=True,capture_output=True,timeout=8,check=check).stdout
@@ -291,8 +312,10 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
             link=client_link(stack,[urlsplit(u).port for u in (hs,"https://"+name,jwt)]+[18820],"room")
             logs=[Path(os.environ.get("KWIN_QA_DEBUG") or d)/f"native-{i}.log" for i,d in enumerate(dirs)]
         for i,d in enumerate(dirs):
-            wayland=((share or camera) and i==0) or (layout and i in (1,2))
+            wayland=((share or camera or ptt=="wayland") and i==0) or (layout and i in (1,2))
             env=isolated_env(d,backend,"wayland" if wayland else "x11");env.update(TOKIO_WORKER_THREADS="2",RAYON_NUM_THREADS="2",GOMAXPROCS="2")
+            # Plain --room-ptt checks the in-window key on its own.
+            if ptt=="window":env["UNTETHERED_GLOBAL_SHORTCUTS"]="0"
             if not wayland:start_display(stack,d,env,"x11")
             env.update(PULSE_SERVER="unix:"+str(sock),PULSE_SOURCE=f"Mic{i}.monitor",PULSE_SINK=f"Out{i}")
             log=None
@@ -314,7 +337,8 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
             kde=None
             if wayland:
                 from qa_kwin import KWin
-                kde=KWin(stack,d,root,backend,env=env,screencast=True,native_log=log)
+                kde=KWin(stack,d,root,backend,env=env,screencast=ptt!="wayland",native_log=log,
+                         global_shortcuts=ptt=="wayland")
             prefix=link.prefix if reconnect and i==1 else ()
             desks.append(Desktop(stack,root,env,i,kde,prefix=prefix,log=log))
             if log:desks[-1].stats=logs
@@ -334,6 +358,13 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
             original={}
             if ptt:
                 desks[0].click("push-to-talk")
+                if ptt=="wayland":
+                    # Arming push-to-talk binds the portal shortcuts. The
+                    # portal names the app from its registered app ID's
+                    # desktop file, not from the launcher's scope.
+                    offered=desks[0].kde.accept_shortcuts({"untethered","talk","pause","mute","deafen"})
+                    print("KDE's Global Shortcuts Requested dialog named Untethered and offered Push to talk (Pause), "
+                          f"Toggle mute and Toggle deafen; accepted ({len(offered)} words read).",flush=True)
                 for d in desks[1:]:d.audit=[]
             for i,d in enumerate(desks):
                 d.click("join")
@@ -357,7 +388,7 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
             print("Three joined devices, three GCM microphones, one mixed playback stream per client; zero ring or other non-state events.",flush=True)
             if ptt:
                 from qa_room_ptt import check_ptt
-                check_ptt(stack,desks,audio_counts,lambda:publications(3)==tracks)
+                keys=check_ptt(stack,desks,audio_counts,lambda:publications(3)==tracks,None if ptt=="window" else ptt)
             elif layout:
                 from qa_room_layout import check_layout
                 check_layout(stack,desks,users,secret,tracks,publications)
@@ -393,6 +424,9 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
             wait_for("all desktop audio streams released",lambda:audio_counts()==[(0,0)]*3)
             no_ring()
             print("Final leave: 0 active memberships, 0 Untethered audio streams, 0 ring events.",flush=True)
+            if ptt=="wayland":
+                from qa_room_ptt import check_restart
+                check_restart(desks[0],keys,lambda:members()==users[:1],lambda:not members())
         except Exception:
             for d in desks:print("Desktop",d.i+1,"labels:",[w for w,_,_ in d.words()],"PCM amplitudes:",[int(n) for n in d.windows[-1]] if d.windows else [])
             print("Voice roster size:",len(members()),flush=True)

@@ -7429,6 +7429,7 @@ dependencies = [
  "web-sys",
  "web-time",
  "windows-native-keyring-store",
+ "x11rb",
  "zbus-secret-service-keyring-store",
 ]
 

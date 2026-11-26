@@ -422,6 +422,7 @@ impl Capture {
         Self::reader(fd, node, lease, route, quality, size).await
     }
     async fn screen() -> Result<(OwnedFd, u32, Lease, Option<(i32, i32)>)> {
+        crate::app_id::portal_ready().await;
         let proxy = Screencast::new()
             .await
             .map_err(|_| "Screen capture portal unavailable.")?;
@@ -702,6 +703,7 @@ fn negotiated_size(line: &str) -> Option<(i32, i32)> {
     Some((field("width")?, field("height")?))
 }
 pub(super) async fn camera_remote() -> Result<OwnedFd> {
+    crate::app_id::portal_ready().await;
     let portal = Camera::new()
         .await
         .map_err(|_| "Camera portal unavailable.")?;
