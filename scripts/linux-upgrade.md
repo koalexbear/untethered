@@ -1,16 +1,25 @@
 # Test an in-place Linux package upgrade
 
 This acceptance test takes two actual `untethered` **Arch x86-64** package
-archives (older version first). It runs `pacman -U` twice against the same
-temporary root and package database. The executables discover their bundled
-gomuks and the default `$XDG_DATA_HOME/untethered-iced` profile. System
-libraries come from the host; packages, X11 display, home directories,
-accounts, browser data and Synapse are disposable.
+archives (older version first), both on the matrix-sdk engine: `pkgrel` 9
+or later, which bundle no gomuks. It runs `pacman -U` twice against the
+same temporary root and package database. The executables use the default
+`$XDG_DATA_HOME/untethered-iced` profile. System libraries come from the
+host; packages, X11 display, home directories, accounts, browser data and
+Synapse are disposable.
+
+An older package that bundles gomuks is refused: moving from gomuks to the
+matrix-sdk engine takes one new sign-in by design (the sign-in screen
+explains it), so there is no device to carry over.
 
 Build a candidate with the repository's `PKGBUILD` (`makepkg`); retain an
-earlier package from before the upgrade. Use the [native/Element QA
-environment](replies-element.md), plus `cc`, Xlib development headers,
-`pacman`, `vercmp`, and an unprivileged user/network namespace. Example:
+earlier matrix-sdk package from before the upgrade. To try it with only one
+release, build the older commit and the newer one from copies of the
+`PKGBUILD` whose `source` names each commit, and give the newer one a higher
+`pkgrel`. Use the [native/Element QA environment](replies-element.md),
+plus `cc`, Xlib development headers, `pacman`, `vercmp`, the debug client
+(the fixture's `seed()` uses it) and an unprivileged user/network
+namespace. Example:
 
 ```sh
 export ELEMENT_WEB_DIR=/path/to/extracted/element-v1.12.35
@@ -21,34 +30,60 @@ unshare -Urn sh -ec '
 ' sh /path/to/older.pkg.tar.zst /path/to/newer.pkg.tar.zst
 ```
 
-The older GUI signs in, verifies a new Matrix device and decrypts a first
-Element message. The fixture records the device ID using the profile and
-`/account/whoami`. It compares the Ed25519 and Curve25519 public keys in
-the local crypto store with the keys Synapse returns to the other account.
+The older GUI signs in, verifies a new Matrix device with the recovery key
+and decrypts a first Element message. The fixture reads the device ID and
+access token from the profile's `matrix-sdk/session.json` and checks them
+with `/account/whoami`, and records the Ed25519 and Curve25519 public keys
+Synapse returns to the other account. matrix-sdk encrypts its stores with
+the profile's passphrase, so the fixture doesn't read them; instead it
+checks that the crypto store file is the same one (inode) throughout.
 
-The old GUI closes normally. While both receiver processes are stopped,
-Element sends **Amber lighthouse** using the same Megolm session. The test
-checks that this event is encrypted on Synapse, that its key is already
-present on the receiver, and that the event is **absent** from its local
-database before the upgrade. Thus showing the historical message after
-the upgrade requires decrypting ciphertext, rather than rendering a
-previously cached body.
+The old GUI closes normally. While no client of the profile runs, Element
+sends **Amber lighthouse** using the same Megolm session. The test checks
+that this event is encrypted on Synapse. The profile can't have cached it,
+so showing it after the upgrade requires decrypting its ciphertext with the
+retained session.
 
 The package manager must record an **upgrade**, the executable hash must
 change, and the new GUI must open the same profile without sign-in or
-recovery input. Both public keys, the device ID, and the account's device
+recovery input. The public keys, the device ID, and the account's device
 roster must match. The fixture reads the historical plaintext on the new
-GUI and independently checks the event in the local database. It also
-checks for backup downloads and sender key resends during this step.
-Finally Element discards its outbound session and sends **Violet compass**;
-the upgraded receiver must decrypt the new event in a different Megolm
-session. Output contains the disposable public device keys, not tokens,
-recovery secrets or private key material.
+GUI. It also checks for backup downloads and sender key resends during
+this step. Finally Element discards its outbound session and sends
+**Violet compass**; the upgraded receiver must decrypt the new event in a
+different Megolm session, without a login or a new device. Output contains
+the disposable public device keys, not tokens, recovery secrets or private
+key material. Release builds have no QA event log, so the fixture reads
+the window.
 
-## Recorded run: 2026-11-25
+## Recorded run: 2026-11-26
 
-Archived package `0.1.0-2` upgraded to `0.1.0-6` built by `makepkg` from
-`f6d6d55`. The release build passed 36 tests (3 opt-in tests ignored).
+`0.1.0-9` built by `makepkg --nocheck` from `02367e4` (the first package
+without gomuks) upgraded to `0.1.0-10` built the same way from `fb1add0`,
+each from a copy of the `PKGBUILD` naming its commit. The sender was Element
+Web 1.12.35 on loopback Synapse 1.166.0. The old GUI signed in through its
+sign-in card and recovery key, then started once more on the new session:
+builds before `f4ea4e5` show the room selected during sign-in only after a
+restart.
+
+| Value checked before and after | Result on both builds |
+|---|---|
+| `/account/whoami` device ID (from `session.json`) | `GQEBAHGWYI` |
+| Ed25519 signing public key (`/keys/query`) | `tx+bGEFLB1bYlHi/WpthW/Sae4WWB/BrQh/UZd2wSFo` |
+| Curve25519 identity public key (`/keys/query`) | `b4+gyEA2h9lZXsYZcEcIAfExcwYBOzMxkuKMi5VZ/EM` |
+
+Pacman recorded `upgraded untethered (0.1.0-9 -> 0.1.0-10)`; the installed
+GUI's SHA-256 changed (`b4d0a093…` → `94040c68…`) and the crypto store kept
+its inode. The upgraded GUI showed **Amber lighthouse**, sent while the
+profile was closed, with the retained Megolm session (no backup download or
+key resend), and then **Violet compass** in a new session, without a login
+or a new device.
+
+## Recorded run with gomuks: 2026-11-25
+
+Before the matrix-sdk engine (the fixture then also read gomuks's
+database). Archived package `0.1.0-2` upgraded to `0.1.0-6` built by
+`makepkg` from `f6d6d55`. The release build passed 36 tests (3 opt-in tests ignored).
 The sender was Element Web 1.12.35 on loopback Synapse 1.166.0.
 
 | Value checked before and after | Result on both builds |

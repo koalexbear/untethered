@@ -1,21 +1,23 @@
-"""Install and upgrade two real packages against an untouched, disposable XDG profile."""
+"""Install and upgrade two real matrix-sdk packages against an untouched, disposable XDG profile."""
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
 import re
 import shutil
 import socket
-import sqlite3
 import subprocess as sp
-from contextlib import ExitStack, closing
+from contextlib import ExitStack
 from urllib.parse import quote, unquote, urlsplit
 
+from PIL import Image
 from playwright.sync_api import sync_playwright
 from qa_kwin_element import element_server, login_element
 from qa_native_paste import child, isolated_env, start_display, wait_for
 from qa_replies import screen_words
 from qa_upload_cancel import slow_gateway
+from qa_web_login import caption_field
 
 
 def sha(path):
@@ -36,13 +38,17 @@ class Installation:
         self.cmd=["pacman","--config",cfg,"--root",root,"--dbpath",db,"--cachedir",cache,
                   "--hookdir",hooks,"--logfile",self.log,"--noconfirm"]
         self.exe=root/"usr/bin/untethered"
-        self.engine=root/"usr/lib/untethered/gomuks"
+        self.gomuks=root/"usr/lib/untethered/gomuks"
 
     def install(self,pkg):
         # Test root contains only this package; the GUI uses host system libraries.
         sp.run([*self.cmd,"-Udd","--noscriptlet",pkg],check=True,stdout=sp.DEVNULL)
         name,ver=sp.check_output([*self.cmd,"-Q","untethered"],text=True).split()
-        assert name=="untethered" and self.engine.is_file()
+        assert name=="untethered" and self.exe.is_file()
+        if self.gomuks.exists():
+            # Up to pkgrel 8 the client ran a bundled gomuks; moving to the
+            # matrix-sdk engine takes a new sign-in by design.
+            raise SystemExit(f"{pkg.name} bundles gomuks: --linux-upgrade needs two matrix-sdk packages (pkgrel 9 or later)")
         return ver,sha(self.exe)
 
 
@@ -81,32 +87,25 @@ def check_upgrade(tmp,hs,port,backend,seed,http,old_pkg,new_pkg):
         room=alice["room"];api=base+"/rooms/"+quote(room,safe="")
         http("POST",api+"/invite",headers=ah,json={"user_id":bob_id})
         http("POST",api+"/join",headers=bh,json={})
+        # The packaged GUI's default profile, not the fixture's seeded one.
         env=isolated_env(tmp,backend,"x11")
-        for k in ("UNTETHERED_PROFILE","UNTETHERED_BACKEND"):env.pop(k)
+        for k in ("UNTETHERED_PROFILE","UNTETHERED_QA_EVENTS"):env.pop(k)
         profile=Path(env["XDG_DATA_HOME"])/"untethered-iced"
         assert not profile.exists()
-        db=profile/"data/gomuks.db"
-        def sql(query,*args):
-            with closing(sqlite3.connect(db.as_uri()+"?mode=ro",uri=True)) as c:
-                return c.execute(query,args).fetchall()
-        def local(eid):
-            return sql("SELECT type,json_extract(content,'$.session_id'),decrypted_type,json_extract(decrypted,'$.body') "
-                       "FROM event WHERE room_id=? AND event_id=?",room,eid)
-        def has_session(sid):
-            return sql("SELECT count(*) FROM crypto_megolm_inbound_session WHERE room_id=? AND session_id=? "
-                       "AND session IS NOT NULL",room,sid)==[(1,)]
+        session_file=profile/"matrix-sdk/session.json"
+        # matrix-sdk's crypto store: Olm account, Megolm sessions. Its contents
+        # are encrypted with the profile's store passphrase.
+        crypto=profile/"matrix-sdk/store/matrix-sdk-crypto.sqlite3"
         def identity():
-            [(user,device,token)]=sql("SELECT user_id,device_id,access_token FROM account")
-            actual=who({"Authorization":"Bearer "+token})
+            session=json.loads(session_file.read_text())["session"]
+            user,device=session["user_id"],session["device_id"]
+            actual=who({"Authorization":"Bearer "+session["access_token"]})
             assert user==actual["user_id"]==alice_id and device==actual["device_id"]
             devices=http("POST",base+"/keys/query",headers=bh,json={"device_keys":{user:[device]}}).json()
             record=devices["device_keys"][user][device]
             assert record["user_id"]==user and record["device_id"]==device
-            assert sql("SELECT device_id FROM crypto_account")==[(device,)]
             keys={alg:record["keys"][alg+":"+device] for alg in ("ed25519","curve25519")}
             assert all(re.fullmatch(r"[A-Za-z0-9+/]{43}",v) for v in keys.values())
-            assert sql("SELECT signing_key,identity_key FROM crypto_device WHERE user_id=? AND device_id=?",
-                       user,device)==[(keys["ed25519"],keys["curve25519"])]
             return {"device_id":device,**keys}
         start_display(stack,tmp,env,"x11")
         def launch():
@@ -119,11 +118,7 @@ def check_upgrade(tmp,hs,port,backend,seed,http,old_pkg,new_pkg):
             window=wait_for("packaged Untethered window",visible,35)
             sp.run(["xdotool","windowsize",window,"1180","760","windowfocus",window],env=env,check=True)
             assert Path(f"/proc/{proc.pid}/exe").resolve()==pkg.exe
-            def engine_pid():
-                for children in Path(f"/proc/{proc.pid}/task").glob("*/children"):
-                    for pid in children.read_text().split():
-                        if Path(f"/proc/{pid}/exe").resolve()==pkg.engine:return pid
-            return proc,window,wait_for("packaged gomuks child",engine_pid)
+            return proc,window
         def words():
             return screen_words(sp.check_output(["import","-window",win,"png:-"],env=env,timeout=6))
         def point(word):
@@ -141,20 +136,28 @@ def check_upgrade(tmp,hs,port,backend,seed,http,old_pkg,new_pkg):
             return wait_for("cleartext "+body,visible,35)
         def devices():return {d["device_id"] for d in http("GET",base+"/devices",headers=ah).json()["devices"]}
         prior_devices=devices()
-        proc,win,old_engine=launch()
+        proc,win=launch()
         # Sign in and verify on the old installed build itself. Never copy the seed profile.
         click(162,728)
         point("welcome")
-        for y,value in [(333,gateway),(391,alice["username"]),(447,alice["password"])]:
-            click(510,y);enter(value)
+        def image():
+            return Image.open(io.BytesIO(sp.check_output(["import","-window",win,"png:-"],env=env,timeout=6))).convert("RGB")
+        for caption,value in [("HOMESERVER",gateway),("USERNAME",alice["username"]),("PASSWORD",alice["password"])]:
+            click(*wait_for("sign-in "+caption,lambda:caption_field(image(),caption),35));enter(value)
         submit()
-        point("verify")
-        click(*point("passphrase"));enter(alice["key"]);submit()
+        # The recovery key input sits under its RECOVERY KEY caption.
+        click(*wait_for("recovery key field",lambda:caption_field(image(),"RECOVERY"),35));enter(alice["key"]);submit()
+        point("media-proof")
+        # Builds before f4ea4e5 show nothing in the room selected while signing
+        # in until they restart: start the old GUI once more on its session.
+        sp.run([close_window,win],env=env,check=True)
+        assert proc.wait(timeout=12)==0
+        proc,win=launch()
         point("media-proof")
         before=identity()
         roster=devices()
         assert roster==prior_devices|{before["device_id"]} and before["device_id"] not in prior_devices
-        inode=db.stat().st_ino
+        inode=crypto.stat().st_ino
         web=stack.enter_context(element_server(hs));pw=stack.enter_context(sync_playwright())
         browser=pw.chromium.launch(executable_path=os.getenv("CHROMIUM") or shutil.which("chromium"),env=env,
                                    args=["--disable-dev-shm-usage"])
@@ -170,27 +173,26 @@ def check_upgrade(tmp,hs,port,backend,seed,http,old_pkg,new_pkg):
             assert c["ciphertext"] and body not in json.dumps(event)
             return eid,c["session_id"]
         warm,sid=send("Copper orchard");shown("Copper orchard")
-        assert local(warm)==[("m.room.encrypted",sid,"m.room.message","Copper orchard")] and has_session(sid)
         print("Before:",old_ver,old_hash,json.dumps(before),flush=True)
         sp.run([close_window,win],env=env,check=True)
         assert proc.wait(timeout=12)==0
-        wait_for("old engine closed",lambda:not Path(f"/proc/{old_engine}").exists())
         peer_key_sends=[]
         peer.on("request",lambda r:peer_key_sends.append(r.method) if "/sendToDevice/" in unquote(urlsplit(r.url).path) else None)
+        # Sent while no client of this profile runs: it can't be in the
+        # profile's caches, so showing it later means decrypting it then.
         old,same_sid=send("Amber lighthouse")
-        assert same_sid==sid and local(old)==[] and has_session(sid)
+        assert same_sid==sid
         new_ver,new_hash=pkg.install(new_pkg)
         assert int(sp.check_output(["vercmp",new_ver,old_ver]))>0 and new_hash!=old_hash
         upgrade=f"upgraded untethered ({old_ver} -> {new_ver})"
-        assert upgrade in pkg.log.read_text() and db.stat().st_ino==inode and local(old)==[]
-        print("pacman:",upgrade,"; pre-upgrade event",old,"absent from the stopped profile.",flush=True)
+        assert upgrade in pkg.log.read_text() and crypto.stat().st_ino==inode
+        print("pacman:",upgrade,"; pre-upgrade event",old,"sent while the profile was closed.",flush=True)
         paths.clear()
-        proc,win,_=launch()
+        proc,win=launch()
         shown("Amber lighthouse")
         shown("Copper orchard")
         after=identity()
-        assert before==after and devices()==roster and db.stat().st_ino==inode
-        assert local(old)==[("m.room.encrypted",sid,"m.room.message","Amber lighthouse")]
+        assert before==after and devices()==roster and crypto.stat().st_ino==inode
         peer.evaluate("true")  # process queued Playwright request events
         assert not peer_key_sends,"sender re-shared a key before old ciphertext was read"
         assert not any(method=="GET" and "/room_keys/keys" in path for method,path in paths)
@@ -200,6 +202,5 @@ def check_upgrade(tmp,hs,port,backend,seed,http,old_pkg,new_pkg):
         fresh,new_sid=send("Violet compass")
         assert fresh!=old and new_sid!=sid
         shown("Violet compass")
-        assert local(fresh)==[("m.room.encrypted",new_sid,"m.room.message","Violet compass")] and has_session(new_sid)
         assert not any(m=="POST" and p.endswith("/login") for m,p in paths) and devices()==roster
         print("Fresh Element event",fresh,"decrypted as 'Violet compass' in a new Megolm session; zero upgrade logins or added devices.",flush=True)
