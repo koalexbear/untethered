@@ -502,6 +502,17 @@ impl App {
         if self.people {
             self.read_directory(None);
         }
+        if self.logged_in {
+            self.load_selected();
+        } else if let Some(r) = self.demo.list.get_mut(&id) {
+            r.unread = false;
+        }
+    }
+    /// Ask for the selected room's history and members, once per session,
+    /// when this device can read them. A room selected before the device was
+    /// verified (right after signing in) loads once it is.
+    fn load_selected(&mut self) {
+        let id = self.selected.clone();
         if self.logged_in && self.verified && !id.is_empty() && self.loaded.insert(id.clone()) {
             self.page();
             self.rpc(
@@ -509,10 +520,6 @@ impl App {
                 json!({"room_id":id,"include_members":true}),
                 Request::Members(id),
             );
-        } else if !self.logged_in
-            && let Some(r) = self.demo.list.get_mut(&id)
-        {
-            r.unread = false;
         }
     }
     fn reconcile(&mut self) {

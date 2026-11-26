@@ -773,6 +773,34 @@ mod tests {
         assert!(app.verified && app.recovery.is_empty());
     }
 
+    /// After a fresh sign-in the room list arrives before the recovery key
+    /// verifies the device; the room selected then loads once it is verified.
+    #[test]
+    fn room_selected_before_verification_loads_after_it() {
+        let (mut app, rx) = app();
+        app.engine_event(signed_in(false));
+        app.engine_event(Event::Rooms(RoomList {
+            rooms: vec![RoomSummary {
+                id: "!r:example".into(),
+                name: "general".into(),
+                encrypted: true,
+                ..Default::default()
+            }],
+            children: Default::default(),
+        }));
+        assert_eq!(app.selected, "!r:example");
+        let early: Vec<Command> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        assert!(!early.iter().any(|c| matches!(c, Command::Paginate { .. })));
+        app.engine_event(signed_in(true));
+        let later: Vec<Command> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        assert!(
+            later
+                .iter()
+                .any(|c| matches!(c, Command::Paginate { room, .. } if room == "!r:example")),
+            "the selected room's history was requested"
+        );
+    }
+
     /// A restored session's account data comes from the engine's store before
     /// the first account state, which waits on the homeserver.
     #[cfg(any(target_os = "linux", target_arch = "wasm32"))]

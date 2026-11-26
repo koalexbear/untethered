@@ -86,6 +86,9 @@ impl App {
         }
         self.status.clear();
         self.reconcile();
+        if self.logged_in && self.verified && !was_verified {
+            self.load_selected();
+        }
     }
 }
 
