@@ -1373,7 +1373,12 @@ impl App {
                 border: Border::default().rounded(4),
                 ..Default::default()
             });
-        let link = self.menu_area(link, crate::context_menu::Target::Channel(id.clone()), None);
+        let link = self.menu_area(
+            link,
+            crate::context_menu::Target::Channel(id.clone()),
+            String::new(),
+            None,
+        );
         row![container(pill(if unread { 8. } else { 0. })).width(8), link]
             .align_y(Center)
             .into()
@@ -2706,9 +2711,12 @@ impl App {
                 block = block.push(self.reply_reference(r, history, quoted));
             }
             block = block.push(if group {
+                // The author's picture and name are separate places to click.
+                let place = p.event_id.clone().unwrap_or_else(|| index.to_string());
                 let head = row![
                     self.user_area(
                         &p.sender,
+                        format!("name {place}"),
                         text(name)
                             .size(16)
                             .font(BOLD)
@@ -2720,9 +2728,11 @@ impl App {
                 .spacing(8)
                 .align_y(Center);
                 row![
-                    container(
-                        self.user_area(&p.sender, face(name, self.user_picture(r, &p.sender), 40.))
-                    )
+                    container(self.user_area(
+                        &p.sender,
+                        format!("picture {place}"),
+                        face(name, self.user_picture(r, &p.sender), 40.)
+                    ))
                     .padding(Padding {
                         top: 2.,
                         ..Padding::ZERO

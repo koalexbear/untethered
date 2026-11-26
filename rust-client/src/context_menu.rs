@@ -33,6 +33,10 @@ pub enum Target {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Open {
     pub target: Target,
+    /// Which of the places showing `target` was clicked, as the view names
+    /// them: a person has a picture and a name on each of their messages and
+    /// a row in the member list, and only the clicked one draws the menu.
+    pub place: String,
     /// Where it opens, from the top-left corner of what was clicked. None
     /// anchors it to that area instead (Shift+F10 with nothing hovered).
     pub at: Option<Vector>,
@@ -65,6 +69,7 @@ pub enum Event {
     /// Right click, or Shift+F10 / the Menu key, over a menu area.
     Open {
         target: Target,
+        place: String,
         at: Option<Vector>,
         keyboard: bool,
     },
@@ -73,8 +78,16 @@ pub enum Event {
     Close,
     /// An entry was chosen: close the menu, then do what it says.
     Pick(Box<Msg>),
-    // The entries with no counterpart elsewhere in the app.
+    // The entries with no counterpart elsewhere in the app. They name what
+    // to copy, and read it when chosen: the toolbar builds every row's list.
     Copy(String),
+    /// A message's text, as it reads when chosen.
+    CopyText(String),
+    /// A matrix.to link to a room or one of its messages.
+    CopyLink {
+        room: String,
+        event: Option<String>,
+    },
     Profile {
         room: String,
         user: String,
@@ -90,6 +103,9 @@ pub enum Event {
     /// Ask before leaving a room.
     Leave(String),
     ConfirmLeave,
+    /// Mark a room read whose timeline isn't open, so its newest event is
+    /// unknown here: the engine finds it among what sync delivered.
+    MarkLatestRead(String),
 }
 
 /// One entry. Its label, icon and position come from the view; its order in
@@ -277,7 +293,7 @@ impl App {
         if p.reactable && !p.text().trim().is_empty() {
             items.push(item(
                 Entry::CopyText,
-                Some(act(Event::Copy(p.text().to_owned()))),
+                Some(act(Event::CopyText(id.clone()))),
             ));
         }
         // Receipts never move back in Matrix, so this marks the room unread
@@ -289,7 +305,10 @@ impl App {
         ));
         items.push(item(
             Entry::CopyMessageLink,
-            Some(act(Event::Copy(matrix_to(room, Some(id), &self.matrix_id)))),
+            Some(act(Event::CopyLink {
+                room: room.to_owned(),
+                event: Some(id.clone()),
+            })),
         ));
         if self.verified && p.report_id(&self.matrix_id).is_some() {
             items.push(item(
@@ -366,10 +385,10 @@ impl App {
         let ready = self.verified && self.connected;
         items.push(item(
             Entry::MarkRead,
-            r.read
-                .target()
-                .filter(|_| ready && r.unread && !self.writing_read(room))
-                .map(|target| Msg::MarkRoom(room.to_owned(), Some(target.to_owned()))),
+            (ready && r.unread && !self.writing_read(room)).then(|| match r.read.target() {
+                Some(target) => Msg::MarkRoom(room.to_owned(), Some(target.to_owned())),
+                None => act(Event::MarkLatestRead(room.to_owned())),
+            }),
         ));
         if r.dm
             && let Some(peer) = self.dm_peer(r)
@@ -391,7 +410,10 @@ impl App {
         ));
         items.push(item(
             Entry::CopyLink,
-            Some(act(Event::Copy(matrix_to(room, None, &self.matrix_id)))),
+            Some(act(Event::CopyLink {
+                room: room.to_owned(),
+                event: None,
+            })),
         ));
         items.push(item(
             if r.dm {
@@ -464,6 +486,7 @@ impl App {
         match e {
             Event::Open {
                 target,
+                place,
                 at,
                 keyboard,
             } => {
@@ -476,6 +499,7 @@ impl App {
                     self.context_menu.serial += 1;
                     self.context_menu.open = Some(Open {
                         target,
+                        place,
                         at,
                         keyboard,
                         serial: self.context_menu.serial,
@@ -490,6 +514,7 @@ impl App {
                 {
                     return self.context_menu_event(Event::Open {
                         target,
+                        place: String::new(),
                         at: None,
                         keyboard: true,
                     });
@@ -501,6 +526,14 @@ impl App {
                 return self.update(*msg);
             }
             Event::Copy(text) => return copy(text),
+            Event::CopyText(event) => {
+                if let Some(p) = self.visible_post(&event) {
+                    return copy(p.text().to_owned());
+                }
+            }
+            Event::CopyLink { room, event } => {
+                return copy(matrix_to(&room, event.as_deref(), &self.matrix_id));
+            }
             Event::Profile { room, user } => return self.show_profile(room, user),
             Event::Mention { room, user } => return self.insert_mention(&room, &user),
             Event::Direct(room) if self.live.list.contains_key(&room) => {
@@ -526,6 +559,24 @@ impl App {
                 if self.live.list.contains_key(&room) && !self.leaving_room(&room) {
                     self.context_menu.open = None;
                     self.context_menu.leaving = Some(room);
+                }
+            }
+            Event::MarkLatestRead(room) => {
+                if self.verified
+                    && self.live.list.get(&room).is_some_and(|r| r.unread)
+                    && !self.writing_read(&room)
+                {
+                    let public = self.read_sharing.public && !self.changing_read_sharing();
+                    let target = room.clone();
+                    // An empty event: the newest one, which the engine looks up.
+                    self.command(
+                        move |id| crate::engine::Command::MarkRoomRead {
+                            id,
+                            room: target,
+                            public,
+                        },
+                        Request::ReadState(room, Some(String::new())),
+                    );
                 }
             }
             Event::ConfirmLeave => {
@@ -826,6 +877,17 @@ mod tests {
         };
         assert!(mark(&a).is_none());
         a.live.list.get_mut(ROOM).unwrap().unread = true;
+        // A room never opened here has no known newest event; the engine finds it.
+        let mut side = Room {
+            unread: true,
+            ..Room::default()
+        };
+        side.read.set_latest(None);
+        a.live.list.insert("!side:h".into(), side);
+        assert!(matches!(
+            a.channel_items("!side:h")[0].msg,
+            Some(Msg::ContextMenu(Event::MarkLatestRead(ref room))) if room == "!side:h"
+        ));
         assert!(matches!(
             mark(&a),
             Some(Msg::MarkRoom(room, Some(event))) if room == ROOM && event == "$m2"
@@ -871,6 +933,7 @@ mod tests {
         };
         let _ = a.context_menu_event(Event::Open {
             target: target.clone(),
+            place: String::new(),
             at: Some(Vector::new(4., 4.)),
             keyboard: false,
         });

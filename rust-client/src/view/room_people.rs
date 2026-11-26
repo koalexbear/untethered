@@ -241,7 +241,7 @@ pub(super) fn view(app: &App) -> El<'_> {
                 border: Border::default().rounded(4),
                 ..Default::default()
             });
-            list = list.push(app.user_area(id, entry));
+            list = list.push(app.user_area(id, "member".into(), entry));
         }
     }
     if total == 0 && !busy {

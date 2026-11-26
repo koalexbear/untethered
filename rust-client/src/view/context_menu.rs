@@ -27,19 +27,22 @@ const MARGIN: f32 = 8.;
 const INSET: f32 = 16.;
 
 impl App {
-    /// `content`, with a right-click menu about `target`. `highlight` fills
-    /// the area while its menu is open, so the message it's about stays marked.
+    /// `content`, with a right-click menu about `target`. `place` tells it
+    /// apart from other places showing the same target (see `Open::place`).
+    /// `highlight` fills the area while its menu is open, so the message
+    /// it's about stays marked.
     pub(super) fn menu_area<'a>(
         &'a self,
         content: impl Into<El<'a>>,
         target: Target,
+        place: String,
         highlight: Option<Color>,
     ) -> El<'a> {
         let popup = self
             .context_menu
             .open
             .as_ref()
-            .filter(|open| open.target == target)
+            .filter(|open| open.target == target && open.place == place)
             .and_then(|open| {
                 let items = self.menu_items(&target);
                 (!items.is_empty()).then(|| Popup::new(open.clone(), items))
@@ -47,6 +50,7 @@ impl App {
         Element::new(Area {
             content: content.into(),
             target,
+            place,
             popup,
             highlight,
         })
@@ -65,20 +69,28 @@ impl App {
                     room: self.selected.clone(),
                     event: event.clone(),
                 },
+                String::new(),
                 Some(ROW_HOVER),
             ),
             None => content.into(),
         }
     }
 
-    /// A person (their picture or name) as the open room shows them.
-    pub(super) fn user_area<'a>(&'a self, user: &str, content: impl Into<El<'a>>) -> El<'a> {
+    /// A person as the open room shows them, at `place`: their picture or
+    /// name on a given message, or their member list row.
+    pub(super) fn user_area<'a>(
+        &'a self,
+        user: &str,
+        place: String,
+        content: impl Into<El<'a>>,
+    ) -> El<'a> {
         self.menu_area(
             content,
             Target::User {
                 room: self.selected.clone(),
                 user: user.to_owned(),
             },
+            place,
             None,
         )
     }
@@ -253,6 +265,7 @@ impl Popup<'_> {
 struct Area<'a> {
     content: El<'a>,
     target: Target,
+    place: String,
     popup: Option<Popup<'a>>,
     highlight: Option<Color>,
 }
@@ -269,6 +282,7 @@ impl Area<'_> {
     fn open(&self, at: Vector, keyboard: bool) -> Msg {
         Msg::ContextMenu(Menu::Open {
             target: self.target.clone(),
+            place: self.place.clone(),
             at: Some(at),
             keyboard,
         })
@@ -496,10 +510,11 @@ impl Floating<'_, '_> {
             .into_iter()
             .flat_map(|list| list.children())
     }
-    fn row_at(&self, menu: Layout<'_>, cursor: mouse::Cursor) -> Option<usize> {
-        Self::rows(menu)
-            .position(|row| cursor.is_over(row.bounds()))
-            .filter(|i| self.rows.get(*i).is_some_and(Option::is_some))
+    /// The row under the pointer: `Some(None)` over a rule or a disabled
+    /// entry, None between rows, on the padding or outside the menu.
+    fn row_at(&self, menu: Layout<'_>, cursor: mouse::Cursor) -> Option<Option<usize>> {
+        let i = Self::rows(menu).position(|row| cursor.is_over(row.bounds()))?;
+        Some(self.rows.get(i).is_some_and(Option::is_some).then_some(i))
     }
     /// Keyboard focus looks like hover: the rows see the pointer over the
     /// focused one. The pointer moving onto a row focuses that row.
@@ -577,9 +592,13 @@ impl overlay::Overlay<Msg, Theme, Renderer> for Floating<'_, '_> {
                 shell.capture_event();
                 return;
             }
+            // Only moving onto a row moves the highlight. A keyboard-opened
+            // menu leaves the pointer on its corner, and a nudge there or
+            // outside the menu mustn't take the keyboard's place away.
             Event::Mouse(mouse::Event::CursorMoved { .. }) => {
-                let hovered = self.row_at(menu, cursor);
-                if *self.focus != hovered {
+                if let Some(hovered) = self.row_at(menu, cursor)
+                    && *self.focus != hovered
+                {
                     *self.focus = hovered;
                     shell.request_redraw();
                 }

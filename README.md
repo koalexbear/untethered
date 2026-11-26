@@ -76,7 +76,8 @@ a reason. Right-click a channel or DM in the sidebar for **Mark as Read**,
 **Notification Settings**, **Copy Link** and **Leave**, which asks first.
 Shift+F10 or the Menu key opens the menu for whatever is under the pointer,
 or the newest message; arrow keys and Enter choose, Escape or a click
-elsewhere closes it. Deleting messages comes with redaction support.
+elsewhere closes it. There's no **Delete** yet: it comes with message
+redaction.
 
 **Replies:** Hover a message, click **Reply**, type your response, and send.
 The bar above the composer shows who you’re replying to; its **×** (Cancel
