@@ -103,8 +103,13 @@ def check_room_alerts(tmp,hs,page,room,native,hdr,http,desk,locate,click,restart
                 if all(any(abs(yy-y)<5 for _,yy in words(ws,other)) for other in ("account","all","mute")):return x,y
         click(locate("room setting: "+w,find))
     def setting(w):
-        return locate("active room setting: "+w,lambda ws:any(
-            any(abs(yy-y)<5 for _,yy in words(ws,w)) for _,y in words(ws,"room")))
+        # The panel shows "Saving…" until the homeserver confirms the rule.
+        def active():
+            ws=ui.words()
+            return any(any(abs(yy-y)<5 for _,yy in words(ws,w)) for _,y in words(ws,"room"))
+        try:return wait_for("active room setting: "+w,active,30)
+        except RuntimeError:
+            print("Client visible words:",[w for w,_,_ in ui.words()],flush=True);raise
     def rules():
         return {r["rule_id"]:r for r in http("GET",hs+"/_matrix/client/v3/pushrules/",headers=hdr).json()["global"]["room"]}
     panel();setting("default");option("all");setting("all")
