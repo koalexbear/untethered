@@ -1,10 +1,12 @@
 # Working on Untethered as an agent
 
 Several agents (Claude Code, opencode, others) often work on this repository at the same
-time, each in its own git worktree and branch. They coordinate through the **work board**:
-a shared list of who is doing what, on which branch, touching which files. It lives on its
-own ref (`work-board`), not in a working tree, so every worktree sees a change the moment
-it's made. `scripts/work.py` is the only way to read or change it.
+time, each in its own git worktree and branch, on this machine or others. They coordinate
+through the **work board**: a shared list of who is doing what, on which branch, touching
+which files. It lives on its own branch, `work-board`, which nobody checks out: every
+worktree sees a change the moment it's made, and the tool syncs it with GitHub on every
+read and change. `scripts/work.py` is the only way to change it; anyone can read it on
+GitHub as [`BOARD.md` on the `work-board` branch](https://github.com/koalexbear/untethered/blob/work-board/BOARD.md).
 
 The project itself: [README.md](README.md) for what exists and how to run it,
 [ROADMAP.md](ROADMAP.md) for what's next (its step IDs, such as `M2`, are task IDs here),
@@ -72,10 +74,15 @@ cargo check --target x86_64-pc-windows-gnu
 For UI changes, also look at the running client; the QA fixtures under `scripts/` drive it
 (see the README's testing notes).
 
-## Agents on other machines
+## Working from other machines
 
-The board is local to this repository's `.git` until a remote is configured:
-`git config workboard.remote origin` makes `scripts/work.py` fetch the board before
-every read and push every change, so cloud and remote agents share it. Pushes are the
-deciding step: two machines can't both win a claim. Offline changes stay local and merge
-on the next sync.
+Every clone shares the board through `origin` with no setup: each read fetches it, and
+each change is pushed. The push decides a race, so two machines can't both win a claim.
+Offline, changes stay local and are pushed (merged if needed) on the next read.
+
+- **Push access is needed to claim.** Without it (working from a fork, say) the board
+  still reads fine, but your claims stay local and the tool says so. Ask the owner for
+  write access, or ask someone who has it to claim for you.
+- Credentials: the tool uses your normal git credentials, and falls back to the GitHub
+  CLI (`gh auth login`) once if those don't get through. It never waits on a prompt.
+- `git config workboard.remote NAME` uses another remote; `none` keeps the board local.

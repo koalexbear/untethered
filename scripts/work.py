@@ -4,9 +4,11 @@
 The board lives on its own git ref (`refs/heads/work-board`) that nobody checks out, so
 every worktree of this repository sees a claim the moment it is made, without merging.
 Each change is one commit, written with git plumbing and published with a
-compare-and-swap `update-ref`: two agents can't both win the same claim. With
-`git config workboard.remote origin` the board is also fetched from and pushed to that
-remote, for agents on other machines or in the cloud.
+compare-and-swap `update-ref`: two agents can't both win the same claim. The board is
+also shared through GitHub: every read fetches the `work-board` branch from `origin` and
+every change is pushed there, so people and agents on other machines see the same board.
+Without push access (a fork, say) claims stay local and the tool says so. Use another
+remote with `git config workboard.remote NAME`, or keep the board local with `none`.
 
     scripts/work.py                      # the board (same as `list`)
     scripts/work.py claim M2 --title "Composer autocomplete" --paths rust-client/src/view.rs
@@ -33,6 +35,8 @@ BRANCH = "work-board"
 # A claim nobody touched for this long may be stale; taking it over needs the user's OK.
 STALE_HOURS = 24
 STATUSES = ("working", "blocked", "review", "paused")
+# The remote every clone shares the board through, unless `workboard.remote` says otherwise.
+DEFAULT_REMOTE = "origin"
 
 
 def git(*args, input=None, check=True):
@@ -86,34 +90,60 @@ def load(sha):
 
 
 def remote():
-    return git("config", "--get", "workboard.remote", check=False)
+    name = git("config", "--get", "workboard.remote", check=False) or DEFAULT_REMOTE
+    if name.lower() in ("none", "off", "local"):
+        return None
+    return name if git("remote", "get-url", name, check=False) else None
 
 
-def push_args():
-    # This checkout's https remote authenticates through GitHub's CLI when it is there.
-    return ["-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential"] if shutil.which("gh") else []
+AUTH_FAILED = ("Authentication failed", "could not read Username", "terminal prompts disabled",
+               "403", "Permission denied", "denied to")
+
+
+def network(*args, timeout):
+    """Run a fetch or push without ever waiting on a password prompt. If the user's own
+    credentials don't get through, try GitHub's CLI once (this checkout's https remote
+    authenticates that way); nobody's credential setup is overridden otherwise."""
+    env = dict(os.environ, GIT_TERMINAL_PROMPT="0", GCM_INTERACTIVE="never")
+
+    def run(extra):
+        return subprocess.run(["git", *extra, *args], capture_output=True, text=True,
+                              timeout=timeout, env=env)
+    try:
+        r = run([])
+        if r.returncode and shutil.which("gh") and any(w in r.stderr for w in AUTH_FAILED):
+            r = run(["-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential"])
+        return r
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(args, 1, "", "timed out")
 
 
 def sync():
-    """Bring the local board up to date with the remote's, merging diverged boards."""
+    """Bring the local board up to date with the remote's, merging diverged boards, and
+    push changes that were made while offline (or by an older copy of this tool)."""
     name = remote()
     if not name:
         return
-    r = subprocess.run(["git", *push_args(), "fetch", "-q", name, f"+{REF}:refs/work-board/{name}"],
-                       capture_output=True, text=True, timeout=30)
-    if r.returncode:
-        if "couldn't find remote ref" not in r.stderr:
-            print(f"(work board: couldn't fetch from {name}; showing the local board)", file=sys.stderr)
+    r = network("fetch", "-q", name, f"+{REF}:refs/work-board/{name}", timeout=15)
+    missing = r.returncode != 0 and "couldn't find remote ref" in r.stderr
+    if r.returncode and not missing:
+        print(f"(work board: couldn't fetch from {name}: {reason(r)}; showing the local board)",
+              file=sys.stderr)
         return
-    theirs = git("rev-parse", "-q", "--verify", f"refs/work-board/{name}", check=False)
+    theirs = None if missing else git("rev-parse", "-q", "--verify", f"refs/work-board/{name}", check=False)
     ours = git("rev-parse", "-q", "--verify", REF, check=False)
-    if not theirs or theirs == ours:
-        return
-    if not ours or git("merge-base", "--is-ancestor", ours, theirs, check=False) is not None:
-        git("update-ref", REF, theirs, *( [ours] if ours else [] ))
-    elif git("merge-base", "--is-ancestor", theirs, ours, check=False) is None:
-        merged = merge(load(ours), load(theirs))
-        commit(merged, [ours, theirs], "Merge the remote work board", expect=ours)
+    if theirs and theirs != ours:
+        if not ours or git("merge-base", "--is-ancestor", ours, theirs, check=False) is not None:
+            if advance(theirs, ours):
+                ours = theirs
+        elif git("merge-base", "--is-ancestor", theirs, ours, check=False) is None:
+            merged = make_commit(merge(load(ours), load(theirs)), [ours, theirs],
+                                 "Merge the remote work board")
+            if advance(merged, ours):
+                ours = merged
+    if ours and ours != theirs:
+        # Local changes the remote hasn't seen; a push someone beat us to waits for next time.
+        publish(ours)
 
 
 def merge(a, b):
@@ -196,15 +226,25 @@ def publish(sha):
     name = remote()
     if not name:
         return "local"
-    r = subprocess.run(["git", *push_args(), "push", "-q", name, f"{sha}:{REF}"],
-                       capture_output=True, text=True, timeout=60)
+    r = network("push", "-q", name, f"{sha}:{REF}", timeout=60)
     if r.returncode == 0:
         return "ok"
-    if any(w in r.stderr for w in ("rejected", "non-fast-forward", "fetch first")):
+    # Only a fast-forward rejection means another agent pushed first; anything else the
+    # remote refuses (permissions, hooks, branch rules) won't change by retrying.
+    if any(w in r.stderr for w in ("non-fast-forward", "fetch first", "stale info")):
         return "moved"
-    first = (r.stderr.strip().splitlines() or ["unknown error"])[-1]
-    print(f"(work board saved locally; couldn't reach {name}: {first[:160]})", file=sys.stderr)
+    if "remote rejected" in r.stderr or any(w in r.stderr for w in AUTH_FAILED):
+        print(f"(work board saved locally: {name} won't take the push (no write access?). Others "
+              "won't see this change until someone with access syncs; see AGENTS.md.)", file=sys.stderr)
+    else:
+        print(f"(work board saved locally; couldn't reach {name}: {reason(r)})", file=sys.stderr)
     return "local"
+
+
+def reason(r):
+    """The line of git's complaint worth showing."""
+    lines = [l.strip() for l in r.stderr.splitlines() if l.strip()]
+    return next((l for l in lines if l.startswith(("fatal:", "error:"))), lines[0] if lines else "unknown error")[:160]
 
 
 # --- paths -------------------------------------------------------------------
