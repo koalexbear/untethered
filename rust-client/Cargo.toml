@@ -20,6 +20,8 @@ serde = { version = "1", features = ["derive"] }
 mime = "0.3"
 # Clocks that also work in browsers (std::time::Instant panics on wasm32).
 web-time = "1"
+# Emoji shortcodes for composer autocomplete (emoji.rs); matrix-sdk-ui uses it too.
+emojis = "0.9"
 # What matrix-sdk doesn't re-export: CollectStrategy for Olm-encrypted call
 # keys (engine/calls.rs) and the attachment encryptor, for uploads over the
 # browser's XHR (engine/media.rs).

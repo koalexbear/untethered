@@ -162,8 +162,20 @@ Press Enter or **save edit** to update it in place; **cancel** or Escape discard
 the change. Editing leaves your unsent composer draft alone. An edited reply
 keeps its link to the original.
 
-**Reactions:** Hover a message and click **Add Reaction** to choose a quick reaction
-or enter your own emoji or text. Click an existing reaction to add yours;
+**Mentions, channels and emoji:** In the composer, a reply or an edit, type
+`@` to list the room's members, `#` to list channels and `:` plus two letters
+of a shortcode (`:tad`) to list emoji. Typing narrows the list; **↑** and **↓**
+move, **Tab** or **Enter** inserts, a click inserts that row and **Escape**
+closes the list. A finished `:shortcode:` turns into its emoji. A member you
+pick is sent as a proper Matrix mention: a pill link in the formatted message
+and their ID in `m.mentions`, so Element highlights the message for them and
+it lands in their mentions inbox. Typing a name without picking it mentions
+nobody. A channel becomes a `matrix.to` room link. The smiley button beside
+**Send** opens the emoji picker and inserts at the cursor. [Element
+test](scripts/replies-element.md#composer-autocomplete).
+
+**Reactions:** Hover a message and click **Add Reaction** to choose a quick reaction,
+search emoji by shortcode, or enter your own emoji or text. Click an existing reaction to add yours;
 click a highlighted reaction to remove only yours. Reactions stay on the
 same message when its text is edited. In encrypted rooms, Untethered and Element
 use standard `m.reaction` events: the reaction key and target ID are visible

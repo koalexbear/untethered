@@ -16,6 +16,7 @@ pub mod app;
 mod browser;
 #[cfg(target_os = "linux")]
 mod calls;
+mod compose;
 #[cfg(not(target_arch = "wasm32"))]
 mod keyring;
 #[cfg(test)]
@@ -83,6 +84,8 @@ pub enum Command {
         room: String,
         body: String,
         reply_to: Option<String>,
+        /// Mentions and room links picked in the composer (pills.rs).
+        pills: Vec<crate::pills::Pill>,
     },
     /// Ask this account's other devices to verify this one by comparing emoji.
     VerifyDevice {
@@ -149,6 +152,7 @@ pub enum Command {
         room: String,
         event: String,
         body: String,
+        pills: Vec<crate::pills::Pill>,
     },
     Report {
         id: i64,
@@ -910,13 +914,14 @@ impl Engine {
                 room,
                 body,
                 reply_to,
+                pills,
             } => {
                 let Some(live) = &self.live else {
                     return self.done(id, Err(Failure::Unavailable)).await;
                 };
                 let (timelines, events) = (live.timelines.clone(), self.events.clone());
                 rt::spawn(async move {
-                    let result = timelines.send(&room, body, reply_to).await;
+                    let result = timelines.send(&room, body, &pills, reply_to).await;
                     let _ = events.send(Event::Done { id, result }).await;
                 });
             }
@@ -1044,9 +1049,10 @@ impl Engine {
                 room,
                 event,
                 body,
+                pills,
             } => {
                 self.job(id, move |_, timelines, _| async move {
-                    timelines.edit(&room, &event, body).await
+                    timelines.edit(&room, &event, body, &pills).await
                 })
                 .await
             }

@@ -22,7 +22,7 @@ def screen_words(raw):
     return [(w.lower().strip(".,:|()"),x,y) for w,x,y in read(im)]
 
 
-def test_replies(tmp,hs,root,backend,seed,http,port,*,reactions=False,room_search=False,alerts=False,permissions=False,ban=False,kick=False,report=False,client_web=None,mentions=False,peer_hs=None,spaces=False,setup=False):
+def test_replies(tmp,hs,root,backend,seed,http,port,*,reactions=False,room_search=False,alerts=False,permissions=False,ban=False,kick=False,report=False,client_web=None,mentions=False,peer_hs=None,spaces=False,setup=False,composer=False):
     paths=[]
     def observe(method,path):
         if room_search or method=="GET" and "/context/" in path or setup and method=="POST" and path.endswith("/createRoom"):paths.append(unquote(path))
@@ -52,6 +52,10 @@ def test_replies(tmp,hs,root,backend,seed,http,port,*,reactions=False,room_searc
             http("POST",api+"/invite",headers=hdr,json={"user_id":uid})
         member_api=(peer_hs or hs)+"/_matrix/client/v3/rooms/"+quote(room,safe="")
         if not report:http("POST",member_api+"/join",headers=bh,json={})
+        if composer:
+            # The native client types @mi + Tab for Element's account.
+            http("PUT",(peer_hs or hs)+"/_matrix/client/v3/profile/"+quote(uid,safe="")+"/displayname",
+                 headers=bh,json={"displayname":"Mira"})
         web=stack.enter_context(element_server(peer_hs or hs,server_name=uid.split(":",1)[1]));pw=stack.enter_context(sync_playwright())
         flags=["--enable-unsafe-swiftshader","--ignore-gpu-blocklist"] if client_web else []
         browser=pw.chromium.launch(executable_path=os.environ.get("CHROMIUM") or shutil.which("chromium"),
@@ -154,6 +158,10 @@ def test_replies(tmp,hs,root,backend,seed,http,port,*,reactions=False,room_searc
                 desktop.focus(desktop.other)
             check_spaces(hs,page,me,hdr,http,room,words,space_click,foreground,
                 background,restart,native_sender(tmp,hs,page,hdr,http),desktop,"Untethered",ui=ui)
+            return
+        if composer:
+            from qa_composer_mentions import check_composer
+            check_composer(page,room,uid,click,x,locate,ui,capture,messages)
             return
         if mentions:
             from qa_mentions_inbox import check_inbox
