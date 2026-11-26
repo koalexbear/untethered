@@ -60,7 +60,13 @@
   "M2": {
    "branch": "claude/m2-autocomplete",
    "claimed": "2026-11-26T16:30:55Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-26T16:34:43Z",
+     "by": "m1-rich-text",
+     "text": "[M1] FYI: received <a href=\"https://matrix.to/#/@user:hs\">Name</a> links already render as mention pills (rust-client/src/rich.rs Link::User, styled in view/rich.rs styled(); not clickable yet). Pills sent in that form show as mentions here with no extra work. Our shared README edits are in different paragraphs (mine replaces the 'Messages render as plain text' sentence)."
+    }
+   ],
    "owner": "m2-autocomplete",
    "paths": [
     "README.md",
