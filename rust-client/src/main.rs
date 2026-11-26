@@ -5,6 +5,7 @@
 mod account;
 #[cfg(target_os = "linux")]
 mod app_id;
+mod autocomplete;
 mod avatars;
 mod backend;
 #[cfg(target_arch = "wasm32")]
@@ -15,6 +16,7 @@ mod community;
 #[cfg(target_os = "linux")]
 mod desktop_call;
 mod edits;
+mod emoji;
 mod engine;
 #[cfg(not(target_arch = "wasm32"))]
 mod fonts;
@@ -31,6 +33,7 @@ mod notifications;
 #[cfg(not(target_arch = "wasm32"))]
 mod paste;
 mod permissions;
+mod pills;
 #[cfg(target_os = "linux")]
 mod player;
 mod preview;
@@ -199,6 +202,8 @@ enum Msg {
     MoreMentions,
     MentionHit(String, String),
     Draft(text_editor::Action),
+    /// Composer autocomplete and the emoji button (autocomplete.rs).
+    Autocomplete(autocomplete::Input),
     Send,
     Reply(String),
     Report(String, String),
@@ -385,6 +390,7 @@ struct App {
     reporting: Option<reports::Draft>,
     reaction_picker: Option<reactions::Picker>,
     editor: text_editor::Content,
+    completion: autocomplete::State,
     loaded: BTreeSet<String>,
     connected: bool,
     logged_in: bool,
@@ -470,6 +476,7 @@ impl App {
             reporting: None,
             reaction_picker: None,
             editor: text_editor::Content::new(),
+            completion: Default::default(),
             loaded: Default::default(),
             connected: false,
             logged_in: false,
@@ -1446,6 +1453,8 @@ impl App {
                     return self.setup_input(community::Input::Close);
                 } else if self.account && self.logged_in && self.verified {
                     self.account = false;
+                } else {
+                    self.completion.picker = None;
                 }
             }
             Msg::Collapse(key) => {
@@ -1492,7 +1501,8 @@ impl App {
                 self.engine_verify();
                 self.recovery.clear();
             }
-            Msg::Draft(a) => self.editor.perform(a),
+            Msg::Draft(a) => self.draft(a),
+            Msg::Autocomplete(input) => return self.autocomplete(input),
             Msg::Permissions => {
                 if self.permission_panel {
                     self.leave_permission_panel();
@@ -1566,7 +1576,9 @@ impl App {
                 if let Some(d) = &mut self.editing
                     && d.pending.is_none()
                 {
+                    let typed = autocomplete::typed(&a);
                     d.input.perform(a);
+                    self.edited(autocomplete::Field::Edit, typed);
                 }
             }
             Msg::SaveEdit => self.save_edit(),

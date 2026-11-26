@@ -1,14 +1,12 @@
-use super::{
-    App, BLURPLE, BODY, CHANNEL, El, Icon, LINE, Msg, SIDE, TEXT, icons, input_style, with_tip,
-};
+use super::{App, BLURPLE, BODY, CHANNEL, El, Icon, Msg, SIDE, TEXT, icons, input_style, with_tip};
 use crate::{
-    reactions::{Chip, QUICK, Toggle, label},
+    reactions::{Chip, Toggle, label},
     rooms::Post,
 };
 use iced::{
     Alignment::Center,
     Border, Color, color,
-    widget::{Column, Row, button, container, row, text, text_input, tooltip},
+    widget::{Column, Row, button, row, text, text_input, tooltip},
 };
 
 /// Reaction pills, like Discord's: emoji and count, outlined in blurple when
@@ -92,79 +90,44 @@ pub(super) fn view<'a>(app: &'a App, post: &Post) -> Option<El<'a>> {
         bar = bar.push(chips.wrap());
     }
     if let Some(p) = picker {
-        let mut choices = Row::new().spacing(2);
-        for (key, name) in QUICK {
-            let mine = own(key);
-            choices = choices.push(with_tip(
-                button(text(key).size(22))
-                    .padding([4, 6])
-                    .on_press_maybe(action(key))
-                    .style(move |_, s| button::Style {
-                        background: (mine || s == button::Status::Hovered)
-                            .then(|| super::ACTIVE.into()),
-                        border: Border::default().rounded(6),
-                        ..Default::default()
-                    }),
-                name,
-                tooltip::Position::Top,
-            ));
-        }
         let key = p.custom.trim();
         let act = action(key);
-        let custom = row![
-            text_input("Other emoji or text", &p.custom)
-                .width(200)
+        let input = text_input("Search emoji, or react with text", &p.custom)
+            .width(220)
+            .size(14)
+            .padding(7)
+            .style(input_style)
+            .on_input(Msg::ReactionInput)
+            .on_submit_maybe(act.clone());
+        let add = button(
+            text(if own(key) { "Remove" } else { "Add" })
                 .size(14)
-                .padding(7)
-                .style(input_style)
-                .on_input(Msg::ReactionInput)
-                .on_submit_maybe(act.clone()),
-            button(
-                text(if own(key) { "Remove" } else { "Add" })
-                    .size(14)
-                    .font(super::BOLD)
-            )
-            .padding([6, 12])
-            .style(|_, s| button::Style {
-                background: Some(
-                    match s {
-                        button::Status::Hovered => color!(0x4752c4),
-                        button::Status::Disabled => color!(0x3c428a),
-                        _ => BLURPLE,
-                    }
-                    .into(),
-                ),
-                text_color: Color::WHITE,
-                border: Border::default().rounded(4),
-                ..Default::default()
-            })
-            .on_press_maybe(act)
-        ]
-        .spacing(6)
-        .align_y(Center);
-        bar = bar.push(
-            container(
-                Column::new()
-                    .push(
-                        text("QUICK REACTIONS")
-                            .size(12)
-                            .font(super::BOLD)
-                            .color(CHANNEL),
-                    )
-                    .push(choices.wrap())
-                    .push(custom)
-                    .spacing(8),
-            )
-            .padding(10)
-            .style(|_| container::Style {
-                border: Border {
-                    color: LINE,
-                    width: 1.,
-                    radius: 8.0.into(),
-                },
-                ..super::surface(color!(0x2b2d31), 8.)
-            }),
-        );
+                .font(super::BOLD),
+        )
+        .padding([6, 12])
+        .style(|_, s| button::Style {
+            background: Some(
+                match s {
+                    button::Status::Hovered => color!(0x4752c4),
+                    button::Status::Disabled => color!(0x3c428a),
+                    _ => BLURPLE,
+                }
+                .into(),
+            ),
+            text_color: Color::WHITE,
+            border: Border::default().rounded(4),
+            ..Default::default()
+        })
+        .on_press_maybe(act);
+        bar = bar.push(super::emoji_picker::panel(
+            "QUICK REACTIONS",
+            &p.custom,
+            input.into(),
+            Some(add.into()),
+            false,
+            action,
+            own,
+        ));
     }
     Some(bar.into())
 }

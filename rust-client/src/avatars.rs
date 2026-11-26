@@ -114,6 +114,8 @@ impl App {
                 );
             }
         }
+        // People in the composer's autocomplete popup.
+        wanted.extend(self.completion_avatars());
         // The call's people, whichever room is open.
         #[cfg(target_os = "linux")]
         if let Some(r) = self.call.as_ref().and_then(|c| rooms.get(&c.room)) {

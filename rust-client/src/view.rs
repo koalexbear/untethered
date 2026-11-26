@@ -1,9 +1,11 @@
 use super::{App, Msg, Request, Section, rooms::Room};
+mod autocomplete;
 #[cfg(target_os = "linux")]
 mod call_controls;
 #[cfg(target_os = "linux")]
 mod call_stage;
 mod community;
+mod emoji_picker;
 mod hover;
 mod icons;
 mod mentions;
@@ -2609,6 +2611,11 @@ impl App {
                     .id("message-edit")
                     .on_action(Msg::ChangeEdit)
                     .key_binding(|press| {
+                        if let Some(popup) =
+                            self.completion_key(crate::autocomplete::Field::Edit, &press)
+                        {
+                            return Some(popup);
+                        }
                         if matches!(press.status, text_editor::Status::Focused { .. }) {
                             if press.key == keyboard::Key::Named(keyboard::key::Named::Escape) {
                                 return Some(text_editor::Binding::Custom(Msg::CancelEdit));
@@ -2630,30 +2637,33 @@ impl App {
                     && edit.pending.is_none()
                     && !draft.trim().is_empty()
                     && draft != p.text();
-                message = message.push(input).push(
-                    row![
-                        text("Escape to").size(12).color(BODY),
-                        button(text("cancel").size(12))
+                message = message
+                    .extend(self.completion_popup(crate::autocomplete::Field::Edit))
+                    .push(input)
+                    .push(
+                        row![
+                            text("Escape to").size(12).color(BODY),
+                            button(text("cancel").size(12))
+                                .padding(0)
+                                .style(plain(LINK, color!(0x5fc5ff)))
+                                .on_press_maybe(edit.pending.is_none().then_some(Msg::CancelEdit)),
+                            text("·").size(12).color(BODY),
+                            text("Enter to").size(12).color(BODY),
+                            button(
+                                text(if edit.pending.is_some() {
+                                    "saving…"
+                                } else {
+                                    "save edit"
+                                })
+                                .size(12)
+                            )
                             .padding(0)
                             .style(plain(LINK, color!(0x5fc5ff)))
-                            .on_press_maybe(edit.pending.is_none().then_some(Msg::CancelEdit)),
-                        text("·").size(12).color(BODY),
-                        text("Enter to").size(12).color(BODY),
-                        button(
-                            text(if edit.pending.is_some() {
-                                "saving…"
-                            } else {
-                                "save edit"
-                            })
-                            .size(12)
-                        )
-                        .padding(0)
-                        .style(plain(LINK, color!(0x5fc5ff)))
-                        .on_press_maybe(can_save.then_some(Msg::SaveEdit))
-                    ]
-                    .spacing(4)
-                    .align_y(Center),
-                );
+                            .on_press_maybe(can_save.then_some(Msg::SaveEdit))
+                        ]
+                        .spacing(4)
+                        .align_y(Center),
+                    );
             } else if caption {
                 let mut spans = vec![span(p.text()).color(BODY)];
                 if p.revision.is_some() {
@@ -2943,6 +2953,11 @@ impl App {
             .placeholder(hint)
             .on_action(Msg::Draft)
             .key_binding(|press| {
+                if let Some(popup) =
+                    self.completion_key(crate::autocomplete::Field::Composer, &press)
+                {
+                    return Some(popup);
+                }
                 #[cfg(target_arch = "wasm32")]
                 if press.modifiers.command()
                     && press.key.as_ref() == keyboard::Key::Character("v")
@@ -3154,6 +3169,14 @@ impl App {
             "Attach files",
             tooltip::Position::Top,
         );
+        // Discord's emoji button: the emoji picker, inserting at the cursor.
+        let emoji = icon_button(
+            Icon::Smile,
+            "Emoji",
+            self.completion.picker.is_some(),
+            (!restricted).then_some(Msg::Autocomplete(crate::autocomplete::Input::TogglePicker)),
+            tooltip::Position::Top,
+        );
         let can_send = !sending
             && !restricted
             && (!self.logged_in || self.connected)
@@ -3211,7 +3234,7 @@ impl App {
                 .push(line_rule(color!(0x2e2f34)));
         }
         field = field.push(
-            row![attach, editor, send]
+            row![attach, editor, emoji, send]
                 .spacing(14)
                 .align_y(Center)
                 .padding(Padding {
@@ -3261,7 +3284,7 @@ impl App {
             );
         }
         column![
-            viewport.push(feed).height(Fill),
+            self.with_composer_overlays(viewport.push(feed).height(Fill).into()),
             container(
                 column![
                     tray,

@@ -80,12 +80,16 @@ impl App {
             Request::Edit(room, event) => {
                 let (room, event) = (room.clone(), event.clone());
                 let body = text(&data["content"]["m.new_content"]["body"]);
+                let pills = self
+                    .completion
+                    .pills(crate::autocomplete::Field::Edit, &event);
                 self.command(
                     |id| Command::Edit {
                         id,
                         room,
                         event,
                         body,
+                        pills,
                     },
                     request,
                 );
@@ -296,9 +300,13 @@ impl App {
             body.clone(),
             reply.as_ref().map(|q| q.id.clone()),
         );
+        let pills = self
+            .completion
+            .pills(crate::autocomplete::Field::Composer, &room);
         self.command(
             |id| Command::Send {
                 id,
+                pills,
                 room: target,
                 body: text,
                 reply_to,
@@ -638,6 +646,7 @@ impl App {
     /// state was: people who haven't written yet get their names too, for
     /// example in a voice room's participant list.
     fn members_loaded(&mut self, room: &str, state: RoomState) {
+        self.completion.learn_roster(room, &state.members);
         if let Some(r) = self.live.list.get_mut(room) {
             for (user, member) in state.members {
                 if !member.name.is_empty() {

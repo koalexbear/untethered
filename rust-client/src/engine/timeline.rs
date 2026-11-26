@@ -164,6 +164,7 @@ impl Timelines {
         &self,
         room: &str,
         body: String,
+        pills: &[crate::pills::Pill],
         reply_to: Option<String>,
     ) -> Result<(), Failure> {
         let open = self.get(room).await?;
@@ -173,17 +174,16 @@ impl Timelines {
             Some(target) => {
                 let target = EventId::parse(target).map_err(|_| Failure::Unavailable)?;
                 open.timeline
-                    .send_reply(
-                        RoomMessageEventContentWithoutRelation::text_plain(body),
-                        target,
-                    )
+                    .send_reply(super::compose::literal(body, pills), target)
                     .await
                     .map_err(|_| Failure::Failed)?;
             }
             // Messages render Markdown like gomuks's send_message.
             None => {
                 open.timeline
-                    .send(RoomMessageEventContent::text_markdown(body).into())
+                    .send(
+                        RoomMessageEventContent::from(super::compose::markdown(body, pills)).into(),
+                    )
                     .await
                     .map_err(|_| Failure::Failed)?;
             }
@@ -266,14 +266,18 @@ impl Timelines {
             .map_err(|_| Failure::Failed)
     }
 
-    pub async fn edit(&self, room: &str, event: &str, body: String) -> Result<(), Failure> {
+    pub async fn edit(
+        &self,
+        room: &str,
+        event: &str,
+        body: String,
+        pills: &[crate::pills::Pill],
+    ) -> Result<(), Failure> {
         let open = self.get(room).await?;
         open.timeline
             .edit(
                 &Self::item(event)?,
-                EditedContent::RoomMessage(RoomMessageEventContentWithoutRelation::text_markdown(
-                    body,
-                )),
+                EditedContent::RoomMessage(super::compose::markdown(body, pills)),
             )
             .await
             .map_err(|_| Failure::Failed)
