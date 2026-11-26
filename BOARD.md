@@ -2,7 +2,9 @@
 
 Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 
-Nothing claimed.
+| ID | Title | Agent | Branch | Status | Updated | Paths |
+|---|---|---|---|---|---|---|
+| N6 | System tray | n6-system-tray | `claude/n6-system-tray` | working | 2026-11-26T18:02:00Z | `PKGBUILD`, `README.md`, `rust-client/Cargo.lock`, `rust-client/Cargo.toml`, `rust-client/src/main.rs`, `rust-client/src/tray.rs`, `rust-client/src/tray/**`, `rust-client/src/view.rs`, `rust-client/src/view/tray.rs` |
 
 ## Done
 

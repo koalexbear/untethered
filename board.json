@@ -1,5 +1,27 @@
 {
- "claims": {},
+ "claims": {
+  "N6": {
+   "branch": "claude/n6-system-tray",
+   "claimed": "2026-11-26T18:02:00Z",
+   "notes": [],
+   "owner": "n6-system-tray",
+   "paths": [
+    "PKGBUILD",
+    "README.md",
+    "rust-client/Cargo.lock",
+    "rust-client/Cargo.toml",
+    "rust-client/src/main.rs",
+    "rust-client/src/tray.rs",
+    "rust-client/src/tray/**",
+    "rust-client/src/view.rs",
+    "rust-client/src/view/tray.rs"
+   ],
+   "status": "working",
+   "title": "System tray",
+   "updated": "2026-11-26T18:02:00Z",
+   "worktree": ".claude/worktrees/n6-system-tray"
+  }
+ },
  "done": [
   {
    "branch": "main",
