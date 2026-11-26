@@ -2,6 +2,13 @@
 from statistics import median
 
 from qa_native_paste import wait_for
+from qa_ui import CHAT_X
+
+# The mixer is in the call dock at the bottom of the sidebar. Each peer has a
+# line with its name, gain and Reset button, and its slider on the line below:
+# the slider's centre is this far below the name. Arrow keys move a slider
+# only while the pointer is over it.
+SLIDER_BELOW = 24
 
 
 def check_volume(desks):
@@ -9,23 +16,23 @@ def check_volume(desks):
     alice.click("mixer")
 
     def row(name):
-        words=[(w,x,y) for w,x,y in alice.words() if x>312]
+        words=[(w,x,y) for w,x,y in alice.words() if x<CHAT_X]
         for w,_,y in words:
             if w!=name:continue
             line={v:x for v,x,yy in words if abs(yy-y)<=5}
             if "reset" in line:
                 for value,x in line.items():
                     if value.isdecimal():
-                        return int(value),(x+line["reset"])//2,line["reset"],y
+                        return int(value),(x,y+SLIDER_BELOW),(line["reset"],y)
         return None
 
     def at(name,percent):
         return (r:=row(name)) and r[0]==percent and r
 
     def set_gain(name,old,new,reset=False):
-        _,slider,button,y=wait_for(f"{name} slider at {old}%",lambda:at(name,old),8)
-        alice.cmd("xdotool","windowfocus",alice.win,"mousemove","--window",alice.win,
-                  str(button if reset else slider),str(y))
+        _,slider,button=wait_for(f"{name} slider at {old}%",lambda:at(name,old),8)
+        x,y=button if reset else slider
+        alice.cmd("xdotool","windowfocus",alice.win,"mousemove","--window",alice.win,str(x),str(y))
         if reset:alice.cmd("xdotool","click","1")
         else:alice.cmd("xdotool","key","--repeat",str(abs(new-old)//5),"--delay","65",
                        "Down" if new<old else "Up")

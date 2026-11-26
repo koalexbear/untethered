@@ -14,6 +14,7 @@ Points are in the caller's coordinates. Pass `origin` when the window content
 does not start at (0, 0), for example below a KWin title bar.
 """
 import io
+import itertools
 import re
 import subprocess as sp
 import time
@@ -33,6 +34,10 @@ CHAT = (0x31, 0x33, 0x38)  # Conversation and dialog background.
 SIDE = (0x2B, 0x2D, 0x31)  # Sidebar and dialog footer background.
 RAIL_BG = (0x1E, 0x1F, 0x22)
 GREEN = (0x23, 0xA5, 0x5A)  # Speaking ring and the Add a Space glyph.
+USER_PANEL = 56  # Your name and status at the bottom of the sidebar.
+# In the call dock's Devices panel each pick list sits on the line below its
+# label: this far between their centres. Its menu opens upwards.
+PICK_BELOW = 23
 
 
 def near(color, ref, tolerance):
@@ -43,13 +48,13 @@ def clean(word):
     return re.sub(r"^\W+|\W+$", "", word).lower()
 
 
-def tesseract(im, psm=11):
-    """[(word, x, y)] for `im`, OCR'd at twice its size; centres in `im` pixels."""
+def tesseract(im, psm=11, scale=2):
+    """[(word, x, y)] for `im`, OCR'd at `scale` times its size; centres in `im` pixels."""
     buf = io.BytesIO()
-    im.resize((im.width * 2, im.height * 2)).save(buf, "PNG")
+    im.resize((im.width * scale, im.height * scale)).save(buf, "PNG")
     tsv = sp.run(["tesseract", "stdin", "stdout", "--psm", str(psm), "tsv"], input=buf.getvalue(),
                  capture_output=True, check=True).stdout.decode()
-    return [(s[11], (int(s[6]) + int(s[8]) // 2) // 2, (int(s[7]) + int(s[9]) // 2) // 2)
+    return [(s[11], (int(s[6]) + int(s[8]) // 2) // scale, (int(s[7]) + int(s[9]) // 2) // scale)
             for line in tsv.splitlines() if len(s := line.split("\t")) == 12 and s[0] == "5" and s[11].strip()]
 
 
@@ -59,12 +64,13 @@ def map_fixture(c):
     return r > 209 and g < 54 and 94 < b < 130 or r < 40 and g > 180 and 140 < b < 180
 
 
-def read(im, origin=(0, 0), psm=11, *, dialogs=True):
+def read(im, origin=(0, 0), psm=11, *, dialogs=True, sidebar=False):
     """OCR a screenshot of the client: [(word, x, y)] in `im` pixels.
 
     Besides the ordinary pass, it reads bright text on its own, which keeps
     labels on filled buttons (blurple, red, green, grey) that a whole-window
-    threshold otherwise treats as background, and any open dialog."""
+    threshold otherwise treats as background, and any open dialog. Pass
+    `sidebar` for a whole window whose grey sidebar names matter."""
     found, seen = [], set()
 
     def add(words):
@@ -78,7 +84,20 @@ def read(im, origin=(0, 0), psm=11, *, dialogs=True):
     add(tesseract(ImageOps.grayscale(im).point(lambda v: 0 if v > 170 else 255), psm))
     if dialogs and psm == 11:
         add(modal_words(im, origin))
+    if sidebar:
+        add(sidebar_words(im, origin))
     return found
+
+
+def sidebar_words(im, origin=(0, 0)):
+    """Words in the channel sidebar of a whole-window screenshot.
+
+    Channel names and voice participants are grey (#949ba4): too dark for the
+    bright-text pass, and at twice the size the ordinary pass misreads some of
+    them, such as "Alice" as "Aice". At four times the size it reads them."""
+    ox, oy = origin
+    side = im.crop((ox + RAIL, oy, ox + CHAT_X, im.height))
+    return [(w, ox + RAIL + x, oy + y) for w, x, y in tesseract(side, scale=4)]
 
 
 def _mask(im, color):
@@ -137,6 +156,31 @@ def regions(im, box, match, *, min_height=24):
             else:
                 boxes.append([start, y, x, y])
     return [tuple(b) for b in boxes if b[3] - b[1] >= min_height]
+
+
+def icon_buttons(im):
+    """Centres of the call dock's 34 px icon buttons (microphone, camera,
+    screen, hang up), left to right, in `im` pixels.
+
+    Their labels exist only as hover tooltips. Scan the plain rows above
+    each glyph and keep a row only when it holds at least three squares."""
+    fills = [(56, 58, 64), (35, 118, 78), (181, 51, 69), (81, 84, 104)]
+    fills += [(min(255, r + 25), min(255, g + 25), min(255, b + 25)) for r, g, b in fills]
+    close = {(r + i, g + j, b + k) for r, g, b in fills
+             for i in range(-3, 4) for j in range(-3, 4) for k in range(-3, 4)}
+    pixels = im.load()
+    tops = []
+    for y in range(30, im.height - 36, 2):
+        for ok, group in itertools.groupby(range(im.width), lambda x: pixels[x, y] in close):
+            xs = list(group)
+            if not ok or not 27 <= len(xs) <= 36:
+                continue
+            cx = (xs[0] + xs[-1]) // 2
+            if not any(abs(cx - x) < 12 and 0 <= y - t < 36 for x, t in tops):
+                tops.append((cx, y))
+    rows = [[b for b in tops if abs(b[1] - t) <= 4] for _, t in tops]
+    row = max(rows, key=len, default=[])
+    return sorted((x, t + 15) for x, t in row) if len(row) >= 3 else []
 
 
 class Ui:

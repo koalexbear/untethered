@@ -17,7 +17,7 @@ from urllib.parse import quote
 from PIL import Image
 from qa_desktop_dm import sfu_participants
 from qa_native_paste import child, isolated_env, start_display, wait_for
-from qa_ui import CHAT_X, Ui, clean, read
+from qa_ui import CHAT_X, RAIL, SIDEBAR, USER_PANEL, Ui, clean, icon_buttons, read
 
 MEMBER = "org.matrix.msc3401.call.member"
 TONES = (410, 670, 1030, 530, 830)
@@ -103,7 +103,8 @@ class Desktop:
     def words(self):
         if self.kde:
             return [(clean(w),x,y) for w,x,y in self.kde.words((0,28,1180,850))]
-        return [(clean(w),x,y) for w,x,y in read(self.image())]
+        # The voice roster's grey names need the sidebar pass.
+        return [(clean(w),x,y) for w,x,y in read(self.image(),sidebar=True)]
 
     @property
     def ui(self):
@@ -126,25 +127,22 @@ class Desktop:
         if self.kde:self.kde.actions("pointer",[{"type":"pointerMove","x":x,"y":y}])
         else:self.cmd("xdotool","mousemove","--window",self.win,str(x),str(y))
 
-    def icon_buttons(self,im):
-        """Centres of the docked call bar's 34 px icon buttons, left to right.
+    def scroll(self,x,y,dy):
+        """Turn the mouse wheel over (x, y); a positive dy scrolls down."""
+        if self.kde:
+            self.kde.actions("wheel",[{"type":"scroll","x":x,"y":y,"deltaX":0,"deltaY":dy}])
+            # The client only applies the axis event with the next pointer frame.
+            self.kde.actions("pointer",[{"type":"pointerMove","x":x+2,"y":y+2}])
+        else:self.cmd("xdotool","mousemove","--window",self.win,str(x),str(y),
+                      "click","--repeat",str(max(1,abs(dy)//60)),"5" if dy>0 else "4")
 
-        Their labels exist only as hover tooltips. Scan the plain rows above
-        each glyph and keep a row only when it holds at least three squares."""
-        import itertools
-        fills=[(56,58,64),(35,118,78),(181,51,69),(81,84,104)]
-        fills+=[(min(255,r+25),min(255,g+25),min(255,b+25)) for r,g,b in fills]
-        near={(r+i,g+j,b+k) for r,g,b in fills for i in range(-3,4) for j in range(-3,4) for k in range(-3,4)}
-        pixels=im.load();tops=[]
-        for y in range(30,im.height-36,2):
-            for ok,group in itertools.groupby(range(im.width),lambda x:pixels[x,y] in near):
-                xs=list(group)
-                if not ok or not 27<=len(xs)<=36:continue
-                cx=(xs[0]+xs[-1])//2
-                if not any(abs(cx-x)<12 and 0<=y-t<36 for x,t in tops):tops.append((cx,y))
-        rows=[[b for b in tops if abs(b[1]-t)<=4] for _,t in tops]
-        row=max(rows,key=len,default=[])
-        return sorted((x,t+15) for x,t in row) if len(row)>=3 else []
+    def devices_panel(self,end):
+        """Scroll the call dock's Devices panel to its "top" or "bottom".
+
+        The panel is at most 160 px tall, just above the user panel at the
+        foot of the sidebar; the camera section is below its fold."""
+        x,y=self.ui.at(RAIL+SIDEBAR//2,self.ui.height-USER_PANEL-60)
+        self.scroll(x,y,600 if end=="bottom" else -600)
 
     def tooltip(self,x,y):
         """Hover a control and OCR only the tooltip that appears above it.
@@ -174,7 +172,7 @@ class Desktop:
                "stop":[2,1],"cancel":[2,1],"leave":[3],"hang":[3]}
         def locate():
             if label in icons:
-                buttons=self.icon_buttons(self.shot())
+                buttons=icon_buttons(self.shot())
                 # Try the usual slot first; the tooltip text decides.
                 order=[i for i in icons[label] if i<len(buttons)]
                 for i in order+[i for i in range(len(buttons)) if i not in order]:
@@ -202,9 +200,14 @@ class Desktop:
 def check_speaking(desks,names):
     def highlights(peer):
         # A speaking participant's avatar gets a green ring in the voice roster.
+        # Skip your own name in the user panel: its Online dot is green too.
+        # Above that, take each name's topmost row.
         im=peer.image()
-        words=[(word,x,y) for word,x,y in peer.words() if 70<x<CHAT_X]
-        rows={i:y for i,name in enumerate(names) for word,_,y in words if word==name.lower()}
+        panel=peer.ui.oy+peer.ui.height-USER_PANEL
+        rows={}
+        for word,x,y in peer.words():
+            for i,name in enumerate(names):
+                if word==name.lower() and 70<x<CHAT_X and y<min(panel,rows.get(i,panel)):rows[i]=y
         active={i for i,y in rows.items() if peer.ui.speaking(im,y)}
         return active if len(rows)==len(names) else None
     def verify(active):
