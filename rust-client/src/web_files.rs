@@ -3,7 +3,7 @@ use crate::{
     media::{LocalFile, MAX_FILES},
 };
 use wasm_bindgen::{closure::Closure, prelude::*};
-use web_sys::{FileList, Worker};
+use web_sys::FileList;
 
 #[wasm_bindgen(module = "/web/files.js")]
 extern "C" {
@@ -15,29 +15,7 @@ extern "C" {
         width: u32,
         height: u32,
     ) -> Result<js_sys::Uint8Array, JsValue>;
-    #[wasm_bindgen(catch)]
-    pub async fn inline_blob(
-        worker: &Worker,
-        path: &str,
-        encrypted: bool,
-        limit: u32,
-    ) -> Result<web_sys::Blob, JsValue>;
-    #[wasm_bindgen(catch)]
-    pub async fn post_upload(
-        worker: &Worker,
-        id: f64,
-        file: &web_sys::File,
-        encrypt: bool,
-    ) -> Result<(), JsValue>;
-    pub fn cancel_upload(worker: &Worker, id: f64);
-    #[wasm_bindgen(catch)]
-    pub async fn save_media(
-        worker: &Worker,
-        path: &str,
-        encrypted: bool,
-        name: &str,
-    ) -> Result<(), JsValue>;
-    /// Offer bytes the matrix-sdk engine fetched as a download.
+    /// Offer bytes the engine fetched as a download.
     pub fn save_bytes(bytes: &[u8], name: &str);
 }
 pub fn listen() -> iced::Task<Msg> {

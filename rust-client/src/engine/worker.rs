@@ -243,7 +243,6 @@ async fn relay(
                 Ok(crate::backend::Command::Download { id, media }) => {
                     post_to(worker, &ToWorker::Download { id, media }, None)?;
                 }
-                Ok(crate::backend::Command::Rpc(_)) => {}
                 Err(_) => return Ok(()),
             },
         }

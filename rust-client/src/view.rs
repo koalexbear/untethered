@@ -3238,22 +3238,13 @@ impl App {
                         ),
                     )
                     .push(text(self.verification_feedback()).size(14).color(BODY));
-                if self.sdk.is_none() {
-                    form = form.push(
-                        text("Emoji comparison isn’t available with this version of gomuks.")
-                            .size(13)
-                            .color(CHANNEL),
-                    );
-                }
             }
         }
-        if self.sdk.is_some() {
-            form = form.push(if self.logged_in {
-                self.sdk_verify_choices()
-            } else {
-                self.sdk_login_choices()
-            });
-        }
+        form = form.push(if self.logged_in {
+            self.sdk_verify_choices()
+        } else {
+            self.sdk_login_choices()
+        });
         if !self.logged_in && !self.status.is_empty() {
             form = form.push(text(&self.status).size(14).color(MUTED));
         }
@@ -3472,9 +3463,7 @@ impl App {
                 )],
             ));
         }
-        if self.sdk.is_some() {
-            page = page.push(self.sdk_account_settings());
-        }
+        page = page.push(self.sdk_account_settings());
         if !self.status.is_empty() {
             page = page.push(text(&self.status).size(14).color(MUTED));
         }

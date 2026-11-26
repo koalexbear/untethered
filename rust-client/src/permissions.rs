@@ -1,15 +1,9 @@
 //! Member posting presets are changes to real room power levels. Patch the
 //! current document: roles, state-event rules and unknown fields belong to
 //! the room, not to this editor.
-use crate::{
-    App, Request,
-    moderation::Kind,
-    room_state::RoomState,
-    rooms::{items, server_confirmed},
-};
+use crate::{App, Request, moderation::Kind, room_state::RoomState, rooms::items};
 use serde_json::{Value, json};
 
-const CREATE: &str = "m.room.create";
 const POWER: &str = "m.room.power_levels";
 const RESTORE: &str = "com.untethered.posting_restore.v1";
 const POSTS: [&str; 4] = [
@@ -37,20 +31,7 @@ pub struct StateDoc {
     /// Redacted, so its content no longer says what it did.
     pub redacted: bool,
 }
-impl StateDoc {
-    /// A confirmed state event of `room` from gomuks.
-    pub fn from_gomuks(room: &str, e: &Value) -> Option<Self> {
-        if e["room_id"] != room || !server_confirmed(e) {
-            return None;
-        }
-        Some(Self {
-            event_id: e["event_id"].as_str()?.into(),
-            sender: e["sender"].as_str().unwrap_or_default().into(),
-            content: e["content"].clone(),
-            redacted: e["redacted_by"].is_string(),
-        })
-    }
-}
+impl StateDoc {}
 #[derive(Default)]
 pub struct Posting {
     create: Option<StateDoc>,
@@ -117,22 +98,6 @@ impl Posting {
             }
         }
         self.power = power;
-    }
-    /// A state event from gomuks. `initial` keeps what is already known.
-    pub fn ingest(&mut self, room: &str, e: &Value, initial: bool) {
-        if e["state_key"] != "" {
-            return;
-        }
-        let slot = match e["type"].as_str() {
-            Some(CREATE) => &mut self.create,
-            Some(POWER) => &mut self.power,
-            _ => return,
-        };
-        if let Some(doc) = StateDoc::from_gomuks(room, e)
-            && (!initial || slot.is_none())
-        {
-            *slot = Some(doc);
-        }
     }
     /// Our own power level change, once the homeserver accepted it.
     pub fn accepted(&mut self, event_id: String, sender: String, content: Value) {
@@ -374,19 +339,6 @@ impl App {
         let room = c.room.clone();
         self.fetch_room_state(&room, Request::Posting(Flight::Check(c)));
     }
-    /// gomuks's answer to a posting check or write.
-    pub fn posting_result(&mut self, f: Flight, data: &Value) {
-        match f {
-            Flight::Check(c) => {
-                let state = RoomState::from_gomuks(&c.room, data);
-                self.posting_checked(c, state);
-            }
-            Flight::Write(c, content) => match data.as_str().filter(|id| id.starts_with('$')) {
-                Some(id) => self.posting_written(c, content, id.to_owned()),
-                None => self.status = "Posting change was not confirmed.".into(),
-            },
-        }
-    }
     /// Fresh room state for a posting change: write it only if nothing
     /// changed since the change was planned.
     pub fn posting_checked(&mut self, c: Change, state: RoomState) {
@@ -438,23 +390,20 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn event(ty: &str, id: &str, sender: &str, c: Value) -> Value {
-        json!({"room_id":"!r","type":ty,"state_key":"","sender":sender,"event_id":id,"content":c})
+    fn doc(id: &str, sender: &str, content: Value) -> StateDoc {
+        StateDoc {
+            event_id: id.into(),
+            sender: sender.into(),
+            content,
+            redacted: false,
+        }
     }
     fn policy(version: &str, c: Value) -> Posting {
-        let mut p = Posting::default();
-        p.ingest(
-            "!r",
-            &event(
-                CREATE,
-                "$create",
-                "@creator:h",
-                json!({"room_version":version,"additional_creators":["@also:h"]}),
-            ),
-            false,
-        );
-        p.ingest("!r", &event(POWER, "$base", "@creator:h", c), false);
-        p
+        let create = json!({"room_version":version,"additional_creators":["@also:h"]});
+        Posting::new(
+            Some(doc("$create", "@creator:h", create)),
+            Some(doc("$base", "@creator:h", c)),
+        )
     }
     #[test]
     fn permissions_follow_room_version_and_state_event_threshold() {
@@ -466,7 +415,7 @@ mod tests {
         assert_eq!(restricted["events"]["m.sticker"], 90);
         assert!(p.patch("@mod:h", Action::Restrict).is_none());
         assert!(p.patch("@member:h", Action::Restrict).is_none());
-        p.ingest("!r", &event(POWER, "$locked", "@also:h", restricted), false);
+        p.store_snapshot(None, Some(doc("$locked", "@also:h", restricted)));
         assert_eq!(p.can_post("@member:h", true), Some(false));
         assert_eq!(p.can_post("@mod:h", true), Some(true));
         assert_eq!(p.patch("@creator:h", Action::Restore), Some(c.clone()));
@@ -504,40 +453,9 @@ mod tests {
         assert_eq!(written["events"]["m.room.encrypted"], 76);
         written["events"]["m.room.message"] = 87.into();
         written["kick"] = 70.into();
-        p.ingest("!r", &event(POWER, "$changed", "@else:h", written), false);
+        p.store_snapshot(None, Some(doc("$changed", "@else:h", written)));
         c["events"]["m.room.message"] = 87.into();
         c["kick"] = 70.into();
         assert_eq!(p.patch("@creator:h", Action::Restore), Some(c));
-    }
-    #[test]
-    fn preflight_does_not_submit_a_stale_power_document() {
-        let (tx, rx) = async_channel::bounded(8);
-        let mut app = App::new(tx);
-        app.connected = true;
-        app.logged_in = true;
-        app.verified = true;
-        app.selected = "!r".into();
-        app.matrix_id = "@creator:h".into();
-        app.permission_panel = true;
-        let p = policy("12", json!({}));
-        let create = event(
-            CREATE,
-            "$create",
-            "@creator:h",
-            json!({"room_version":"12","additional_creators":["@also:h"]}),
-        );
-        app.live.list.entry("!r".into()).or_default().posting = p;
-        app.change_posting(Change {
-            room: "!r".into(),
-            base: "$base".into(),
-            action: Action::Restrict,
-        });
-        let req = rx.try_recv().unwrap().into_rpc();
-        assert_eq!(req["command"], "get_room_state");
-        assert_eq!(req["data"]["refetch"], true);
-        let member = json!({"room_id":"!r","type":"m.room.member","event_id":"$join","state_key":"@creator:h","content":{"membership":"join"}});
-        app.frame(json!({"command":"response","request_id":req["request_id"],"data":[create,member,event(POWER,"$new","@else:h",json!({"ban":90}))]}));
-        assert!(rx.try_recv().is_err());
-        assert_eq!(app.live.list["!r"].posting.id(), Some("$new"));
     }
 }

@@ -213,26 +213,6 @@ impl App {
         self.send_space_child(&parent, &child, &via, Request::Setup(Step::Link));
         self.setup_queued(Step::Link);
     }
-    /// gomuks's answer to a setup step.
-    pub fn setup_result(&mut self, step: Step, data: &Value) {
-        match step {
-            Step::Check => {
-                let Some(parent) = self.setup.as_ref().and_then(|f| f.parent.clone()) else {
-                    return;
-                };
-                self.setup_checked(RoomState::from_gomuks(&parent, data));
-            }
-            Step::Create => match data["room_id"].as_str() {
-                Some(id) => self.setup_created(id.to_owned()),
-                None => self.setup_error(step),
-            },
-            Step::Link => match data.as_str() {
-                Some(id) => self.setup_linked(id),
-                None => self.setup_error(step),
-            },
-            Step::Invite => self.setup_invited(),
-        }
-    }
     /// The parent space's state: may we add a channel or invite, and is the
     /// invitee new to it?
     pub fn setup_checked(&mut self, state: RoomState) {

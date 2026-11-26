@@ -24,7 +24,6 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from PIL import Image
 from playwright.sync_api import sync_playwright
 
-from qa_web_login import gomuks_page
 
 SIZE = 16 * 1024 * 1024
 
@@ -180,7 +179,7 @@ def test(tmp, hs, port, web, backend, root, seed):
             browser=pw.chromium.launch(executable_path=os.environ.get("CHROMIUM","/usr/bin/chromium"),
                                        args=["--enable-unsafe-swiftshader","--ignore-gpu-blocklist"])
             page=browser.new_page(viewport={"width":1180,"height":760})
-            page.goto(gomuks_page(web));page.wait_for_function("document.title.includes('Preview')",timeout=35000)
+            page.goto(web);page.wait_for_function("document.title.includes('Preview')",timeout=35000)
             page.mouse.click(1095,73);page.wait_for_function("document.title.includes('Account')")
             for y,key in [(299,"server"),(381,"username"),(464,"password")]:
                 page.mouse.click(510,y);page.keyboard.type(fixture[key],delay=5)

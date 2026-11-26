@@ -1,11 +1,6 @@
 //! Room membership actions are addressed by MXID and current membership
 //! event, never by display name or by a message in the timeline.
-use crate::{
-    App, Request,
-    room_state::RoomState,
-    rooms::{items, server_confirmed},
-};
-use serde_json::Value;
+use crate::{App, Request, room_state::RoomState};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
@@ -34,33 +29,7 @@ pub struct Member {
     /// The membership event, which a change is checked against.
     pub event: String,
 }
-impl Member {
-    /// A confirmed membership event of `room` from gomuks.
-    pub(crate) fn read<'a>(room: &str, e: &'a Value) -> Option<(&'a str, Self)> {
-        if e["room_id"] != room || e["type"] != "m.room.member" || !server_confirmed(e) {
-            return None;
-        }
-        let id = e["state_key"]
-            .as_str()
-            .filter(|u| u.starts_with('@') && u.contains(':'))?;
-        let kind = match e["content"]["membership"].as_str()? {
-            "join" => Kind::Joined,
-            "invite" => Kind::Invited,
-            "knock" => Kind::Knocking,
-            "ban" => Kind::Banned,
-            "leave" => Kind::Left,
-            _ => return None,
-        };
-        Some((
-            id,
-            Self {
-                kind,
-                event: e["event_id"].as_str()?.into(),
-                name: e["content"]["displayname"].as_str().unwrap_or("").into(),
-            },
-        ))
-    }
-}
+impl Member {}
 #[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub enum Action {
     Kick,
@@ -70,14 +39,6 @@ pub enum Action {
 }
 impl Action {
     pub const ALL: [Self; 4] = [Self::Kick, Self::Ban, Self::Unban, Self::Invite];
-    pub(crate) fn wire(self) -> &'static str {
-        match self {
-            Self::Kick => "kick",
-            Self::Ban => "ban",
-            Self::Unban => "unban",
-            Self::Invite => "invite",
-        }
-    }
     pub fn label(self) -> &'static str {
         match self {
             Self::Kick => "Kick",
@@ -132,17 +93,6 @@ pub struct Directory {
     changed: BTreeSet<String>,
 }
 impl Directory {
-    pub fn sync(&mut self, room: &str, delta: &Value) {
-        for e in items(&delta["events"]) {
-            if let Some((id, m)) = Member::read(room, e)
-                && e["rowid"]
-                    .as_i64()
-                    .is_some_and(|r| r > 0 && delta["state"]["m.room.member"][id] == r)
-            {
-                self.observe(id, m);
-            }
-        }
-    }
     /// A membership transition seen in sync.
     pub fn observe(&mut self, user: &str, member: Member) {
         self.changed.insert(user.into());
@@ -231,16 +181,6 @@ impl App {
             .into();
         }
     }
-    /// gomuks's answer to a membership read or write.
-    pub fn membership_result(&mut self, f: Flight, data: &Value) {
-        match f {
-            Flight::Read { .. } => {
-                let state = RoomState::from_gomuks(f.room(), data);
-                self.membership_state(f, state);
-            }
-            Flight::Write(c) => self.membership_written(c),
-        }
-    }
     /// Fresh room state for the directory, and for a change waiting on it.
     pub fn membership_state(&mut self, f: Flight, state: RoomState) {
         let Flight::Read {
@@ -320,17 +260,36 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rooms::Room;
+    use crate::{permissions::StateDoc, rooms::Room};
     use serde_json::json;
-    fn membership(user: &str, ev: &str, kind: &str) -> Value {
-        json!({"room_id":"!room","event_id":ev,"type":"m.room.member","state_key":user,
-            "content":{"membership":kind,"displayname":"Same display name"}})
+    fn doc(id: &str, sender: &str, content: serde_json::Value) -> StateDoc {
+        StateDoc {
+            event_id: id.into(),
+            sender: sender.into(),
+            content,
+            redacted: false,
+        }
     }
-    fn state() -> Value {
-        json!([{"room_id":"!room","event_id":"$cp","type":"m.room.create","state_key":"","sender":"@owner:h","content":{"room_version":"12"}},
-            {"room_id":"!room","event_id":"$pl","type":"m.room.power_levels","state_key":"","content":{
-                "users":{"@mod:h":60,"@equal:h":60},"invite":10,"ban":55,"kick":65}},
-            membership("@mod:h","$mod","join"),membership("@other:h","$peer","join"),membership("@equal:h","$equal","join")])
+    fn power(id: &str, kick: u64, ban: u64) -> StateDoc {
+        let levels = json!({"users":{"@mod:h":60,"@equal:h":60},"invite":10,"ban":ban,"kick":kick});
+        doc(id, "@owner:h", levels)
+    }
+    fn state() -> RoomState {
+        let member = |event: &str| Member {
+            kind: Kind::Joined,
+            name: "Same display name".into(),
+            event: event.into(),
+        };
+        RoomState {
+            create: Some(doc("$cp", "@owner:h", json!({"room_version":"12"}))),
+            power: Some(power("$pl", 65, 55)),
+            members: [
+                ("@mod:h".to_owned(), member("$mod")),
+                ("@other:h".to_owned(), member("$peer")),
+                ("@equal:h".to_owned(), member("$equal")),
+            ]
+            .into(),
+        }
     }
     fn app() -> (App, async_channel::Receiver<crate::backend::Command>) {
         let (tx, rx) = async_channel::bounded(8);
@@ -342,13 +301,13 @@ mod tests {
         a.verified = true;
         a.connected = true;
         a.matrix_id = "@mod:h".into();
-        a.membership_result(
+        a.membership_state(
             Flight::Read {
                 room: a.selected.clone(),
                 prior_power: None,
                 change: None,
             },
-            &state(),
+            state(),
         );
         (a, rx)
     }
@@ -381,15 +340,12 @@ mod tests {
         a.directory.choose(Some("@other:h".into()));
         // Level 60 can ban at 55 but cannot kick at 65.
         assert!(a.member_change(Action::Kick).is_none());
-        let mut changed = state();
-        changed[1]["content"]["kick"] = json!(60);
-        changed[1]["content"]["ban"] = json!(70);
         a.live
             .list
             .get_mut("!room")
             .unwrap()
             .posting
-            .ingest("!room", &changed[1], false);
+            .store_snapshot(None, Some(power("$pl2", 60, 70)));
         assert!(a.member_change(Action::Kick).is_some());
         assert!(a.member_change(Action::Ban).is_none());
         for target in ["@mod:h", "@equal:h"] {
@@ -401,26 +357,5 @@ mod tests {
             a.directory.users.get_mut("@other:h").unwrap().kind = kind;
             assert!(a.member_change(Action::Kick).is_none());
         }
-    }
-    #[test]
-    fn stale_target_membership_cannot_be_overwritten_or_moderated_by_a_late_snapshot() {
-        let (mut a, rx) = app();
-        a.directory.choose(Some("@other:h".into()));
-        let ban = a.member_change(Action::Ban).unwrap();
-        a.moderate(ban);
-        let req = rx.try_recv().unwrap().into_rpc();
-        assert_eq!(req["command"], "get_room_state");
-        let mut banned = membership("@other:h", "$ban", "ban");
-        banned["rowid"] = json!(42);
-        a.directory.sync(
-            "!room",
-            &json!({"state":{"m.room.member":{"@other:h":42}},"events":[banned]}),
-        );
-        a.frame(json!({"command":"response","request_id":req["request_id"],"data":state()}));
-        assert!(
-            rx.try_recv().is_err(),
-            "no write may follow a stale preflight"
-        );
-        assert!(a.directory.users["@other:h"].kind == Kind::Banned);
     }
 }

@@ -14,7 +14,6 @@ from qa_kwin_element import element_server,login_element
 from qa_native_paste import child,isolated_env,start_display,wait_for
 from qa_ui import CHAT_X,Ui,read
 from qa_upload_cancel import slow_gateway
-from qa_web_login import gomuks_page
 
 
 def screen_words(raw):
@@ -98,7 +97,7 @@ def test_replies(tmp,hs,root,backend,seed,http,port,*,reactions=False,room_searc
                     nonlocal client
                     client.close()
                     client=reporter_ctx.new_page()
-                    client.goto(gomuks_page(client_web),wait_until="commit")
+                    client.goto(client_web,wait_until="commit")
                     client.wait_for_function("document.title.includes('media-proof')",timeout=45000)
                 check_inbox(hs,page,room,hdr,http,restart,locate,lambda pos:client.mouse.click(*pos),paths)
                 return

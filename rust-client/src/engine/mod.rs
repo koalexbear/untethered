@@ -49,40 +49,12 @@ use std::{
 
 pub use browser::Opener;
 
-#[cfg(not(target_arch = "wasm32"))]
-pub const ENV: &str = "UNTETHERED_ENGINE";
 /// Events per room in the sliding sync room list.
 const ROOM_LIST_TIMELINE: u32 = 20;
 
 /// Shown on the sign-in screen when gomuks data is here but no matrix-sdk
 /// session (docs/matrix-sdk-migration.md, "Existing gomuks profiles").
-#[cfg(not(target_arch = "wasm32"))]
-const UPGRADE: &str = "Untethered now uses a new Matrix engine. Sign in once more: this is a new device, and your recovery key restores your encrypted history. Afterwards you can remove the old session under Devices. To go back for now, start Untethered with UNTETHERED_ENGINE=gomuks.";
-#[cfg(target_arch = "wasm32")]
-const UPGRADE: &str = "Untethered now uses a new Matrix engine. Sign in once more: this is a new device, and your recovery key restores your encrypted history. Afterwards you can remove the old session under Devices. To go back for now, open this page with ?engine=gomuks.";
-
-/// Whether this page uses matrix-sdk: the default. `?engine=gomuks` picks
-/// gomuks and the page remembers that; `?engine=matrix-sdk` goes back.
-#[cfg(target_arch = "wasm32")]
-pub fn selected() -> bool {
-    web::selected()
-}
-
-/// Whether this launch uses matrix-sdk: the default unless
-/// `UNTETHERED_ENGINE=gomuks`.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn selected() -> bool {
-    match std::env::var(ENV).as_deref() {
-        Ok("gomuks") => false,
-        Ok("matrix-sdk") | Ok("") | Err(_) => true,
-        Ok(other) => {
-            eprintln!(
-                "Unknown {ENV}={other:?}; using matrix-sdk. Set {ENV}=gomuks for the previous engine."
-            );
-            true
-        }
-    }
-}
+const UPGRADE: &str = "Untethered now uses a new Matrix engine. Sign in once more: this is a new device, and your recovery key restores your encrypted history. Afterwards you can remove the old session under Devices.";
 
 /// Requests from the UI. `id` matches `App::pending`; every command with an
 /// `id` is answered by exactly one [`Event::Done`].
@@ -1332,8 +1304,6 @@ impl Engine {
                     let _ = result.send(bytes).await;
                 });
             }
-            #[cfg(not(target_arch = "wasm32"))]
-            Transfer::Rpc(_) => {}
             #[cfg(target_os = "linux")]
             Transfer::Voice {
                 room,
@@ -1508,7 +1478,9 @@ impl Engine {
             Notice::TokenRejected => {
                 if let Some(live) = self.live.take() {
                     live.tasks.stop().await;
-                    live.sync.stop().await;
+                    // As on sign-out: a sync service stuck retrying with the
+                    // rejected token must not keep the notice from the UI.
+                    let _ = rt::timeout(Duration::from_secs(5), live.sync.stop()).await;
                 }
                 session::forget(&self.profile).await;
                 self.emit(Event::Account(Account::default())).await;

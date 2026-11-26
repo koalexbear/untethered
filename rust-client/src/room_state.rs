@@ -8,9 +8,8 @@ use crate::{
     App, Request,
     moderation::{Action, Kind, Member},
     permissions::{Posting, StateDoc},
-    rooms::items,
 };
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::collections::BTreeMap;
 
 #[derive(Clone, Default, Debug, serde::Serialize, serde::Deserialize)]
@@ -21,29 +20,6 @@ pub struct RoomState {
 }
 
 impl RoomState {
-    /// gomuks's `get_room_state` answer for `room`.
-    pub fn from_gomuks(room: &str, data: &Value) -> Self {
-        let mut state = Self::default();
-        for e in items(data) {
-            if let Some((user, member)) = Member::read(room, e) {
-                state.members.insert(user.to_owned(), member);
-                continue;
-            }
-            if e["state_key"] != "" {
-                continue;
-            }
-            let slot = match e["type"].as_str() {
-                Some("m.room.create") => &mut state.create,
-                Some("m.room.power_levels") => &mut state.power,
-                _ => continue,
-            };
-            if let Some(doc) = StateDoc::from_gomuks(room, e) {
-                *slot = Some(doc);
-            }
-        }
-        state
-    }
-
     pub fn posting(&self) -> Posting {
         Posting::new(self.create.clone(), self.power.clone())
     }
@@ -56,16 +32,8 @@ impl RoomState {
 impl App {
     /// Fresh room state from the homeserver, members included.
     pub fn fetch_room_state(&mut self, room: &str, request: Request) {
-        if self.sdk.is_some() {
-            let room = room.to_owned();
-            return self.command(|id| crate::engine::Command::RoomState { id, room }, request);
-        }
-        // gomuks waits for the server refetch only with include_members=true.
-        self.rpc(
-            "get_room_state",
-            json!({"room_id":room,"refetch":true,"include_members":true}),
-            request,
-        );
+        let room = room.to_owned();
+        self.command(|id| crate::engine::Command::RoomState { id, room }, request);
     }
 
     pub fn send_membership(
@@ -76,38 +44,24 @@ impl App {
         reason: &str,
         request: Request,
     ) {
-        if self.sdk.is_some() {
-            let (room, user, reason) = (room.to_owned(), user.to_owned(), reason.to_owned());
-            return self.command(
-                |id| crate::engine::Command::Moderate {
-                    id,
-                    room,
-                    user,
-                    action,
-                    reason,
-                },
-                request,
-            );
-        }
-        let mut body = json!({"room_id":room,"user_id":user,"action":action.wire()});
-        if !reason.is_empty() {
-            body["reason"] = reason.into();
-        }
-        self.rpc("set_membership", body, request);
+        let (room, user, reason) = (room.to_owned(), user.to_owned(), reason.to_owned());
+        self.command(
+            |id| crate::engine::Command::Moderate {
+                id,
+                room,
+                user,
+                action,
+                reason,
+            },
+            request,
+        );
     }
 
     /// Replace the room's power levels document; answered with the event ID.
     pub fn send_power_levels(&mut self, room: &str, content: Value, request: Request) {
-        if self.sdk.is_some() {
-            let room = room.to_owned();
-            return self.command(
-                |id| crate::engine::Command::SetPowerLevels { id, room, content },
-                request,
-            );
-        }
-        self.rpc(
-            "set_state",
-            json!({"room_id":room,"type":"m.room.power_levels","state_key":"","content":content}),
+        let room = room.to_owned();
+        self.command(
+            |id| crate::engine::Command::SetPowerLevels { id, room, content },
             request,
         );
     }
@@ -115,32 +69,22 @@ impl App {
     /// Create a room from a Matrix `createRoom` request body; answered with
     /// the room ID.
     pub fn send_create_room(&mut self, body: Value, request: Request) {
-        if self.sdk.is_some() {
-            return self.command(
-                |id| crate::engine::Command::CreateRoom { id, body },
-                request,
-            );
-        }
-        self.rpc("create_room", body, request);
+        self.command(
+            |id| crate::engine::Command::CreateRoom { id, body },
+            request,
+        );
     }
 
     /// Link `child` into `space`; answered with the event ID.
     pub fn send_space_child(&mut self, space: &str, child: &str, via: &str, request: Request) {
-        if self.sdk.is_some() {
-            let (space, child, via) = (space.to_owned(), child.to_owned(), vec![via.to_owned()]);
-            return self.command(
-                |id| crate::engine::Command::AddToSpace {
-                    id,
-                    space,
-                    child,
-                    via,
-                },
-                request,
-            );
-        }
-        self.rpc(
-            "set_state",
-            json!({"room_id":space,"type":"m.space.child","state_key":child,"content":{"via":[via]}}),
+        let (space, child, via) = (space.to_owned(), child.to_owned(), vec![via.to_owned()]);
+        self.command(
+            |id| crate::engine::Command::AddToSpace {
+                id,
+                space,
+                child,
+                via,
+            },
             request,
         );
     }

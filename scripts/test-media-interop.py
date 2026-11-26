@@ -36,9 +36,7 @@ from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND = Path(os.environ.get("UNTETHERED_BACKEND", ROOT / ".dev/backends/0.2611.1/gomuks")).resolve()
-# The native clients' engine. gomuks still prepares every account; with
-# matrix-sdk each client also gets its own verified matrix-sdk session.
-QA_ENGINE = os.environ.get("UNTETHERED_QA_ENGINE", "gomuks")
+
 
 
 def free_port():
@@ -97,12 +95,12 @@ def seed(tmp, hs, *, encrypted=True):
         rpc(3, "reset_encryption", {**keys, "account_password": pwd})
         ws.close()
     fixture = dict(server=hs, username=user, password=pwd, key=keys["recovery_key"], room=room)
-    if QA_ENGINE == "matrix-sdk":
-        # A debug client signs in and verifies, then exits (engine/qa.rs).
-        client = os.environ.get("UNTETHERED_QA_CLIENT") or str(ROOT/"rust-client/target/debug/untethered-iced")
-        subprocess.run([client], check=True, timeout=360, env={
-            **os.environ, "UNTETHERED_PROFILE": str(tmp/"seed"), "UNTETHERED_QA_SEED": json.dumps(fixture),
-            "UNTETHERED_KEYRING": "off"})
+    # gomuks only prepared the account and its recovery key. The client's own
+    # session: a debug client signs in and verifies, then exits (engine/qa.rs).
+    client = os.environ.get("UNTETHERED_QA_CLIENT") or str(ROOT/"rust-client/target/debug/untethered-iced")
+    subprocess.run([client], check=True, timeout=360, env={
+        **os.environ, "UNTETHERED_PROFILE": str(tmp/"seed"), "UNTETHERED_QA_SEED": json.dumps(fixture),
+        "UNTETHERED_KEYRING": "off"})
     return fixture, hdr
 
 
@@ -207,7 +205,7 @@ def main():
     chat_test=args.replies or args.reactions or args.room_search or args.room_alerts or args.room_permissions or args.room_ban or args.room_kick or args.message_report or args.mentions_inbox or args.space_alerts=="native" or args.community_setup
     web_chat="web" in (args.message_report,args.mentions_inbox,args.community_setup)
     if web_chat or args.file_limits=="web" or not any((args.file_limits,args.native_paste,args.portal_drop,args.kwin_element,args.rtc_membership,args.rtc_audio,chat_test,args.linux_upgrade)):
-        assert (dist/"backend/gomuks-worker.js").is_file(), "Run scripts/rust-web.sh first"
+        assert (dist/"engine-worker.js").is_file(), "Run scripts/rust-web.sh first"
     os.umask(0o077)
     with tempfile.TemporaryDirectory(prefix="untethered-media-",dir=os.environ.get("TMPDIR")) as d:
         tmp = Path(d)
@@ -220,10 +218,9 @@ def main():
         if chat_test or args.browser_alerts:
             extra_settings="rc_message: {per_second: 1000, burst_count: 1000}\n"
         if args.file_limits:extra_settings+="max_upload_size: 64K\n"
-        if QA_ENGINE=="matrix-sdk":
-            # Each account signs in twice (gomuks prepares it, then the client):
-            # past Synapse's default burst of five logins per address.
-            extra_settings+="rc_login: {address: {per_second: 1000, burst_count: 1000}, account: {per_second: 1000, burst_count: 1000}}\n"
+        # Each account signs in twice (gomuks prepares it, then the client):
+        # past Synapse's default burst of five logins per address.
+        extra_settings+="rc_login: {address: {per_second: 1000, burst_count: 1000}, account: {per_second: 1000, burst_count: 1000}}\n"
         subprocess.run([sys.executable, "-m", "synapse.app.homeserver", "-c", "hs.yaml", "--generate-config",
                         "-H", server_name, "--report-stats", "no"], cwd=tmp, stdout=subprocess.DEVNULL, check=True)
         port = free_port()
@@ -305,19 +302,9 @@ federation_domain_whitelist: []
                 from qa_native_paste import check_paste
                 check_paste(tmp, ROOT, BACKEND, f, hdr, args.native_paste)
                 return
-            fixture = tmp/"fixture.json"
-            fixture.write_text(json.dumps(f))
-            subprocess.run(["cargo","test","--locked","-j3","--manifest-path","rust-client/Cargo.toml",
-                            "encrypted_round_trip_and_restart","--","--ignored","--nocapture"],cwd=ROOT, check=True,
-                           env={**os.environ,"UNTETHERED_QA_FIXTURE":str(fixture),"UNTETHERED_PROFILE":str(tmp/"native"),
-                                "UNTETHERED_BACKEND":str(BACKEND),"UNTETHERED_ENGINE":"gomuks"})
-            events = http("GET",f"{hs}/_matrix/client/v3/rooms/{quote(f['room'],safe='')}/messages",
-                          headers=hdr,params={"dir":"b","limit":60}).json()["chunk"]
-            assert sum(e["type"]=="m.room.encrypted" for e in events)>=3
-            assert all(e["type"]!="m.room.message" for e in events)
-            wp = free_port()
-            with service([sys.executable,"-m","http.server",str(wp),"--bind","127.0.0.1","--directory",str(dist)],tmp):
-                check_browser(f,f"http://127.0.0.1:{wp}")
+            # The default round trip moved to scripts/qa_matrix_sdk.py (desktop) and
+            # its UNTETHERED_QA_ONLY=web mode (browser) with the engine switch.
+            raise SystemExit("Pick a mode, or run scripts/qa_matrix_sdk.py for the encrypted round trip.")
         print("PASS encrypted image interoperability; disposable services stopped.")
 
 

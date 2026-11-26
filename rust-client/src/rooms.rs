@@ -7,9 +7,6 @@ pub const VOICE_ROOM: &str = "org.matrix.msc3417.call";
 pub fn items(v: &Value) -> impl Iterator<Item = &Value> {
     v.as_array().into_iter().flatten()
 }
-fn pairs(v: &Value) -> impl Iterator<Item = (&String, &Value)> {
-    v.as_object().into_iter().flatten()
-}
 pub fn string(v: &Value) -> String {
     v.as_str().unwrap_or_default().to_owned()
 }
@@ -45,7 +42,6 @@ pub struct Room {
     pub encrypted: bool,
     pub has_metadata: bool,
     pub end: bool,
-    pub cursor: Option<i64>,
     pub members: BTreeMap<String, String>,
     pub history: BTreeMap<i64, Post>,
     // Keep the timestamp and row-ID ordering used by the timeline.
@@ -301,35 +297,6 @@ impl Room {
             self.order.insert(index, key);
         }
     }
-    pub fn related_events(&mut self, room: &str, data: &Value) {
-        let mut quotes = Room::default();
-        for e in items(&data["related_events"]).filter(|e| e["room_id"] == room) {
-            if crate::edits::is_replacement(e) {
-                self.insert(e);
-            } else {
-                quotes.insert(e);
-            }
-        }
-        for p in quotes.history.values_mut() {
-            self.edits.apply(p);
-            if let Some(q) = p.quote() {
-                self.related.insert(q.id.clone(), q);
-            }
-        }
-    }
-    pub fn page(&mut self, room: &str, data: &Value) {
-        self.read.receipts(data, room);
-        let old = self.cursor;
-        for e in items(&data["events"]).filter(|e| e["room_id"] == room) {
-            if let Some(t) = e["timeline_rowid"].as_i64().filter(|&x| x != 0) {
-                self.cursor = Some(self.cursor.map_or(t, |v| v.min(t)));
-                self.read.position(t, e);
-            }
-            self.insert(e);
-        }
-        self.related_events(room, data);
-        self.end = data["has_more"] != true || self.cursor == old;
-    }
     fn remove_order(&mut self, time: i64, row: i64) {
         if let Ok(index) = self.order.binary_search(&(time, row)) {
             self.order.remove(index);
@@ -424,162 +391,6 @@ impl Rooms {
         self.ordered_rooms = rooms.into_iter().map(|(id, _)| id.clone()).collect();
     }
 
-    pub fn sync(&mut self, d: &Value) {
-        if d["clear_state"] == true {
-            *self = Self::default();
-        }
-        let mut room_order_changed = false;
-        for (space, edges) in pairs(&d["space_edges"]) {
-            let next = items(edges)
-                .filter_map(|e| e["child_id"].as_str().map(str::to_owned))
-                .collect();
-            if self.children.get(space) != Some(&next) {
-                self.children.insert(space.clone(), next);
-                self.hierarchy_revision += 1;
-                room_order_changed = true;
-            }
-        }
-        for (id, delta) in pairs(&d["rooms"]) {
-            let new = !self.list.contains_key(id);
-            room_order_changed |= new;
-            let room = self.list.entry(id.clone()).or_default();
-            let was_space = room.space;
-            #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
-            if let Some(ad) = delta["account_data"].get(crate::notifications::spaces::PREF) {
-                let mode = crate::notifications::spaces::mode(&ad["content"]);
-                if room.space_alerts != mode {
-                    room.space_alerts = mode;
-                    self.hierarchy_revision += 1;
-                }
-            }
-            let meta = &delta["meta"];
-            room.read.sync(delta, id);
-            if meta.is_object() {
-                room.has_metadata = true;
-                let name = meta["name"]
-                    .as_str()
-                    .or(meta["canonical_alias"].as_str())
-                    .unwrap_or(id);
-                room_order_changed |= room.name != name;
-                if room.name != name {
-                    room.name = name.into();
-                }
-                room.topic = string(&meta["topic"]);
-                let space =
-                    meta["creation_content"]["type"] == "m.space" || self.children.contains_key(id);
-                room_order_changed |= room.space != space;
-                room.space = space;
-                let dm = meta["dm_user_id"].is_string();
-                room_order_changed |= room.dm != dm;
-                room.dm = dm;
-                room.voice = meta["creation_content"]["type"] == VOICE_ROOM;
-                #[cfg(target_os = "linux")]
-                {
-                    room.dm_peer = meta["dm_user_id"]
-                        .as_str()
-                        .filter(|v| v.starts_with('@'))
-                        .map(str::to_owned);
-                }
-                room.unread = room.read.marked
-                    || room.read.messages > 0
-                    || room.read.highlights > 0
-                    || meta["unread_notifications"].as_u64().unwrap_or(0) > 0;
-                room.encrypted = meta["encryption_event"].is_object();
-            }
-            if new || room.space != was_space {
-                self.hierarchy_revision += 1;
-            }
-            if delta["reset"] == true {
-                room.history.clear();
-                room.order.clear();
-                room.event_rows.clear();
-                room.related.clear();
-                room.edits = Default::default();
-                room.cursor = None;
-                room.end = false;
-            }
-            let timeline: BTreeSet<_> = items(&delta["timeline"])
-                .filter_map(|t| t["event_rowid"].as_i64())
-                .collect();
-            for e in items(&delta["events"]) {
-                if e["room_id"].as_str().is_some_and(|room| room != id) {
-                    continue;
-                }
-                // gomuks omits the map entry when the *last* edge is
-                // removed. A current unlink with no replacement snapshot
-                // must not leave stale inheritance until the next restart.
-                if let Some(key) = e["state_key"].as_str()
-                    && let Some(ty @ ("m.space.child" | "m.space.parent")) = e["type"].as_str()
-                    && e["rowid"]
-                        .as_i64()
-                        .is_some_and(|n| n > 0 && delta["state"][ty][key] == n)
-                    && (e["redacted_by"].is_string()
-                        || items(&e["content"]["via"]).next().is_none())
-                {
-                    let (parent, child) = if ty == "m.space.child" {
-                        (id.as_str(), key)
-                    } else {
-                        (key, id.as_str())
-                    };
-                    if d["space_edges"].get(parent).is_none()
-                        && self
-                            .children
-                            .get_mut(parent)
-                            .is_some_and(|kids| kids.remove(child))
-                    {
-                        self.hierarchy_revision += 1;
-                    }
-                }
-                if let Some(ty) = e["type"].as_str()
-                    && e["state_key"] == ""
-                    && delta["state"][ty][""] == e["rowid"]
-                {
-                    room.posting.ingest(id, e, false);
-                }
-                #[cfg(target_os = "linux")]
-                if let Some(key) = e["state_key"].as_str()
-                    && delta["state"][untethered_iced::rtc_membership::EVENT_TYPE][key]
-                        == e["rowid"]
-                {
-                    room.voice_state(&crate::desktop_call::gomuks_state_event(e));
-                }
-                if e["type"] == "m.room.member"
-                    && let Some(user) = e["state_key"].as_str()
-                    && delta["state"]["m.room.member"][user] == e["rowid"]
-                    && let Some(name) = e["content"]["displayname"].as_str()
-                {
-                    room.members.insert(user.into(), name.into());
-                }
-                if timeline.contains(&e["rowid"].as_i64().unwrap_or(0))
-                    || crate::edits::is_replacement(e)
-                    || e["event_id"]
-                        .as_str()
-                        .is_some_and(|id| room.by_id(id).is_some())
-                {
-                    room.insert(e);
-                }
-            }
-        }
-        for id in items(&d["left_rooms"]).filter_map(Value::as_str) {
-            if self.list.remove(id).is_some() {
-                self.hierarchy_revision += 1;
-                room_order_changed = true;
-            }
-            room_order_changed |= self.children.remove(id).is_some();
-        }
-        if room_order_changed {
-            self.sort_rooms();
-        }
-    }
-    pub fn event(&mut self, fallback: &Value, event: &Value) {
-        if let Some(room) = event["room_id"]
-            .as_str()
-            .or(fallback.as_str())
-            .and_then(|id| self.list.get_mut(id))
-        {
-            room.insert(event);
-        }
-    }
     pub fn demo() -> Self {
         let mut rooms = Self::default();
         let space = "!workshop";
@@ -639,84 +450,4 @@ impl Rooms {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn timeline_index_tracks_prepend_replacement_and_reset() {
-        let mut rooms = Rooms::default();
-        let room = rooms.list.entry("!r".into()).or_default();
-        let event = |row, time| {
-            json!({
-                "rowid": row,
-                "event_id": format!("${row}"),
-                "type": "m.room.message",
-                "timestamp": time,
-                "content": {"body": "message"}
-            })
-        };
-        room.insert(&event(3, 200));
-        room.insert(&event(2, 200));
-        room.insert(&event(1, 100));
-        assert_eq!(room.position("$2"), Some(1));
-        assert_eq!(room.key_at(2), Some((200, 3)));
-
-        room.insert(&event(3, 0));
-        assert_eq!(room.position("$3"), Some(0));
-        assert_eq!(
-            room.posts().map(|p| p.time).collect::<Vec<_>>(),
-            [0, 100, 200]
-        );
-
-        room.insert(
-            &json!({"rowid": 3, "type": "m.room.encrypted", "decrypted_type": "m.reaction"}),
-        );
-        assert_eq!(room.position("$3"), None);
-        assert_eq!(room.posts().len(), 2);
-
-        rooms.sync(&json!({"rooms": {"!r": {"reset": true}}}));
-        assert_eq!(rooms.list["!r"].posts().len(), 0);
-    }
-
-    #[test]
-    fn room_order_tracks_metadata_and_departures() {
-        let mut rooms = Rooms::default();
-        rooms.sync(&json!({"rooms": {
-            "!a": {"meta": {"name": "Zulu"}},
-            "!b": {"meta": {"name": "bravo", "dm_user_id": "@person:example"}},
-            "!s": {"meta": {"name": "Space", "creation_content": {"type": "m.space"}}}
-        }}));
-        assert_eq!(rooms.ordered_rooms, ["!b", "!a"]);
-        assert_eq!(rooms.ordered_direct, ["!b"]);
-        rooms.sync(&json!({"space_edges": {"!s": [{"child_id": "!a"}, {"child_id": "!b"}]}}));
-        assert_eq!(rooms.ordered_spaces["!s"], ["!b", "!a"]);
-        rooms.sync(&json!({"rooms": {"!a": {"meta": {"name": "Alpha"}}}}));
-        assert_eq!(rooms.ordered_rooms, ["!a", "!b"]);
-        assert_eq!(rooms.ordered_spaces["!s"], ["!a", "!b"]);
-        rooms.sync(&json!({"left_rooms": ["!a"]}));
-        assert_eq!(rooms.ordered_rooms, ["!b"]);
-        assert_eq!(rooms.ordered_spaces["!s"], ["!b"]);
-    }
-
-    #[test]
-    fn sync_decrypt_page_and_leave() {
-        let mut rooms = Rooms::default();
-        let event = json!({"type":"m.room.encrypted","sender":"@me:h","rowid":4,"room_id":"!r"});
-        rooms.sync(&json!({"rooms":{"!r":{"meta":{"name":"Chat"},"timeline":[{"event_rowid":4}],"events":[event,{"rowid":5,"type":"m.room.message","content":{"body":"not in timeline"}}]}}}));
-        assert_eq!(rooms.list["!r"].history.len(), 1);
-        assert_eq!(
-            rooms.list["!r"].history[&4].body,
-            "Waiting for encryption keys…"
-        );
-        let mut decrypted = event;
-        decrypted["decrypted"] = json!({"body":"hello"});
-        rooms.event(&Value::Null, &decrypted);
-        decrypted["timeline_rowid"] = json!(-3);
-        let r = rooms.list.get_mut("!r").unwrap();
-        r.page("!r", &json!({"events":[decrypted],"has_more":true}));
-        assert_eq!(r.history.len(), 1);
-        assert_eq!(r.history[&4].body, "hello");
-        assert_eq!(r.cursor, Some(-3));
-        rooms.sync(&json!({"left_rooms":["!r"]}));
-        assert!(rooms.list.is_empty());
-    }
-}
+mod tests {}

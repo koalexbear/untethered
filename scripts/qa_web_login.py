@@ -1,9 +1,6 @@
 """Sign a disposable account into an actual 1180×760 Untethered canvas."""
-def gomuks_page(web):
-    """The web client on gomuks, which these tests seed (matrix-sdk is the default)."""
-    return web.split("?")[0].rstrip("/")+"/?engine=gomuks"
 def login_client(page,web,fixture):
-    page.goto(gomuks_page(web),wait_until="commit")
+    page.goto(web,wait_until="commit")
     page.wait_for_function("document.title.includes('Preview')",timeout=45000)
     page.mouse.click(1095,73)
     page.wait_for_function("document.title.includes('Account')")

@@ -4,8 +4,6 @@ use wasm_bindgen::{JsValue, closure::Closure, prelude::wasm_bindgen};
 
 /// The page's copy of `matrix-sdk/session.json`.
 const SESSION: &str = "untethered.matrix-sdk.session";
-/// The engine this page last chose with `?engine=`.
-const ENGINE: &str = "untethered.engine";
 /// Not gomuks's lock name: the two engines keep separate stores.
 const LOCK: &str = "untethered:matrix-sdk-profile";
 
@@ -17,27 +15,6 @@ extern "C" {
 
 fn storage() -> Option<web_sys::Storage> {
     web_sys::window()?.local_storage().ok()?
-}
-
-pub fn selected() -> bool {
-    let asked = web_sys::window()
-        .and_then(|w| w.location().search().ok())
-        .and_then(|query| {
-            url::form_urlencoded::parse(query.trim_start_matches('?').as_bytes())
-                .find(|(key, _)| key == "engine")
-                .map(|(_, value)| value.into_owned())
-        })
-        .filter(|choice| matches!(choice.as_str(), "matrix-sdk" | "gomuks"));
-    let storage = storage();
-    if let Some(choice) = asked {
-        if let Some(storage) = &storage {
-            let _ = storage.set_item(ENGINE, &choice);
-        }
-        return choice == "matrix-sdk";
-    }
-    !storage
-        .and_then(|s| s.get_item(ENGINE).ok().flatten())
-        .is_some_and(|choice| choice == "gomuks")
 }
 
 pub fn saved_session() -> Option<String> {

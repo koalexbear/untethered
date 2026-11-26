@@ -1,7 +1,8 @@
 # Untethered
 
-Untethered’s frontend is written in Rust using Iced. The Matrix engine is the
-upstream [gomuks](https://github.com/gomuks/gomuks) project, written in Go.
+Untethered is written in Rust using Iced. Its Matrix engine is
+[matrix-rust-sdk](https://github.com/matrix-org/matrix-rust-sdk), in process on
+the desktop and in a Web Worker in the browser.
 
 See the [Discord-parity roadmap and milestone checks](ROADMAP.md).
 
@@ -14,26 +15,21 @@ bash scripts/rust-client.sh       # Linux x86-64, current Rust toolchain and sys
 ```
 
 On x64 Windows with Rust and the MSVC build tools: `.\scripts\rust-client.ps1`.
-Both launchers use gomuks **v0.2611.1** for Matrix and store this client's session in
-`.dev/rust-profile`. Set `UNTETHERED_BACKEND`
-and `UNTETHERED_PROFILE` to use another compatible binary and dedicated profile.
+Both launchers store this client's session in `.dev/rust-profile`. Set
+`UNTETHERED_PROFILE` to use a dedicated profile.
 
-**How startup works:** The dev launcher fetches the pinned gomuks executable
-on first use, verifies its SHA-256 and caches it in `.dev/backends/`. On every
-launch, the Rust app locks the profile, starts `gomuks --desktop` as a child,
-and reads its loopback address from stdout. It authenticates with a fresh
-per-launch secret and opens a local WebSocket for Matrix commands and events.
-Closing the app shuts down the child. There’s no separate service to start.
+**How startup works:** The app locks the profile, restores its Matrix session
+from `matrix-sdk/session.json`, opens its encrypted SQLite stores (the store
+passphrase lives in the OS keyring when one answers) and syncs with Simplified
+Sliding Sync, which the homeserver must support. There's no separate service
+to start.
 
-**Experimental matrix-rust-sdk engine:** `UNTETHERED_ENGINE=matrix-sdk` starts
-the desktop client on an in-process matrix-rust-sdk engine instead of gomuks.
-It covers sign-in (password or single sign-on), recovery and emoji
-verification, devices, rooms, spaces, messages, replies, reactions, edits,
-reports, read receipts, attachments, moderation, room permissions, space and
-channel setup, notification settings, desktop alerts, search and the
-mentions inbox so far; calls and the web client still need gomuks. It signs
-in as a new device; verify it with your recovery key or another device. See
-the [migration notes](rust-client/docs/matrix-sdk-migration.md).
+**Coming from a gomuks build:** earlier builds ran
+[gomuks](https://github.com/gomuks/gomuks) as the Matrix engine. The first
+start shows why you need to sign in again: it's a new device, and your
+recovery key restores your encrypted history. Remove the old session under
+**Devices** afterwards. gomuks's files in the profile are left alone. See the
+[migration notes](rust-client/docs/matrix-sdk-migration.md).
 
 The Linux launcher tries wgpu first and falls back to tiny-skia. To compare
 renderers with the default development profile, close the client between runs
@@ -54,10 +50,8 @@ composer (Enter sends, Shift+Enter adds a line). Preview messages are never sent
 the client adds `https://`. This prototype supports password login and verification
 with the account’s existing recovery key (grouped or compact) or recovery passphrase.
 The web verification form supports ordinary keyboard and context-menu paste.
-SSO and first-time encryption setup aren’t implemented. Emoji comparison (SAS)
-needs support from the client engine; the pinned gomuks release does not expose
-that flow through its frontend API. Room sync, encryption, history, and sends use the upstream
-gomuks engine. The UI currently renders plain text and initial-based avatars.
+Single sign-on and emoji comparison (SAS) are desktop-only for now. The UI
+currently renders plain text and initial-based avatars.
 
 **Discord-style layout:** Hover a message to show its toolbar: **Add Reaction**,
 **Reply**, **Edit** (your own text messages) and **Report Message** (other
@@ -75,7 +69,7 @@ The bar above the composer shows who you’re replying to; its **×** (Cancel
 reply) keeps your text. Click the quoted line above a reply to jump to the
 exact Matrix event. If it
 is outside the loaded timeline, Untethered loads that part of the room’s
-history through gomuks. **Preceding messages** shows what led up to it, and
+history from the homeserver. **Preceding messages** shows what led up to it, and
 **Back to latest** returns to the conversation.
 
 **Linux desktop notifications:** Click the bell (**Notification Settings**) in
@@ -150,7 +144,7 @@ changes to **Joined** when they accept. Membership controls use your room role
 and the selected account’s full Matrix ID.
 
 **Room search:** Click the **Search** box in the room header, enter a word or phrase,
-and press Enter. Results come from this device’s gomuks history and use the
+and press Enter. Results come from this device’s stored history and use the
 current text of edited messages. **Check coverage** shows the number of
 readable messages cached for this room and the oldest date it found. Open
 a result to see it in context. **Back to results** keeps your query;
@@ -164,7 +158,7 @@ keeps its link to the original.
 **Reactions:** Hover a message and click **Add Reaction** to choose a quick reaction
 or enter your own emoji or text. Click an existing reaction to add yours;
 click a highlighted reaction to remove only yours. Reactions stay on the
-same message when its text is edited. In encrypted rooms, gomuks and Element
+same message when its text is edited. In encrypted rooms, Untethered and Element
 use standard `m.reaction` events: the reaction key and target ID are visible
 to the homeserver, while the message text remains encrypted.
 
@@ -201,7 +195,7 @@ through the app's existing data device; no clipboard watcher or helper daemon is
 
 Received images show an inline thumbnail in the active conversation. The client
 uses encrypted Matrix thumbnails when available, or decodes a small original
-(up to 4 MiB) via gomuks. Hover an image and click **Download** to save the original. The repeatable
+(up to 4 MiB). Hover an image and click **Download** to save the original. The repeatable
 `scripts/test-media-interop.py` test checks actual pixels in an independent browser
 device after both login and reload against a disposable Synapse.
 
@@ -215,8 +209,8 @@ accepts, Untethered uses the default microphone and output through `pacat`
 (PulseAudio or PipeWire-Pulse). **Hang up** releases both streams. Calling
 needs a verified Matrix device and a homeserver advertising a LiveKit
 `livekit_service_url` with OpenID authorization. Source builds need Clang for
-the LiveKit SDK. **User Settings → Check call server support** queries the gomuks
-transport-discovery RPC; legacy deployments can also advertise in `.well-known`.
+the LiveKit SDK. **User Settings → Check call server support** queries the homeserver's
+MSC4143 RTC transports; legacy deployments can also advertise in `.well-known`.
 
 With Untethered open, an incoming Element DM voice call plays a ringtone and
 shows the caller, **Accept**, and **Decline**. Declining notifies Element
@@ -353,15 +347,14 @@ only changes your view. If the focused feed ends, the grid returns automatically
 
 ## Browser
 
-The browser runs the same Rust view and an embedded gomuks WebAssembly worker.
-No desktop gomuks process or proxy is needed. Its Matrix device lives in the
-browser's origin-private storage, independently of the desktop profile. Use a
-modern browser at `localhost` or an HTTPS origin.
+The browser runs the same Rust view, with the matrix-rust-sdk engine in a Web
+Worker. Its Matrix device lives in the browser's IndexedDB, independently of
+the desktop profile. Use a modern browser at `localhost` or an HTTPS origin.
 
 Only one tab can use the browser device at once. Another tab waits and connects
-automatically when the active tab closes. If upgrading from an older build that
-reported “worker stopped,” close the old tabs and reopen the same URL. Keep the
-site data: that’s where the device’s encryption keys live.
+automatically when the active tab closes. Keep the site data: that’s where the
+device’s encryption keys live. A browser that ran an earlier gomuks build signs
+in once more, as on the desktop.
 
 **Browser notifications:** In a room, open **Alerts → Enable browser
 notifications** and allow the site in your browser’s prompt. **Mute
@@ -373,22 +366,21 @@ browser’s site settings. [Verified in desktop Chromium on Linux](scripts/room-
 
 ```sh
 rustup target add wasm32-unknown-unknown
-# Requires Trunk, wasm-bindgen-cli matching Cargo.lock, Node/npm, Go and Git.
+# Requires Trunk and wasm-bindgen-cli matching Cargo.lock.
 bash scripts/rust-web.sh
 python3 -m http.server 8080 --bind 127.0.0.1 --directory rust-client/web/dist
 ```
 
-Open `http://127.0.0.1:8080`. The build uses the pinned upstream Go worker and
-SQLite bridge. The native transport, browser transport, room model and Iced view
-are in `rust-client/src`. `cargo test --manifest-path rust-client/Cargo.toml`
-runs the model regression test; the ignored live test requires a disposable
-loopback homeserver, an encrypted room and an isolated profile.
+Open `http://127.0.0.1:8080`. The engine, room model and Iced view are in
+`rust-client/src`. `cargo test --manifest-path rust-client/Cargo.toml` runs the
+unit tests; `scripts/qa_matrix_sdk.py` runs the live engine tests against a
+disposable Synapse, and its `UNTETHERED_QA_ONLY=web` mode the browser test.
 
 ## Arch Linux package (x86-64)
 
 Run `makepkg -s` in the checkout to build the **current local Git commit**.
-The package installs `/usr/bin/untethered` and `/usr/lib/untethered/gomuks`.
-Launching `untethered` uses that bundled backend without a runtime download.
+The package installs `/usr/bin/untethered` (and the camera helper in
+`/usr/lib/untethered`). Since `0.1.0-9` it no longer ships gomuks.
 The packaged app keeps its Matrix device in `$XDG_DATA_HOME/untethered-iced`
 (default `~/.local/share/untethered-iced`), separate from the development profile.
 An [in-place upgrade from `0.1.0-2` to `0.1.0-6`](scripts/linux-upgrade.md#recorded-run-2026-11-25)

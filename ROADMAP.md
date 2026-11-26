@@ -320,7 +320,7 @@
 
 A small community should be able to move its everyday conversations here: find a server and its channels, talk in DMs, drop a screenshot, join friends in voice, share a screen, catch up on mentions, and moderate its space. Test those workflows side by side with Discord. A button that looks right but doesn't work with another Matrix client isn't parity.
 
-Keep the frontend in **Rust/Iced** and **gomuks** as the Matrix engine. Share room, attachment and call state between desktop and web; isolate file access, capture, playback and notifications behind platform adapters. Keep native controls for desktop calls. Launching a hosted Element Call page is useful for testing but isn't the finished native calling experience.
+Keep the frontend in **Rust/Iced**. The Matrix engine is **matrix-rust-sdk**, which replaced gomuks in November 2026 ([migration notes](rust-client/docs/matrix-sdk-migration.md)); the gomuks-era notes below describe how milestones were first reached. Share room, attachment and call state between desktop and web; isolate file access, capture, playback and notifications behind platform adapters. Keep native controls for desktop calls. Launching a hosted Element Call page is useful for testing but isn't the finished native calling experience.
 
 **Baseline before this milestone (`bfa75b3`):** server rail and space/DM navigation, grouped plain-text timeline, in-memory room drafts, password login, recovery-key verification, and encrypted messages. Linux and Chromium had exchanged encrypted messages and restored sessions. Windows cross-built but had no runtime acceptance test. Media cards, transfers, calls, and voice channels were not yet implemented.
 

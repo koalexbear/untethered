@@ -2,10 +2,10 @@
 //! rows) for read markers. Private unless the account opts into public receipts.
 use crate::{
     App, Msg, Request,
-    rooms::{self, items},
+    rooms::{self},
 };
 use iced::Task;
-use serde_json::{Value, json};
+use serde_json::json;
 use std::collections::BTreeMap;
 
 #[derive(Default)]
@@ -37,82 +37,11 @@ impl State {
             }
         }
     }
-    pub fn position(&mut self, t: i64, e: &Value) {
-        if t != 0 && rooms::server_confirmed(e) {
-            self.timeline.insert(t, rooms::string(&e["event_id"]));
-        }
-    }
     pub fn target(&self) -> Option<&str> {
         self.timeline
             .last_key_value()
             .map(|(_, e)| e.as_str())
             .or(self.preview.as_deref())
-    }
-    pub fn sync(&mut self, delta: &Value, id: &str) {
-        if delta["reset"] == true {
-            self.timeline.clear();
-            self.preview = None;
-            self.attempted = None;
-            self.readers.clear();
-        }
-        self.receipts(delta, id);
-        let m = &delta["meta"];
-        if m.is_object() {
-            self.marked = m["marked_unread"] == true;
-            self.messages = m["unread_messages"].as_u64().unwrap_or(0);
-            self.highlights = m["unread_highlights"].as_u64().unwrap_or(0);
-            if self.messages == 0
-                && self.highlights == 0
-                && !self.marked
-                && m["unread_notifications"].as_u64().unwrap_or(0) == 0
-            {
-                self.attempted = None;
-            }
-        }
-        if let Some(data) = delta["account_data"].get("m.fully_read") {
-            self.fully_read = data["content"]["event_id"]
-                .as_str()
-                .filter(|e| e.starts_with('$'))
-                .map(str::to_owned);
-        }
-        let rows: BTreeMap<_, _> = items(&delta["timeline"])
-            .filter_map(|t| Some((t["event_rowid"].as_i64()?, t["timeline_rowid"].as_i64()?)))
-            .collect();
-        for e in
-            items(&delta["events"]).filter(|e| e["room_id"] == id && rooms::server_confirmed(e))
-        {
-            if let Some(row) = e["rowid"].as_i64() {
-                if let Some(t) = rows.get(&row) {
-                    self.position(*t, e);
-                }
-                if m["preview_event_rowid"] == row {
-                    self.preview = Some(rooms::string(&e["event_id"]));
-                }
-            }
-        }
-    }
-    pub fn receipts(&mut self, data: &Value, room: &str) {
-        if let Some(receipts) = data["receipts"].as_object() {
-            for (event, rows) in receipts {
-                for r in items(rows) {
-                    if r["receipt_type"] != "m.read"
-                        || r["room_id"]
-                            .as_str()
-                            .is_some_and(|id| !id.is_empty() && id != room)
-                        || !matches!(r["thread_id"].as_str(), None | Some("" | "main"))
-                        || !event.starts_with('$')
-                        || r["event_id"] != *event
-                    {
-                        continue;
-                    }
-                    if let (Some(user), Some(ts)) = (r["user_id"].as_str(), r["timestamp"].as_i64())
-                        && self.readers.get(user).is_none_or(|(_, old)| ts >= *old)
-                    {
-                        self.readers.insert(user.into(), (event.clone(), ts));
-                    }
-                }
-            }
-        }
     }
     pub fn seen(&self, me: &str) -> BTreeMap<&str, Vec<&str>> {
         let mut by_event = BTreeMap::new();
@@ -150,13 +79,6 @@ impl Sharing {
     /// The preference as synced by the matrix-sdk engine.
     pub fn set_from_engine(&mut self, public: bool) {
         self.update(public)
-    }
-    pub fn sync(&mut self, d: &Value) {
-        if let Some(p) = d["account_data"].get(PREF) {
-            self.update(p["content"]["public"] == true)
-        } else if d["clear_state"] == true {
-            self.update(false);
-        }
     }
     fn update(&mut self, value: bool) {
         self.revision += 1;
@@ -292,60 +214,4 @@ impl App {
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn stale_viewport_or_pagination_must_not_acknowledge_a_newer_arrival() {
-        let (tx, rx) = async_channel::bounded(8);
-        let mut a = App::new(tx);
-        a.logged_in = true;
-        a.verified = true;
-        a.connected = true;
-        a.focused = true;
-        a.selected = "!r".into();
-        let event = |id: &str, row: i64, t: i64| {
-            json!({"room_id":"!r","event_id":id,"rowid":row,"type":"m.room.message",
-            "sender":"@peer:h","content":{"msgtype":"m.text","body":"hello"},"timeline_rowid":t})
-        };
-        let r = a.live.list.entry("!r".into()).or_default();
-        r.unread = true;
-        r.page("!r", &json!({"events":[event("$one",1,100)]}));
-        let old = Msg::ReadVisible("!r".into(), "$one".into(), "$one".into(), true);
-        r.page(
-            "!r",
-            &json!({"events":[event("$two",2,101),event("$backfill",7,-1)]}),
-        );
-        let _ = a.update(old);
-        assert!(rx.is_empty());
-        assert_eq!(a.auto_target(), Some(("$two", "$two")));
-        let _ = a.update(Msg::ReadingScroll("!r".into(), true));
-        let _ = a.update(Msg::ReadVisible(
-            "!r".into(),
-            "$two".into(),
-            "$two".into(),
-            true,
-        ));
-        assert!(rx.is_empty());
-    }
-    #[test]
-    fn private_threaded_or_old_receipts_cannot_move_another_readers_badge() {
-        let mut s = State::default();
-        let receipt = |id: &str, kind: &str, thread: &str, time: i64| {
-            json!({"receipts":{id:[{
-                "event_id":id,"room_id":"!r","user_id":"@peer:h","receipt_type":kind,"thread_id":thread,"timestamp":time
-            }]}})
-        };
-        s.receipts(&receipt("$new", "m.read", "", 30), "!r");
-        for bad in [
-            receipt("$old", "m.read", "", 20),
-            receipt("$private", "m.read.private", "", 40),
-            receipt("$thread", "m.read", "$root", 50),
-        ] {
-            s.receipts(&bad, "!r");
-        }
-        s.receipts(&receipt("$wrong", "m.read", "", 80), "!other");
-        assert_eq!(s.seen("@me:h").get("$new").unwrap(), &["@peer:h"]);
-        assert!(s.seen("@peer:h").is_empty());
-    }
-}
+mod tests {}

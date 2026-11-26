@@ -1,9 +1,6 @@
 //! gomuks evaluates Matrix push rules on decrypted content. A room rule can
 //! mute ordinary chat without overriding the higher-priority mention rule.
-use crate::{
-    App, Msg, Request,
-    rooms::{self, items},
-};
+use crate::{App, Msg, Request, rooms::items};
 #[cfg(target_arch = "wasm32")]
 pub mod browser;
 #[cfg(target_os = "linux")]
@@ -12,10 +9,9 @@ pub mod spaces;
 use iced::Task;
 use iced::time::Instant;
 use serde_json::{Value, json};
-use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
-    time::Duration,
-};
+use std::collections::{BTreeMap, VecDeque};
+#[cfg(target_os = "linux")]
+use std::time::Duration;
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub enum Mode {
@@ -47,15 +43,7 @@ pub enum RuleKind {
     Room,
     Underride,
 }
-impl RuleKind {
-    fn wire(self) -> &'static str {
-        match self {
-            Self::Override => "override",
-            Self::Room => "room",
-            Self::Underride => "underride",
-        }
-    }
-}
+impl RuleKind {}
 /// A change to one push rule, as the Matrix push rules API makes it.
 #[derive(Clone, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
 pub enum RuleChange {
@@ -96,16 +84,6 @@ struct Notice {
 impl Alerts {
     pub fn reset(&mut self) {
         *self = Self::default();
-    }
-    fn rules(&mut self, data: &Value) {
-        if data["clear_state"] == true {
-            self.spaces = Default::default();
-            self.ready = false;
-            self.set_dnd(None);
-            self.rules.clear();
-            self.waiting.clear();
-        }
-        self.ruleset(&data["account_data"]["m.push_rules"]["content"]);
     }
     /// The account's push rules: the `m.push_rules` account data content.
     pub fn ruleset(&mut self, content: &Value) {
@@ -166,118 +144,6 @@ impl Alerts {
         if value == Some(true) {
             self.waiting.clear();
             self.outgoing.clear();
-        }
-    }
-    fn observe(
-        &mut self,
-        room: &str,
-        info: &rooms::Room,
-        me: &str,
-        delta: &Value,
-        late: bool,
-        reading: bool,
-    ) {
-        self.waiting
-            .retain(|(_, _, at)| at.elapsed() < Duration::from_secs(120));
-        let timeline: BTreeSet<_> = items(&delta["timeline"])
-            .filter_map(|e| e["event_rowid"].as_i64())
-            .collect();
-        let approved: BTreeMap<_, _> = items(&delta["notifications"])
-            .filter_map(|n| Some((n["event_rowid"].as_i64()?, n["sound"] == true)))
-            .collect();
-        for e in items(&delta["events"]) {
-            let (Some(row), Some(id), Some(sender)) = (
-                e["rowid"].as_i64(),
-                e["event_id"].as_str(),
-                e["sender"].as_str(),
-            ) else {
-                continue;
-            };
-            if !rooms::server_confirmed(e)
-                || e["room_id"] != room
-                || sender == me
-                || e["redacted_by"].is_string()
-                || !e["state_key"].is_null()
-            {
-                continue;
-            }
-            let c = if e["type"] == "m.room.encrypted" {
-                &e["decrypted"]
-            } else {
-                &e["content"]
-            };
-            let sound = if late {
-                let Some(index) = self
-                    .waiting
-                    .iter()
-                    .position(|(r, i, _)| r == room && i == id)
-                else {
-                    continue;
-                };
-                self.waiting.remove(index);
-                // gomuks recomputes these bits when it finally has the key.
-                const NOTIFY: u64 = 0b0010;
-                const SOUND: u64 = 0b1000;
-                let flags = e["unread_type"].as_u64().unwrap_or_default();
-                if flags & NOTIFY == 0 {
-                    continue;
-                }
-                flags & SOUND != 0
-            } else {
-                if !timeline.contains(&row) {
-                    continue;
-                }
-                if e["type"] == "m.room.encrypted" && !c.is_object() {
-                    if !reading && !self.waiting.iter().any(|(r, i, _)| r == room && i == id) {
-                        self.waiting
-                            .push_back((room.into(), id.into(), Instant::now()));
-                        if self.waiting.len() > 512 {
-                            self.waiting.pop_front();
-                        }
-                    }
-                    continue;
-                }
-                let Some(&sound) = approved.get(&row) else {
-                    continue;
-                };
-                sound
-            };
-            let ty = if e["type"] == "m.room.encrypted" {
-                &e["decrypted_type"]
-            } else {
-                &e["type"]
-            };
-            if !matches!(ty.as_str(), Some("m.room.message" | "m.sticker"))
-                || crate::edits::is_replacement(e)
-                || self.recent.iter().any(|old| old == id)
-            {
-                continue;
-            }
-            self.recent.push_back(id.into());
-            if self.recent.len() > 512 {
-                self.recent.pop_front();
-            }
-            if reading {
-                continue;
-            }
-            let preview = e["local_content"]["preview_text"]
-                .as_str()
-                .filter(|s| !s.is_empty())
-                .or(c["body"].as_str())
-                .unwrap_or("New message");
-            self.outgoing.push(Notice {
-                title: format!(
-                    "{} · {}",
-                    single_line(info.display(sender), 64),
-                    single_line(&info.name, 80)
-                ),
-                body: single_line(preview, 240),
-                sound,
-                #[cfg(target_arch = "wasm32")]
-                room: room.into(),
-                #[cfg(target_arch = "wasm32")]
-                event: id.into(),
-            });
         }
     }
 }
@@ -389,33 +255,6 @@ impl App {
             self.alerts.rules.insert(change.room, (change.mode, true));
         }
     }
-    pub fn notifications_sync(&mut self, data: &Value) {
-        self.alerts.rules(data);
-        if self.alerts.dnd == Some(true) {
-            self.apply_quiet();
-        }
-        if data["clear_state"] == true
-            || data["catchup"] == true
-            || data["since"].as_str().is_none_or(str::is_empty)
-        {
-            return;
-        }
-        if let Some(rooms) = data["rooms"].as_object() {
-            for (id, delta) in rooms {
-                self.room_alerts(id, delta, false);
-            }
-        }
-    }
-    pub fn room_alerts(&mut self, id: &str, delta: &Value, late: bool) {
-        if !self.logged_in || !self.verified || self.closing {
-            return;
-        }
-        if let Some(room) = self.live.list.get(id) {
-            let reading = self.reading_room(id);
-            self.alerts
-                .observe(id, room, &self.matrix_id, delta, late, reading);
-        }
-    }
     /// Alerts are quiet, or the user is reading this room right now.
     fn reading_room(&self, id: &str) -> bool {
         self.quiet_alerts()
@@ -492,36 +331,16 @@ impl App {
         change: RuleChange,
         request: Request,
     ) {
-        if self.sdk.is_some() {
-            let rule_id = rule_id.to_owned();
-            return self.command(
-                |id| crate::engine::Command::PushRule {
-                    id,
-                    kind,
-                    rule_id,
-                    change,
-                },
-                request,
-            );
-        }
-        let mut params = json!({"kind": kind.wire(), "rule_id": rule_id});
-        match change {
-            RuleChange::Enabled(on) => {
-                params["action"] = if on { "enable" } else { "disable" }.into()
-            }
-            RuleChange::Delete => params["action"] = "delete".into(),
-            RuleChange::Put {
-                actions,
-                conditions,
-            } => {
-                params["action"] = "put".into();
-                params["new_content"] = json!({ "actions": actions });
-                if let Some(conditions) = conditions {
-                    params["new_content"]["conditions"] = conditions;
-                }
-            }
-        }
-        self.rpc("update_push_rule", params, request);
+        let rule_id = rule_id.to_owned();
+        self.command(
+            |id| crate::engine::Command::PushRule {
+                id,
+                kind,
+                rule_id,
+                change,
+            },
+            request,
+        );
     }
     pub fn send_room_account_data(
         &mut self,
@@ -530,21 +349,14 @@ impl App {
         content: Value,
         request: Request,
     ) {
-        if self.sdk.is_some() {
-            let (room, kind) = (room.to_owned(), kind.to_owned());
-            return self.command(
-                |id| crate::engine::Command::RoomAccountData {
-                    id,
-                    room,
-                    kind,
-                    content,
-                },
-                request,
-            );
-        }
-        self.rpc(
-            "set_account_data",
-            json!({"type": kind, "room_id": room, "content": content}),
+        let (room, kind) = (room.to_owned(), kind.to_owned());
+        self.command(
+            |id| crate::engine::Command::RoomAccountData {
+                id,
+                room,
+                kind,
+                content,
+            },
             request,
         );
     }
@@ -591,6 +403,7 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rooms;
     #[cfg(target_os = "linux")]
     #[test]
     fn engine_alerts_skip_own_repeated_and_quiet_messages_and_read_typed_rules() {
@@ -632,81 +445,5 @@ mod tests {
         assert!(app.alerts.mode("!r") == Mode::Quiet);
         app.engine_notice(alert("$3", "@bob:h"));
         assert!(app.alerts.outgoing.is_empty(), "nothing while DND is on");
-    }
-    #[test]
-    fn dnd_leaves_custom_master_actions_alone_and_does_not_override_newer_sync() {
-        let (tx, rx) = async_channel::bounded(2);
-        let mut app = App::new(tx);
-        app.logged_in = true;
-        app.verified = true;
-        app.connected = true;
-        let sync = |on, actions: Value| {
-            json!({"account_data":{"m.push_rules":{"content":{"global":{"override":[{
-            "rule_id":MASTER,"default":true,"conditions":[],"actions":actions,"enabled":on}]}}}}})
-        };
-        app.notifications_sync(&sync(false, json!(["notify"])));
-        app.change_dnd(true);
-        assert!(rx.is_empty() && app.alerts.dnd.is_none());
-        app.notifications_sync(&sync(false, json!([])));
-        app.change_dnd(true);
-        let id = rx.try_recv().unwrap().into_rpc()["request_id"].clone();
-        assert!(app.quiet_alerts());
-        app.notifications_sync(&sync(true, json!([])));
-        app.notifications_sync(&sync(false, json!([])));
-        app.frame(json!({"command":"response","request_id":id}));
-        assert_eq!(app.alerts.dnd, Some(false));
-        assert!(!app.quiet_alerts());
-        app.change_dnd(true);
-        let id = rx.try_recv().unwrap().into_rpc()["request_id"].clone();
-        app.frame(json!({"command":"error","request_id":id}));
-        assert!(!app.quiet_alerts() && !app.changing_dnd());
-    }
-    #[test]
-    fn only_live_candidates_notify_once_when_keys_arrive() {
-        let (tx, _) = async_channel::bounded(4);
-        let mut app = App::new(tx);
-        app.logged_in = true;
-        app.verified = true;
-        app.matrix_id = "@alice:h".into();
-        app.live.list.insert(
-            "!r".into(),
-            rooms::Room {
-                name: "Room".into(),
-                ..Default::default()
-            },
-        );
-        let opaque = json!({"type":"m.room.encrypted","room_id":"!r","rowid":9,"event_id":"$hello","sender":"@bruno:h"});
-        let mut clear = opaque.clone();
-        clear["decrypted_type"] = "m.room.message".into();
-        clear["decrypted"] = json!({"msgtype":"m.text","body":"Hi <Alice> & friends"});
-        clear["unread_type"] = json!(14);
-        let delta = json!({"timeline":[{"event_rowid":9}],"events":[opaque]});
-        let keys = json!({"room_id":"!r","events":[clear]});
-        for sync in [
-            json!({"catchup":true,"since":"old","rooms":{"!r":delta}}),
-            json!({"clear_state":true,"rooms":{"!r":delta}}),
-        ] {
-            app.notifications_sync(&sync);
-            app.room_alerts("!r", &keys, true);
-            assert!(app.alerts.outgoing.is_empty());
-        }
-        app.notifications_sync(&json!({"since":"live","rooms":{"!r":delta}}));
-        app.room_alerts("!r", &keys, true);
-        app.room_alerts("!r", &keys, true);
-        app.notifications_sync(&json!({"since":"live","rooms":{"!r":{"timeline":[{"event_rowid":9}],"notifications":[{"event_rowid":9}],"events":[clear]}}}));
-        assert_eq!(app.alerts.outgoing.len(), 1);
-        assert_eq!(app.alerts.outgoing[0].body, "Hi <Alice> & friends");
-        assert!(app.alerts.outgoing[0].sound);
-        // A late ordinary message suppressed by a room rule remains suppressed.
-        let mut muted = opaque;
-        muted["event_id"] = "$quiet".into();
-        muted["rowid"] = 10.into();
-        app.notifications_sync(&json!({"since":"live","rooms":{"!r":{"timeline":[{"event_rowid":10}],"events":[muted]}}}));
-        muted["decrypted_type"] = "m.room.message".into();
-        muted["decrypted"] = json!({"body":"Quiet"});
-        muted["unread_type"] = 1.into();
-        app.room_alerts("!r", &json!({"events":[muted]}), true);
-        assert!(app.alerts.waiting.is_empty());
-        assert_eq!(app.alerts.outgoing.len(), 1);
     }
 }

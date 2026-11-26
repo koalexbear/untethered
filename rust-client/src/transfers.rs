@@ -217,71 +217,6 @@ impl App {
             .as_ref()
             .is_some_and(|b| b.room == room && b.ids.front() == Some(&id))
     }
-    pub fn file_sent(&mut self, room: &str, id: u64, event: &Value) {
-        if !self.current_file(room, id) {
-            return;
-        }
-        if crate::rooms::server_confirmed(event) {
-            self.live.event(&json!(room), event);
-            self.finish_delivery(room, id, true);
-            return;
-        }
-        let Some(txn) = event["transaction_id"].as_str() else {
-            self.fail_file(
-                room,
-                id,
-                "No send confirmation from gomuks. Check the timeline before retrying.",
-            );
-            return;
-        };
-        if let Some(a) = self.outbox.get_mut(room, id) {
-            a.txn = Some(txn.into());
-        }
-        if let Some(ok) = self.batch.as_mut().unwrap().early.remove(txn) {
-            self.finish_delivery(room, id, ok);
-        }
-    }
-    pub fn media_delivery(&mut self, event: &Value, ok: bool) {
-        let (Some(txn), Some(room)) = (event["transaction_id"].as_str(), event["room_id"].as_str())
-        else {
-            return;
-        };
-        // A sync echo can arrive after a transient failure. Retire the retry
-        // card for precisely this transaction, never another file in the room.
-        if ok
-            && crate::rooms::server_confirmed(event)
-            && let Some(id) = self
-                .outbox
-                .rooms
-                .get(room)
-                .and_then(|q| q.iter().find(|a| !a.busy && a.txn.as_deref() == Some(txn)))
-                .map(|a| a.id)
-        {
-            self.outbox.remove(room, id);
-        }
-        let Some(b) = &mut self.batch else { return };
-        let Some(&id) = b.ids.front() else { return };
-        if room != b.room {
-            return;
-        }
-        if self
-            .outbox
-            .get_mut(room, id)
-            .is_some_and(|a| a.txn.as_deref() == Some(txn))
-        {
-            self.finish_delivery(room, id, ok);
-        } else if self
-            .pending
-            .values()
-            .any(|p| matches!(p,Request::MediaSend(r,i) if r==room && *i==id))
-            && b.early.len() < 32
-        {
-            b.early
-                .entry(txn.into())
-                .and_modify(|confirmed| *confirmed |= ok)
-                .or_insert(ok);
-        }
-    }
     pub fn finish_delivery(&mut self, room: &str, id: u64, ok: bool) {
         if !self.current_file(room, id) {
             return;
@@ -331,51 +266,6 @@ mod tests {
     use super::*;
     use crate::rooms::Room;
     #[test]
-    fn late_media_config_rechecks_each_room_without_publishing_an_orphaned_caption() {
-        let (tx, rx) = async_channel::bounded(8);
-        let mut app = App::new(tx);
-        app.connected = true;
-        app.verified = true;
-        app.logged_in = true;
-        app.selected = "!a".into();
-        let file = |n| media::LocalFile {
-            name: format!("{n}.bin"),
-            size: n,
-            origin: media::NativeSource::Path("unused".into()),
-        };
-        for room in ["!a", "!b"] {
-            app.live.list.insert(
-                room.into(),
-                Room {
-                    has_metadata: true,
-                    ..Default::default()
-                },
-            );
-        }
-        app.rpc("get_media_config", json!({}), Request::MediaConfig);
-        let cfg = rx.try_recv().unwrap().into_rpc()["request_id"].clone();
-        let _ = app.update(Msg::Files("!a".into(), vec![file(11)]));
-        let _ = app.update(Msg::Files("!b".into(), vec![file(10), file(11)]));
-        app.editor = text_editor::Content::with_text("Private draft");
-        let _ = app.update(Msg::Send);
-        assert!(rx.is_empty() && app.batch.is_none());
-        app.frame(json!({"command":"response","request_id":cfg,"data":{"m.upload.size":10}}));
-        assert_eq!(app.outbox.rooms["!b"].len(), 1);
-        assert_eq!(app.outbox.rooms["!b"][0].source.size, 10);
-        assert!(!app.outbox.rooms.contains_key("!a"));
-        let _ = app.update(Msg::DismissSkipped("!b".into())); // stale click for another room
-        let _ = app.update(Msg::Send);
-        assert!(rx.is_empty() && app.outbox.skipped.contains_key("!b"));
-        assert_eq!(app.editor.text(), "Private draft");
-        let _ = app.update(Msg::DismissSkipped("!a".into()));
-        let _ = app.update(Msg::Send);
-        let sent = rx.try_recv().unwrap().into_rpc();
-        assert_eq!(
-            (&sent["command"], &sent["data"]["text"]),
-            (&json!("send_message"), &json!("Private draft"))
-        );
-    }
-    #[test]
     fn cancelled_attempt_can_never_send_or_cancel_its_retry() {
         let (tx, rx) = async_channel::bounded(8);
         let mut app = App::new(tx);
@@ -412,7 +302,10 @@ mod tests {
             panic!("expected upload")
         };
         let attachment = app.outbox.rooms["!a"][0].id;
-        app.frame(json!({"command":"upload_progress","request_id":first,"data":0.375}));
+        app.engine_event(crate::engine::Event::UploadProgress {
+            id: first,
+            fraction: 0.375,
+        });
         assert_eq!(app.outbox.rooms["!a"][0].status_label(), "Upload 37%");
         app.cancel_upload("!a", attachment, first);
         assert!(lease.is_closed());
@@ -431,120 +324,17 @@ mod tests {
             panic!("expected retry")
         };
         app.cancel_upload("!a", attachment, first);
-        app.frame(json!({"command":"upload_progress","request_id":first,"data":0.99}));
-        app.frame(json!({"command":"response","request_id":first,"data":{"body":"demo.bin","msgtype":"m.file","file":{"url":"mxc://s/old"}}}));
+        // Late answers for the cancelled attempt change nothing.
+        app.engine_event(crate::engine::Event::UploadProgress {
+            id: first,
+            fraction: 0.99,
+        });
+        app.engine_event(crate::engine::Event::Uploaded {
+            id: first,
+            result: Ok(json!({"body":"demo.bin","msgtype":"m.file","file":{"url":"mxc://s/old"}})),
+        });
         assert!(rx.try_recv().is_err() && !other.is_closed());
         let u = app.outbox.rooms["!a"][0].upload.as_ref().unwrap();
         assert_eq!((u.request, u.percent), (second, None));
-    }
-    #[test]
-    fn accepted_event_with_gomuks_pending_sentinel_clears_the_tray_in_either_order() {
-        for completion_first in [true, false] {
-            let (tx, rx) = async_channel::bounded(8);
-            let mut app = App::new(tx);
-            app.logged_in = true;
-            app.connected = true;
-            app.verified = true;
-            app.selected = "!a".into();
-            app.live.list.insert(
-                "!a".into(),
-                Room {
-                    has_metadata: true,
-                    ..Default::default()
-                },
-            );
-            let _ = app.update(Msg::Files(
-                "!a".into(),
-                vec![media::LocalFile {
-                    name: "photo.png".into(),
-                    size: 42,
-                    origin: media::NativeSource::Path("unused".into()),
-                }],
-            ));
-            let _ = app.update(Msg::Send);
-            let Command::Upload { id, .. } = rx.try_recv().unwrap() else {
-                panic!("expected upload")
-            };
-            let content =
-                json!({"msgtype":"m.image","url":"mxc://example/photo","body":"photo.png"});
-            app.frame(json!({"command":"response","request_id":id,"data":content}));
-            let rpc = rx.try_recv().unwrap().into_rpc();
-            let local = json!({"room_id":"!a","rowid":7,"transaction_id":"tx","event_id":"~tx","type":"m.room.message","content":content,"send_error":"not sent"});
-            let mut accepted = local.clone();
-            accepted["event_id"] = json!("$from-homeserver");
-            let done = json!({"command":"send_complete","data":{"event":accepted,"error":null}});
-            let reply = json!({"command":"response","request_id":rpc["request_id"],"data":local});
-            if completion_first {
-                app.frame(done);
-                app.frame(reply);
-            } else {
-                app.frame(reply);
-                app.frame(done);
-            }
-            assert!(app.batch.is_none() && app.outbox.rooms.is_empty());
-            assert!(
-                rx.try_recv().is_err(),
-                "a delivered file must not be resent"
-            );
-            let r = app.live.list.get_mut("!a").unwrap();
-            r.insert(&local); // stale local echo after server confirmation
-            assert_eq!(r.history[&7].body, "photo.png");
-            assert!(!app.status.contains("failed"));
-        }
-    }
-    #[test]
-    fn staged_file_only_sends_on_submit_and_retries_in_original_room() {
-        let (tx, rx) = async_channel::bounded(4);
-        let mut app = App::new(tx);
-        app.logged_in = true;
-        app.verified = true;
-        app.connected = true;
-        app.selected = "!a".into();
-        app.live.list.insert(
-            "!a".into(),
-            Room {
-                has_metadata: true,
-                encrypted: true,
-                ..Default::default()
-            },
-        );
-        app.live.list.insert("!b".into(), Room::default());
-        let _ = app.update(Msg::Files(
-            "!a".into(),
-            vec![media::LocalFile {
-                name: "report.pdf".into(),
-                size: 2,
-                origin: media::NativeSource::Path("unused".into()),
-            }],
-        ));
-        assert!(rx.try_recv().is_err());
-        let _ = app.update(Msg::Send);
-        let Command::Upload { id, encrypt, .. } = rx.try_recv().unwrap() else {
-            panic!("not an upload")
-        };
-        assert!(encrypt);
-        app.selected = "!b".into();
-        let descriptor =
-            json!({"msgtype":"m.file","filename":"report.pdf","file":{"url":"mxc://test/blob"}});
-        app.frame(json!({"command":"response","request_id":id,"data":descriptor}));
-        let first = rx.try_recv().unwrap().into_rpc();
-        assert_eq!(first["data"]["room_id"], "!a");
-        app.frame(json!({"command":"error","request_id":first["request_id"]}));
-        app.selected = "!a".into();
-        let _ = app.update(Msg::Send);
-        let retry = rx.try_recv().unwrap().into_rpc();
-        assert_eq!(retry["command"], "send_message");
-        assert_eq!(retry["data"]["base_content"], descriptor);
-        let echo = json!({"room_id":"!a","rowid":9,"transaction_id":"hicli-test","type":"m.room.message","content":descriptor});
-        app.frame(json!({"command":"response","request_id":retry["request_id"],"data":echo}));
-        assert!(app.batch.is_some(), "a local echo isn't confirmed delivery");
-        app.frame(json!({"command":"send_complete","data":{"event":echo,"error":"network"}}));
-        let _ = app.update(Msg::Send);
-        let resend = rx.try_recv().unwrap().into_rpc();
-        assert_eq!(resend["command"], "resend_event");
-        assert_eq!(resend["data"]["transaction_id"], "hicli-test");
-        app.frame(json!({"command":"send_complete","data":{"event":echo,"error":null}}));
-        app.frame(json!({"command":"response","request_id":resend["request_id"],"data":echo}));
-        assert!(app.batch.is_none() && app.outbox.rooms.is_empty());
     }
 }

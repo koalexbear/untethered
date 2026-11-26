@@ -167,7 +167,7 @@ impl App {
                 id,
                 "Transfer failed. Retry or remove the attachment.",
             ),
-            Request::Mentions(_) => self.mentions_failed(),
+            Request::Mentions => self.mentions_failed(),
             Request::Search(room, kind) => self.fail_search(&room, kind),
             Request::Setup(step) => self.setup_error(step),
             Request::Report => self.report_result(false),
@@ -321,6 +321,8 @@ impl App {
                 }
                 #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
                 self.sync_space_rules();
+                // A room community setup created opens once it's listed.
+                self.open_created();
             }
             Event::Timeline(t) => {
                 if let Some(r) = self.live.list.get_mut(&t.room) {
@@ -417,8 +419,8 @@ impl App {
                 _ => {}
             },
             Event::Mentions { id, result } => match (self.pending.remove(&id), result) {
-                (Some(Request::Mentions(_)), Ok(found)) => self.mentions_found(found),
-                (Some(Request::Mentions(_)), Err(_)) => self.mentions_failed(),
+                (Some(Request::Mentions), Ok(found)) => self.mentions_found(found),
+                (Some(Request::Mentions), Err(_)) => self.mentions_failed(),
                 _ => {}
             },
             #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
@@ -1206,5 +1208,27 @@ mod tests {
         let posting = &app.live.list["!r:example"].posting;
         assert_eq!(posting.id(), Some("$locked"));
         assert_eq!(posting.can_post("@bob:example", false), Some(false));
+    }
+
+    #[test]
+    fn posting_preflight_drops_a_change_when_the_document_moved_on() {
+        let (mut app, rx) = admin();
+        app.permission_panel = true;
+        app.live.list.get_mut("!r:example").unwrap().posting = state("$pl", "$bob").posting();
+        app.change_posting(crate::permissions::Change {
+            room: "!r:example".into(),
+            base: "$pl".into(),
+            action: crate::permissions::Action::Restrict,
+        });
+        let Ok(Command::RoomState { id, .. }) = rx.try_recv() else {
+            panic!("expected a fresh read")
+        };
+        // Someone else changed the power levels since the panel opened.
+        app.engine_event(Event::RoomState {
+            id,
+            result: Ok(state("$new", "$bob")),
+        });
+        assert!(rx.try_recv().is_err(), "no write over the newer document");
+        assert_eq!(app.live.list["!r:example"].posting.id(), Some("$new"));
     }
 }

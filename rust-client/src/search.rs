@@ -1,19 +1,13 @@
 //! Search the device's gomuks database. Hits are canonical messages, not edit
 //! events. Only explicit navigation from a hit may fetch network context.
 pub(crate) mod bookmark;
-use crate::{
-    App, Msg, Request, edits,
-    rooms::{self, Room, items},
-};
+use crate::{App, Msg, Request};
 pub use bookmark::Bookmark;
 use iced::{Task, widget::operation};
-use serde_json::{Value, json};
-use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Copy)]
 pub enum Page {
     Matches,
-    Bases,
     Coverage,
 }
 #[derive(Default)]
@@ -22,7 +16,6 @@ pub struct Coverage {
     pub oldest: Option<i64>,
     pub done: bool,
     pub failed: bool,
-    as_of: i64,
 }
 pub struct Hit {
     pub id: String,
@@ -40,8 +33,6 @@ pub struct Search {
     pub failed: bool,
     pub coverage: Option<Coverage>,
     bookmark: Bookmark,
-    unresolved: BTreeMap<String, BTreeSet<String>>,
-    senders: BTreeSet<String>,
 }
 impl Search {
     fn new(room: String, bookmark: Bookmark) -> Self {
@@ -55,138 +46,8 @@ impl Search {
             busy: false,
             failed: false,
             coverage: None,
-            unresolved: Default::default(),
-            senders: Default::default(),
         }
     }
-    fn params(&self, kind: Page, next: Option<String>) -> Value {
-        let mut p = json!({"room_ids":[self.room],"sort_by_time":true});
-        match kind {
-            Page::Coverage => {
-                p["limit"] = 256.into();
-                p["max_timestamp"] = self.coverage.as_ref().unwrap().as_of.into();
-            }
-            Page::Matches => {
-                // Escape the FTS5 phrase, including embedded double quotes.
-                p["search_term"] = format!("body : \"{}\"", self.term.replace('"', "\"\"")).into();
-                p["limit"] = 32.into();
-            }
-            Page::Bases => {
-                // get_event fetches from the server on a cache miss. Resolve
-                // matching edits against *locally stored* bases instead.
-                p["senders"] = json!(self.senders);
-                p["limit"] = 128.into();
-            }
-        }
-        if let Some(next) = next {
-            p["next_batch"] = next.into();
-        }
-        p
-    }
-    fn accept_page(&mut self, kind: Page, data: &Value) -> Option<(Page, Option<String>)> {
-        let token = data["next_batch"]
-            .as_str()
-            .filter(|s| !s.is_empty())
-            .map(str::to_owned);
-        if matches!(kind, Page::Coverage) {
-            let c = self.coverage.as_mut()?;
-            for e in items(&data["events"])
-                .filter(|e| e["room_id"] == self.room && searchable(e) && !edits::is_replacement(e))
-            {
-                c.messages += 1;
-                if let Some(ts) = e["timestamp"].as_i64() {
-                    c.oldest = Some(c.oldest.map_or(ts, |n| n.min(ts)));
-                }
-            }
-            c.done = token.is_none();
-            return token.map(|t| (Page::Coverage, Some(t)));
-        }
-        let mut page = Room::default();
-        for e in items(&data["events"]).filter(|e| e["room_id"] == self.room) {
-            if !searchable(e) {
-                continue;
-            }
-            page.insert(e);
-            if matches!(kind, Page::Matches)
-                && rooms::server_confirmed(e)
-                && edits::is_replacement(e)
-            {
-                let c = if e["type"] == "m.room.encrypted" {
-                    &e["decrypted"]
-                } else {
-                    &e["content"]
-                };
-                if let (Some(id), Some(sender)) =
-                    (c["m.relates_to"]["event_id"].as_str(), e["sender"].as_str())
-                    && !self.hits.iter().any(|h| h.id == id)
-                {
-                    self.unresolved
-                        .entry(id.into())
-                        .or_default()
-                        .insert(sender.into());
-                }
-            }
-        }
-        page.related_events(&self.room, data);
-        let term = self.term.to_lowercase();
-        for p in page.history.values() {
-            let Some(id) = &p.event_id else { continue };
-            let wanted = self.unresolved.remove(id);
-            if matches!(kind, Page::Bases) && !wanted.is_some_and(|users| users.contains(&p.sender))
-            {
-                continue;
-            }
-            if self.hits.iter().any(|h| &h.id == id) {
-                continue;
-            }
-            // The index includes a revision's fallback body and old bodies.
-            // Display only the currently valid, decrypted message text.
-            if let Some(snippet) = excerpt(p.text(), &term) {
-                self.hits.push(Hit {
-                    id: id.clone(),
-                    sender: p.sender.clone(),
-                    snippet,
-                    time: p.time,
-                });
-            }
-        }
-        match kind {
-            Page::Matches => {
-                self.next = token;
-                self.senders = self.unresolved.values().flatten().cloned().collect();
-                if !self.unresolved.is_empty() {
-                    return Some((Page::Bases, None));
-                }
-            }
-            Page::Bases if !self.unresolved.is_empty() && token.is_some() => {
-                return Some((Page::Bases, token));
-            }
-            _ => {}
-        }
-        self.unresolved.clear();
-        self.senders.clear();
-        if self.hits.is_empty()
-            && let Some(t) = self.next.take()
-        {
-            return Some((Page::Matches, Some(t)));
-        }
-        self.hits
-            .sort_by(|a, b| b.time.cmp(&a.time).then(a.id.cmp(&b.id)));
-        self.busy = false;
-        None
-    }
-}
-fn searchable(e: &Value) -> bool {
-    let (ty, c) = if e["type"] == "m.room.encrypted" {
-        (&e["decrypted_type"], &e["decrypted"])
-    } else {
-        (&e["type"], &e["content"])
-    };
-    rooms::server_confirmed(e)
-        && e["state_key"].is_null()
-        && !e["redacted_by"].as_str().is_some_and(|id| !id.is_empty())
-        && matches!(ty.as_str(), Some("m.room.message" | "m.sticker"))
-        && c["body"].as_str().is_some_and(|body| !body.is_empty())
 }
 // Fold for matching without using folded byte offsets to slice original UTF-8.
 fn excerpt(body: &str, term: &str) -> Option<String> {
@@ -258,7 +119,6 @@ impl App {
             return;
         }
         s.coverage = Some(Coverage {
-            as_of: chrono::Utc::now().timestamp_millis(),
             ..Default::default()
         });
         self.search_page(Page::Coverage, None);
@@ -291,34 +151,24 @@ impl App {
                 s.busy = true;
                 s.failed = false;
             }
-            // The matrix-sdk engine resolves edits itself: no base pages.
-            if self.sdk.is_some() {
-                use crate::engine::Command;
-                let (room, term) = (s.room.clone(), s.term.clone());
-                let request = Request::Search(room.clone(), kind);
-                let target = room.clone();
-                match kind {
-                    Page::Coverage => {
-                        self.command(|id| Command::SearchCoverage { id, room: target }, request)
-                    }
-                    Page::Matches | Page::Bases => self.command(
-                        |id| Command::Search {
-                            id,
-                            room: target,
-                            term,
-                            before: next,
-                        },
-                        request,
-                    ),
+            use crate::engine::Command;
+            let (room, term) = (s.room.clone(), s.term.clone());
+            let request = Request::Search(room.clone(), kind);
+            let target = room.clone();
+            match kind {
+                Page::Coverage => {
+                    self.command(|id| Command::SearchCoverage { id, room: target }, request)
                 }
-                if !self.pending.contains_key(&self.seq) {
-                    self.fail_search(&room, kind);
-                }
-                return;
+                Page::Matches => self.command(
+                    |id| Command::Search {
+                        id,
+                        room: target,
+                        term,
+                        before: next,
+                    },
+                    request,
+                ),
             }
-            let params = s.params(kind, next);
-            let room = s.room.clone();
-            self.rpc("search_local", params, Request::Search(room.clone(), kind));
             if !self.pending.contains_key(&self.seq) {
                 self.fail_search(&room, kind);
             }
@@ -336,16 +186,15 @@ impl App {
             s.next.clone()
         } else {
             self.pending
-                .retain(|_, p| !matches!(p, Request::Search(_, Page::Matches | Page::Bases)));
+                .retain(|_, p| !matches!(p, Request::Search(_, Page::Matches)));
             s.term = s.input.trim().into();
             s.hits.clear();
-            s.unresolved.clear();
             s.next = None;
             None
         };
         self.search_page(Page::Matches, next);
     }
-    /// A page of matches from the matrix-sdk engine, with current text.
+    /// A page of matches from the engine, with current text.
     pub fn search_found(
         &mut self,
         room: String,
@@ -392,20 +241,6 @@ impl App {
             c.done = true;
         }
     }
-    pub fn search_response(&mut self, room: String, kind: Page, data: &Value) {
-        if let Some(s) = &mut self.search
-            && s.room == room
-            && self.selected == room
-        {
-            if !data.is_object() || (!data["events"].is_array() && !data["events"].is_null()) {
-                self.fail_search(&room, kind);
-                return;
-            }
-            if let Some((kind, next)) = s.accept_page(kind, data) {
-                self.search_page(kind, next);
-            }
-        }
-    }
 }
 
 #[cfg(test)]
@@ -447,29 +282,48 @@ mod tests {
         assert!(!s.busy && s.next.is_none());
     }
     #[test]
-    fn resubmission_invalidates_old_pages_and_quotes_fts_syntax() {
-        let (tx, rx) = async_channel::bounded(8);
+    fn resubmission_invalidates_old_pages() {
+        use crate::engine::{Command, Event, Found};
+        let (tx, _) = async_channel::bounded(8);
         let mut app = App::new(tx);
+        let (sdk, commands) = async_channel::bounded(8);
+        app.sdk = Some(sdk);
         app.verified = true;
         app.connected = true;
         app.selected = "!here".into();
         app.search = Some(Search::new(app.selected.clone(), Bookmark::default()));
-        app.search.as_mut().unwrap().input = r#"blue" OR "green"#.into();
+        app.search.as_mut().unwrap().input = "blue".into();
         app.submit_search(false);
-        let first = rx.try_recv().unwrap().into_rpc();
-        assert_eq!(first["command"], "search_local");
-        assert_eq!(first["data"]["room_ids"], json!(["!here"]));
-        assert_eq!(
-            first["data"]["search_term"],
-            r#"body : "blue"" OR ""green""#
-        );
+        let Ok(Command::Search {
+            id: first, term, ..
+        }) = commands.try_recv()
+        else {
+            panic!("expected a search")
+        };
+        assert_eq!(term, "blue");
         app.search.as_mut().unwrap().input = "new".into();
         app.submit_search(false);
-        let second = rx.try_recv().unwrap().into_rpc();
-        let event = |room: &str| json!({"room_id":room,"rowid":4,"event_id":"$new","type":"m.room.encrypted","decrypted_type":"m.room.message","decrypted":{"body":"new"}});
-        app.frame(json!({"command":"response","request_id":first["request_id"],"data":{"events":[event("!here")]}}));
-        assert!(app.search.as_ref().unwrap().busy && app.search.as_ref().unwrap().hits.is_empty());
-        app.frame(json!({"command":"response","request_id":second["request_id"],"data":{"events":[event("!elsewhere")]}}));
-        assert!(!app.search.as_ref().unwrap().busy && app.search.as_ref().unwrap().hits.is_empty());
+        let Ok(Command::Search { id: second, .. }) = commands.try_recv() else {
+            panic!("expected a second search")
+        };
+        let found = |id: &str| Found {
+            room: "!here".into(),
+            event_id: id.into(),
+            sender: "@a:example".into(),
+            body: "new".into(),
+            time: 1,
+        };
+        app.engine_event(Event::SearchResults {
+            id: first,
+            result: Ok((vec![found("$old")], None)),
+        });
+        let s = app.search.as_ref().unwrap();
+        assert!(s.busy && s.hits.is_empty(), "the old page is dropped");
+        app.engine_event(Event::SearchResults {
+            id: second,
+            result: Ok((vec![found("$new")], None)),
+        });
+        let s = app.search.as_ref().unwrap();
+        assert!(!s.busy && s.hits.len() == 1 && s.hits[0].id == "$new");
     }
 }

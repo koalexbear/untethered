@@ -26,27 +26,6 @@ export function pick(room) {
     input.onchange = () => { if (input.files.length) stage(room, input.files); };
     input.click();
 }
-const reading = new Map();
-export async function post_upload(worker, id, file, encrypt) {
-    const reader = new FileReader();
-    reading.set(id,reader);
-    try {
-        await new Promise((resolve,reject)=>{
-            reader.onload=resolve;
-            reader.onerror=reader.onabort=()=>reject(new Error("Upload preparation stopped"));
-            reader.readAsArrayBuffer(file);
-        });
-        if (reading.get(id)!==reader) throw new Error("Upload cancelled");
-        const buffer=reader.result;
-        worker.postMessage({command:"wasm-upload",request_id:id,data:"",encrypt,filename:file.name,payload:new Uint8Array(buffer)},[buffer]);
-    } finally {reading.delete(id);}
-}
-export function cancel_upload(worker,id){
-    const reader=reading.get(id);
-    reading.delete(id);
-    if (reader?.readyState===FileReader.LOADING) reader.abort();
-    worker.postMessage({command:"wasm-upload-cancel",request_id:id,data:"{}"});
-}
 export async function thumbnail(file, width, height) {
     const bitmap = await createImageBitmap(file);
     try {
@@ -59,23 +38,6 @@ export async function thumbnail(file, width, height) {
         ctx.drawImage(bitmap, Math.floor((width-w)/2), Math.floor((height-h)/2), w, h);
         return new Uint8Array(ctx.getImageData(0,0,width,height).data.buffer);
     } finally { bitmap.close(); }
-}
-async function mediaBytes(worker, path, encrypted, limit) {
-    const channel = new MessageChannel();
-    return await new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {channel.port1.close(); reject(new Error("Download timed out"));},120000);
-        channel.port1.onmessage = ({data}) => {
-            clearTimeout(timer); channel.port1.close();
-            if (data instanceof Uint8Array && (!limit || data.length <= limit)) resolve(data); else reject(new Error("Download failed"));
-        };
-        worker.postMessage({command:"untethered-download",path,encrypted,limit},[channel.port2]);
-    });
-}
-export async function inline_blob(worker,path,encrypted,limit) {
-    return new Blob([await mediaBytes(worker,path,encrypted,limit)]);
-}
-export async function save_media(worker, path, encrypted, name) {
-    save_bytes(await mediaBytes(worker,path,encrypted,0), name);
 }
 export function save_bytes(bytes, name) {
     const url = URL.createObjectURL(new Blob([bytes],{type:"application/octet-stream"}));

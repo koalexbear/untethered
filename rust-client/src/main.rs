@@ -18,8 +18,6 @@ mod fonts;
 #[cfg(target_os = "linux")]
 mod incoming;
 mod inline;
-#[cfg(all(test, not(target_arch = "wasm32")))]
-mod live_test;
 mod media;
 mod mentions;
 mod moderation;
@@ -48,7 +46,7 @@ use iced::{
     Task, Theme,
     widget::{operation, text_editor},
 };
-use rooms::{Rooms, items};
+use rooms::Rooms;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -168,7 +166,6 @@ enum Msg {
     DismissCallNotice,
     #[cfg(target_os = "linux")]
     RingExpired(String),
-    Frame(Value),
     Engine(engine::Event),
     Sdk(engine::account_ui::Action),
     Stopped(String),
@@ -281,7 +278,6 @@ enum Request {
     RtcDiscovery,
     Login,
     Verify(account::RecoveryFormat),
-    VerifyState,
     Page(String),
     Members(String),
     Send(String, String, Option<rooms::Quote>),
@@ -292,7 +288,7 @@ enum Request {
     Reaction(reactions::Toggle),
     Report,
     Search(String, search::Page),
-    Mentions(mentions::Page),
+    Mentions,
     ReadState(String, Option<String>),
     ShareReads(bool, u64),
 }
@@ -368,27 +364,7 @@ struct App {
 }
 impl App {
     fn boot() -> (Self, Task<Msg>) {
-        if engine::selected() {
-            return Self::boot_engine();
-        }
-        let (commands, rx) = async_channel::bounded(64);
-        let (tx, events) = async_channel::bounded(64);
-        let task = Task::batch([
-            Task::perform(backend::run(rx, tx), |result| {
-                Msg::Stopped(result.err().unwrap_or_else(|| "gomuks closed.".into()))
-            }),
-            Task::run(events, Msg::Frame),
-        ]);
-        #[cfg(target_arch = "wasm32")]
-        let task = Task::batch([
-            task,
-            browser_verification::listen(),
-            web_files::listen(),
-            notifications::browser::listen(),
-        ]);
-        #[cfg(target_os = "linux")]
-        let task = Task::batch([task, wayland_drop::listen()]);
-        (Self::new(commands), task)
+        Self::boot_engine()
     }
     fn new(commands: Sender<backend::Command>) -> Self {
         Self {
@@ -485,46 +461,13 @@ impl App {
         ids.iter()
             .filter_map(|id| rooms.list.get(id).map(|room| (id, room)))
     }
+    /// Requests still built in gomuks's RPC shape; the engine translates them
+    /// (`engine::app::engine_rpc`).
     fn rpc(&mut self, cmd: &str, data: Value, req: Request) {
-        if self.sdk.is_some() {
-            return self.engine_rpc(cmd, data, req);
-        }
-        self.seq += 1;
-        if self.connected
-            && self
-                .commands
-                .try_send(backend::Command::Rpc(
-                    json!({"command":cmd,"request_id":self.seq,"data":data}),
-                ))
-                .is_ok()
-        {
-            self.pending.insert(self.seq, req);
-        } else {
-            self.status = "Could not queue the request. Try again.".into();
-        }
+        self.engine_rpc(cmd, data, req);
     }
     fn page(&mut self) {
-        if self.sdk.is_some() {
-            return self.engine_page();
-        }
-        let id = self.selected.clone();
-        if !self.logged_in
-            || !self.verified
-            || !self.connected
-            || self
-                .pending
-                .values()
-                .any(|p| matches!(p,Request::Page(r) if r==&id))
-        {
-            return;
-        }
-        if let Some(r) = self.live.list.get(&id).filter(|r| !r.end) {
-            self.rpc(
-                "paginate",
-                json!({"room_id":id,"limit":50,"max_timeline_id":r.cursor.unwrap_or(0)}),
-                Request::Page(id),
-            );
-        }
+        self.engine_page()
     }
     #[cfg(target_os = "linux")]
     fn minimize_call(&mut self) {
@@ -588,7 +531,7 @@ impl App {
     fn verifying(&self) -> bool {
         self.pending
             .values()
-            .any(|p| matches!(p, Request::Verify(_) | Request::VerifyState))
+            .any(|p| matches!(p, Request::Verify(_)))
     }
     fn verification_feedback(&self) -> &str {
         if !self.connected {
@@ -598,35 +541,13 @@ impl App {
         } else if !self.verification_note.is_empty() {
             &self.verification_note
         } else if self.recovery_unavailable {
-            "gomuks reports that recovery isn’t set up for this account. Check recovery in a trusted Matrix client."
+            "Recovery isn’t set up for this account. Check recovery in a trusted Matrix client."
         } else {
             "Use the key or passphrase from Matrix recovery setup. Your sign-in password is separate. Grouping spaces are fine."
         }
     }
-    fn submit_verification(&mut self) {
-        if !self.logged_in
-            || self.verified
-            || !self.connected
-            || self.verifying()
-            || self.recovery_unavailable
-        {
-            return;
-        }
-        if self.recovery.trim().is_empty() {
-            self.verification_note = "Enter your recovery key or passphrase first.".into();
-            return;
-        }
-        self.verification_note.clear();
-        let (format, key) = account::recovery_input(&self.recovery);
-        self.rpc(
-            "verify",
-            json!({"recovery_key":key}),
-            Request::Verify(format),
-        );
-        if !self.verifying() {
-            self.verification_note.clone_from(&self.status);
-        }
-    }
+    /// Status frames from a running desktop call (`desktop_call.rs`).
+    #[cfg(target_os = "linux")]
     fn frame(&mut self, f: Value) {
         let data = &f["data"];
         match f["command"].as_str().unwrap_or("") {
@@ -703,321 +624,11 @@ impl App {
                     }
                 }
             }
-            "upload_progress" => {
-                if let (Some(id), Some(fraction)) = (f["request_id"].as_i64(), data.as_f64()) {
-                    self.upload_progress(id, fraction);
-                }
-            }
-            #[cfg(target_arch = "wasm32")]
-            "profile-waiting" => {
-                self.status = "Another Untethered tab is using this Matrix device. Use that tab, or close it and this one will connect automatically.".into();
-            }
-            #[cfg(target_arch = "wasm32")]
-            "profile-opening" => {
-                self.status = "Opening your browser’s Matrix device…".into();
-            }
-            "client_state" => {
-                let vs = &data["verification_state"];
-                self.apply_account(account::State {
-                    logged_in: data["is_logged_in"] == true,
-                    verified: data["is_verified"] == true,
-                    recovery_unavailable: vs["state_checked"] == true && vs["has_ssss"] == false,
-                    profile: data["displayname"]
-                        .as_str()
-                        .or(data["user_id"].as_str())
-                        .unwrap_or("")
-                        .into(),
-                    user_id: rooms::string(&data["user_id"]),
-                });
-            }
-            "sync_complete" => {
-                if data["clear_state"] == true {
-                    self.close_mentions();
-                    self.reset_directory();
-                    self.leave_permission_panel();
-                    self.close_original();
-                    self.clear_search();
-                    #[cfg(target_os = "linux")]
-                    self.clear_ring();
-                    self.loaded.clear();
-                    self.timeline_end = None;
-                    self.selected.clear();
-                    self.pending
-                        .retain(|_, p| !matches!(p, Request::Members(_) | Request::Page(_)));
-                }
-                if data["rooms"][&self.selected]["reset"] == true {
-                    self.timeline_end = None;
-                }
-                self.live.sync(data);
-                self.read_sharing.sync(data);
-                if self.mentions.is_some()
-                    && (items(&data["left_rooms"]).next().is_some()
-                        || data["rooms"]
-                            .as_object()
-                            .is_some_and(|rs| rs.values().any(|d| self.mention_delta(d))))
-                {
-                    self.refresh_mentions();
-                }
-                #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
-                self.notifications_sync(data);
-                if let Some(rooms) = data["rooms"].as_object() {
-                    for (room, delta) in rooms {
-                        if self.people && *room == self.selected {
-                            self.directory.sync(room, delta);
-                        }
-                        if let Some(c) = self
-                            .original
-                            .as_mut()
-                            .filter(|c| c.room == *room && c.slice.is_some())
-                        {
-                            for e in items(&delta["events"]) {
-                                c.refresh(room, e);
-                            }
-                        }
-                        #[cfg(target_os = "linux")]
-                        if data["clear_state"] != true && data["catchup"] != true {
-                            self.ring_events(room, delta, false);
-                        }
-                        if self.outbox.rooms.contains_key(room) {
-                            for e in items(&delta["events"]).filter(|e| rooms::server_confirmed(e))
-                            {
-                                self.media_delivery(e, true);
-                            }
-                        }
-                    }
-                }
-                for left in items(&data["left_rooms"]).filter_map(Value::as_str) {
-                    #[cfg(target_os = "linux")]
-                    if self
-                        .inbox
-                        .ringing
-                        .as_ref()
-                        .is_some_and(|(i, _)| i.room == left)
-                        || self.inbox.handled.as_ref().is_some_and(|(r, _)| r == left)
-                    {
-                        self.clear_ring()
-                    }
-                    self.outbox.rooms.remove(left);
-                    self.outbox.skipped.remove(left);
-                    self.reply_drafts.remove(left);
-                    self.pending.retain(|_,p|!matches!(p,Request::Upload(room,_)|Request::MediaSend(room,_) if room==left));
-                    if self.batch.as_ref().is_some_and(|b| b.room == left) {
-                        self.batch = None;
-                    }
-                }
-                self.reconcile();
-            }
-            "events_decrypted" => {
-                if self.mentions.is_some() && self.mention_delta(data) {
-                    self.refresh_mentions();
-                }
-                #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
-                if let Some(room) = data["room_id"].as_str() {
-                    self.room_alerts(room, data, true);
-                    #[cfg(target_os = "linux")]
-                    self.ring_events(room, data, true);
-                }
-                for e in items(&data["events"]) {
-                    self.live.event(&data["room_id"], e);
-                    if let Some(c) = &mut self.original
-                        && let Some(room) = data["room_id"].as_str()
-                    {
-                        c.refresh(room, e);
-                    }
-                }
-            }
-            "send_complete" => {
-                let e = &data["event"];
-                let accepted = rooms::server_confirmed(e)
-                    || e["room_id"]
-                        .as_str()
-                        .and_then(|id| self.live.list.get(id))
-                        .is_some_and(|r| r.already_confirmed(e));
-                let ok = accepted || (data["error"].is_null() && !rooms::real_send_error(e));
-                if !ok && !rooms::real_send_error(e) && e.is_object() {
-                    let mut failed = e.clone();
-                    failed["send_error"] = json!("delivery failed");
-                    self.live.event(&Value::Null, &failed);
-                } else {
-                    self.live.event(&Value::Null, e);
-                }
-                self.media_delivery(e, ok);
-            }
-            "response" | "error" => {
-                let Some(p) = self.pending.remove(&f["request_id"].as_i64().unwrap_or(0)) else {
-                    return;
-                };
-                if f["command"] == "error" {
-                    self.status = match p {
-                        #[cfg(any(target_os="linux",target_arch="wasm32"))]
-                        Request::NotifyRule(_)=>"Could not save the room notification setting. Try again.",
-                        #[cfg(any(target_os="linux",target_arch="wasm32"))]
-                        Request::SpacePref(_)=> "Could not save space alerts. Try again.",
-                        #[cfg(any(target_os="linux",target_arch="wasm32"))]
-                        Request::SpaceRule(w)=>{self.finish_space_rule(w,false);self.sync_space_rules();return}
-                        #[cfg(any(target_os="linux",target_arch="wasm32"))]
-                        Request::Dnd(..)=>"Could not change Do Not Disturb. Check the connection and try again.",
-                        #[cfg(target_os="linux")]
-                        Request::RingState(i)=>{self.present_ring(i,&Value::Null);return}
-                        #[cfg(target_os="linux")]
-                        Request::DeclineSent=>"Could not notify the caller that you declined.",
-                        Request::MediaSend(ref room,id) if data.as_str()==Some("event was already sent successfully") &&
-                            self.outbox.get_mut(room,id).is_some_and(|a|a.txn.is_some()) => {
-                            self.finish_delivery(room,id,true);return
-                        }
-                        Request::Upload(room,id) | Request::MediaSend(room,id) => {
-                            self.fail_file(&room,id,"Transfer failed. Retry or remove the attachment.");return
-                        }
-                        Request::MediaConfig=>return,
-                        Request::Download=>"Could not save the attachment.",
-                        Request::RtcDiscovery=>{self.rtc_status="MatrixRTC discovery failed or is unsupported on this homeserver.".into();return}
-                        Request::Login => {
-                            "Sign-in failed. Check your homeserver, username, and password."
-                        }
-                        Request::Verify(format) => {
-                            self.verification_note = account::verify_error(data,format).into();
-                            return;
-                        }
-                        Request::VerifyState => {
-                            self.verification_note = "gomuks finished verification, but the device status couldn’t be refreshed.".into();
-                            return;
-                        }
-                        Request::Page(_) => {
-                            "Could not load history. Use Earlier messages to retry."
-                        }
-                        Request::Members(_) => "Could not load room members.",
-                        Request::Posting(_)=> "Could not change posting permissions. Check your room role and connection.",
-                        Request::Membership(f)=>{self.membership_error(f);return}
-                        Request::Report=>{self.report_result(false);return}
-                        Request::Setup(step)=>{self.setup_error(step);return}
-                        Request::Send(..) => "Could not send. Your draft has been kept.",
-                        Request::Context(..)=>"Could not load the selected message. Try opening it again.",
-                        Request::Edit(room,id)=>{self.finish_edit(f["request_id"].as_i64().unwrap(),&room,&id,&Value::Null);return}
-                        Request::Reaction(op)=>{self.finish_reaction(op,&Value::Null);return}
-                        Request::Search(room,kind)=>{self.fail_search(&room,kind);return}
-                        Request::Mentions(_)=>{self.mentions_failed();return}
-                        Request::ReadState(room,event)=>{self.read_result(room,event,false);return}
-                        Request::ShareReads(..)=>"Could not save your read receipt preference. Try again.",
-                    }
-                    .into();
-                    return;
-                }
-                match p {
-                    #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
-                    Request::NotifyRule(c) => self.saved_notifications(c),
-                    #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
-                    Request::SpacePref(_) => {}
-                    #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
-                    Request::SpaceRule(w) => self.finish_space_rule(w, true),
-                    #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
-                    Request::Dnd(on, revision) => self.saved_dnd(on, revision),
-                    #[cfg(target_os = "linux")]
-                    Request::RingState(i) => {
-                        self.present_ring(i, &crate::desktop_call::gomuks_room_state(data))
-                    }
-                    #[cfg(target_os = "linux")]
-                    Request::DeclineSent => self.status = "Call declined.".into(),
-                    Request::MediaConfig => {
-                        if let Some(n) = data["m.upload.size"].as_u64().filter(|n| *n > 0) {
-                            self.media_limit = media::MAX_BYTES.min(n);
-                            self.outbox.apply_limit(self.media_limit);
-                        }
-                    }
-                    Request::Upload(room, id) => self.uploaded(&room, id, data),
-                    Request::MediaSend(room, id) => self.file_sent(&room, id, data),
-                    Request::Download => self.status = "Attachment saved.".into(),
-                    Request::RtcDiscovery => {
-                        let found: Vec<Value> = items(&data["rtc_transports"]).cloned().collect();
-                        self.rtc_discovered(&found)
-                    }
-                    Request::Context(room, id) => self.show_context(room, id, data),
-                    Request::Posting(f) => self.posting_result(f, data),
-                    Request::Membership(f) => self.membership_result(f, data),
-                    Request::Report => self.report_result(true),
-                    Request::Setup(step) => self.setup_result(step, data),
-                    Request::Reaction(op) => self.finish_reaction(op, data),
-                    Request::Search(room, kind) => self.search_response(room, kind, data),
-                    Request::Mentions(kind) => self.mentions_page(kind, data),
-                    Request::ReadState(room, event) => self.read_result(room, event, true),
-                    Request::ShareReads(value, rev) => self.read_sharing.saved(value, rev),
-                    Request::Edit(room, id) => {
-                        self.finish_edit(f["request_id"].as_i64().unwrap(), &room, &id, data)
-                    }
-                    Request::Send(id, sent, reply) => {
-                        if let Some(r) = self.live.list.get_mut(&id) {
-                            r.insert(data);
-                        }
-                        let same = self.reply_drafts.get(&id) == reply.as_ref();
-                        if same && self.selected == id && self.editor.text() == sent {
-                            self.editor = text_editor::Content::new();
-                        }
-                        if same && self.drafts.get(&id) == Some(&sent) {
-                            self.drafts.remove(&id);
-                        }
-                        if same {
-                            self.reply_drafts.remove(&id);
-                        }
-                        self.status.clear();
-                    }
-                    Request::Page(id) => {
-                        if let Some(r) = self.live.list.get_mut(&id) {
-                            r.page(&id, data);
-                        }
-                    }
-                    Request::Members(id) => {
-                        if let Some(r) = self.live.list.get_mut(&id) {
-                            for e in items(data) {
-                                r.posting.ingest(&id, e, true);
-                            }
-                            #[cfg(target_os = "linux")]
-                            if r.voice {
-                                for e in items(data) {
-                                    r.voice_state(&crate::desktop_call::gomuks_state_event(e));
-                                }
-                            }
-                            for e in items(data).filter(|e| e["type"] == "m.room.member") {
-                                if let (Some(user), Some(name)) = (
-                                    e["state_key"].as_str(),
-                                    e["content"]["displayname"].as_str(),
-                                ) {
-                                    r.members.entry(user.into()).or_insert_with(|| name.into());
-                                }
-                            }
-                        }
-                    }
-                    Request::Login => self.password.clear(),
-                    Request::Verify(_) if !self.verified => {
-                        self.rpc("get_state", json!({}), Request::VerifyState);
-                    }
-                    Request::VerifyState => {
-                        self.frame(json!({"command":"client_state","data":data}));
-                        if !self.verified {
-                            self.verification_note="gomuks finished the request but still reports this device as unverified. You can retry.".into();
-                        }
-                    }
-                    Request::Verify(_) => {}
-                }
-            }
-            #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
-            "init_complete" => self.alerts.spaces.initialized = true,
             _ => {}
         }
-        #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
-        self.sync_space_rules();
-        self.open_created();
     }
     fn update(&mut self, msg: Msg) -> Task<Msg> {
         let refresh_inline = match &msg {
-            Msg::Frame(f) => matches!(
-                f["command"].as_str(),
-                Some(
-                    "response"
-                        | "sync_complete"
-                        | "events_decrypted"
-                        | "client_state"
-                        | "send_complete"
-                )
-            ),
             #[cfg(target_os = "linux")]
             Msg::ReturnToCall(_) => true,
             Msg::Open(_)
@@ -1121,16 +732,6 @@ impl App {
                 }
             }
             Msg::Sdk(action) => return self.sdk_action(action),
-            Msg::Frame(f) => {
-                let jumped = f["command"] == "response"
-                    && f["request_id"].as_i64().is_some_and(|id| {
-                        matches!(self.pending.get(&id), Some(Request::Context(..)))
-                    });
-                self.frame(f);
-                if jumped && self.original.is_some() {
-                    return self.anchor_history();
-                }
-            }
             Msg::Stopped(s) => {
                 #[cfg(target_os = "linux")]
                 {
@@ -1525,14 +1126,10 @@ impl App {
                         .any(|p| matches!(p, Request::RtcDiscovery)) =>
             {
                 self.rtc_status = "Checking MatrixRTC transports…".into();
-                if self.sdk.is_some() {
-                    self.command(
-                        |id| engine::Command::RtcTransports { id },
-                        Request::RtcDiscovery,
-                    );
-                    return Task::none();
-                }
-                self.rpc("get_rtc_transports", json!({}), Request::RtcDiscovery);
+                self.command(
+                    |id| engine::Command::RtcTransports { id },
+                    Request::RtcDiscovery,
+                );
             }
             Msg::HoverFiles(v) => self.hover_files = v,
             #[cfg(target_os = "linux")]
@@ -1767,42 +1364,14 @@ impl App {
             Msg::Password(s) => self.password = s,
             #[cfg(not(target_arch = "wasm32"))]
             Msg::Recovery(s) => self.recovery = s,
-            Msg::Login if self.sdk.is_some() => self.engine_login(),
-            Msg::Login
-                if !self.logged_in
-                    && self.connected
-                    && !self.pending.values().any(|p| matches!(p, Request::Login)) =>
-            {
-                if let Some(url) = account::homeserver(&self.server)
-                    && !self.username.trim().is_empty()
-                    && !self.password.is_empty()
-                {
-                    self.server = url;
-                    self.status = "Signing in…".into();
-                    self.rpc("login",json!({"homeserver_url":self.server,"username":self.username.trim(),"password":self.password}),Request::Login);
-                } else {
-                    self.status =
-                        "Enter your homeserver (for example, matrix.org), username, and password."
-                            .into();
-                }
-            }
+            Msg::Login => self.engine_login(),
             #[cfg(not(target_arch = "wasm32"))]
-            Msg::Verify if self.sdk.is_some() => self.engine_verify(),
-            #[cfg(not(target_arch = "wasm32"))]
-            Msg::Verify => self.submit_verification(),
+            Msg::Verify => self.engine_verify(),
             #[cfg(target_arch = "wasm32")]
-            Msg::SubmitWebRecovery(s) if self.sdk.is_some() => {
+            Msg::SubmitWebRecovery(s) => {
                 self.recovery = s;
                 self.engine_verify();
                 self.recovery.clear();
-            }
-            #[cfg(target_arch = "wasm32")]
-            Msg::SubmitWebRecovery(s) => {
-                if self.logged_in && !self.verified {
-                    self.recovery = s;
-                    self.submit_verification();
-                    self.recovery.clear();
-                }
             }
             Msg::Draft(a) => self.editor.perform(a),
             Msg::Permissions => {
@@ -1923,17 +1492,9 @@ impl App {
                     return operation::focus("composer");
                 }
             }
-            Msg::Send if self.sdk.is_some() && self.logged_in => self.engine_compose(),
+            Msg::Send if self.logged_in => self.engine_compose(),
             Msg::Send => {
-                if self.logged_in
-                    && self.live.list.get(&self.selected).is_some_and(|r| {
-                        r.posting.can_post(&self.matrix_id, r.encrypted) == Some(false)
-                    })
-                {
-                    self.status = "This room is read-only for your account.".into();
-                    return Task::none();
-                }
-                // Do not send just the caption if Enter races PNG encoding.
+                // The signed-out preview: a local echo only.
                 #[cfg(not(target_arch = "wasm32"))]
                 if self.pasting {
                     return Task::none();
@@ -1948,24 +1509,7 @@ impl App {
                 {
                     return Task::none();
                 }
-                if self.logged_in {
-                    if self.verified
-                        && !self
-                            .pending
-                            .values()
-                            .any(|p| matches!(p,Request::Send(r,..) if r==&id))
-                    {
-                        let reply = self.reply_drafts.get(&id).cloned();
-                        let mut params = json!({"room_id":id,"text":body});
-                        if let Some(q) = &reply {
-                            // Treat a reply as literal message text. In particular a
-                            // slash-prefixed reply must never disable room encryption.
-                            params = json!({"room_id":id,"text":"","base_content":{"msgtype":"m.text","body":body}});
-                            q.relate(&mut params);
-                        }
-                        self.rpc("send_message", params, Request::Send(id, body, reply));
-                    }
-                } else if let Some(r) = self.demo.list.get_mut(&id) {
+                if let Some(r) = self.demo.list.get_mut(&id) {
                     r.insert(&json!({"rowid":r.history.keys().next_back().copied().unwrap_or(0)+1,"sender":"You","type":"m.room.message",
                         "timestamp":chrono::Utc::now().timestamp_millis(),"content":{"body":body}}));
                     self.editor = text_editor::Content::new();

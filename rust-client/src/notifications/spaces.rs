@@ -306,10 +306,18 @@ mod tests {
         s.update_graph(&rooms);
         assert_eq!(rooms.channels("!a")["!chat"], 2);
         assert!(s.inherited("!chat") == Mode::All);
-        rooms.sync(&json!({"space_edges":{"!a":[{"child_id":"!chat"},{"child_id":"!sub"}]}}));
+        // "!a" now holds the channel directly.
+        rooms
+            .children
+            .insert("!a".into(), ["!chat", "!sub"].map(String::from).into());
+        rooms.hierarchy_revision += 1;
         s.update_graph(&rooms);
         assert!(s.inherited("!chat") == Mode::Quiet);
-        rooms.sync(&json!({"left_rooms":["!a","!b"]}));
+        for left in ["!a", "!b"] {
+            rooms.list.remove(left);
+            rooms.children.remove(left);
+        }
+        rooms.hierarchy_revision += 1;
         s.update_graph(&rooms);
         assert!(s.inherited("!chat") == Mode::Default);
     }

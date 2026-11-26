@@ -378,9 +378,7 @@ async fn search_and_mentions(
 
     app.open_mentions();
     wait(app, rx, "mentions inbox", |a| {
-        !a.pending
-            .values()
-            .any(|p| matches!(p, Request::Mentions(_)))
+        !a.pending.values().any(|p| matches!(p, Request::Mentions))
             && a.mentions.as_ref().is_some_and(|i| {
                 i.hits
                     .iter()

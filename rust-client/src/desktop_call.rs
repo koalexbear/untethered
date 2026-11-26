@@ -15,7 +15,6 @@ use livekit::{
 use serde_json::{Value, json};
 use std::{
     collections::VecDeque,
-    net::SocketAddr,
     process::Stdio,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -31,8 +30,6 @@ use untethered_iced::rtc_membership::{CallKey, CallSignal, CallUpdate, EVENT_TYP
 use url::Url;
 mod cameras;
 mod channel;
-mod gomuks;
-pub(crate) use gomuks::{room_state as gomuks_room_state, state_event as gomuks_state_event};
 mod room_video;
 mod share_audio;
 pub(crate) use cameras::{CameraChoice, list_cameras};
@@ -496,19 +493,6 @@ async fn status(events: &Sender<Value>, room: &str, label: &str) {
         .send(json!({"command":"desktop_call","data":{"room":room,"label":label}}))
         .await;
 }
-/// A call on the gomuks engine.
-pub async fn run(
-    addr: SocketAddr,
-    cookie: &str,
-    room: &str,
-    target: Target,
-    controls: Controls,
-    events: &Sender<Value>,
-) -> Result<&'static str> {
-    let signal = gomuks::GomuksSignal::connect(addr, cookie, room).await?;
-    run_with(signal, room, target, controls, events).await
-}
-
 /// A call whose Matrix signaling goes through `signal`.
 pub async fn run_with<S: CallSignal>(
     signal: S,
@@ -1296,10 +1280,16 @@ mod tests {
         let mut app = crate::App::new(commands);
         app.logged_in = true;
         app.verified = true;
-        app.live.sync(&json!({"rooms": {
-            "!call": {"meta": {"name": "Call"}},
-            "!other": {"meta": {"name": "Other"}}
-        }}));
+        for (id, name) in [("!call", "Call"), ("!other", "Other")] {
+            app.live.list.insert(
+                id.into(),
+                crate::rooms::Room {
+                    name: name.into(),
+                    has_metadata: true,
+                    ..Default::default()
+                },
+            );
+        }
         app.open("!call".into());
         app.start_voice("!call".into(), Target::Channel);
         let call = app.call.as_ref().unwrap();

@@ -241,24 +241,7 @@ impl App {
     }
 }
 
-impl crate::replies::Original {
-    /// Context is not part of the live timeline. Keep just its visible events
-    /// current when a peer edits one of them or its decryption arrives late.
-    pub fn refresh(&mut self, room: &str, event: &Value) {
-        if room != self.room || event["room_id"] != room {
-            return;
-        }
-        if let Some(slice) = &mut self.slice
-            && (event["event_id"]
-                .as_str()
-                .is_some_and(|id| slice.by_id(id).is_some())
-                || is_replacement(event)
-                    && target(event).is_some_and(|id| slice.by_id(id).is_some()))
-        {
-            slice.insert(event);
-        }
-    }
-}
+impl crate::replies::Original {}
 
 #[cfg(test)]
 mod tests {
@@ -303,57 +286,5 @@ mod tests {
         retracted["redacted_by"] = json!("$removed");
         room.insert(&retracted);
         check(&room, "previous");
-    }
-    #[test]
-    fn bundled_edits_work_outside_the_page_and_do_not_advance_its_cursor() {
-        let mut room = Room::default();
-        let mut base = base();
-        base["timeline_rowid"] = json!(45);
-        let mut cross = edit(4, "other room");
-        cross["room_id"] = json!("!another");
-        room.page(
-            "!r",
-            &json!({"events":[base],"related_events":[edit(2,"restored"),cross],"has_more":true}),
-        );
-        assert_eq!(room.cursor, Some(45));
-        assert_eq!(room.history.len(), 1);
-        assert_eq!(room.by_id("$reply").unwrap().text(), "restored");
-    }
-    #[test]
-    fn failed_edit_ack_keeps_edit_separate_from_the_unsent_composer() {
-        let (tx, rx) = async_channel::bounded(8);
-        let mut app = App::new(tx);
-        app.selected = "!r".into();
-        app.connected = true;
-        app.verified = true;
-        app.matrix_id = "@alice:h".into();
-        let mut room = Room {
-            has_metadata: true,
-            encrypted: true,
-            ..Room::default()
-        };
-        room.insert(&base());
-        app.live.list.insert("!r".into(), room);
-        app.editor = text_editor::Content::with_text("draft for later");
-        assert!(app.start_edit("$reply".into()));
-        app.editing.as_mut().unwrap().input =
-            text_editor::Content::with_text("/unencrypted is literal");
-        app.save_edit();
-        app.save_edit();
-        let rpc = rx.try_recv().unwrap().into_rpc();
-        assert!(rx.try_recv().is_err());
-        assert_eq!(
-            rpc["data"]["content"]["m.new_content"]["body"],
-            "/unencrypted is literal"
-        );
-        let mut failed = edit(2, "failed");
-        failed["event_id"] = json!("~failed");
-        failed["send_error"] = json!("offline");
-        app.frame(json!({"command":"response","request_id":rpc["request_id"],"data":failed}));
-        let draft = app.editing.as_ref().unwrap();
-        assert!(draft.pending.is_none());
-        assert_eq!(draft.input.text(), "/unencrypted is literal");
-        assert_eq!(app.editor.text(), "draft for later");
-        assert_eq!(app.live.list["!r"].by_id("$reply").unwrap().text(), "first");
     }
 }

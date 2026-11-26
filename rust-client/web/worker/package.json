@@ -1,9 +1,0 @@
-{
-  "name": "untethered-gomuks-worker",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "@sqlite.org/sqlite-wasm": "3.54.1-build1",
-    "vite": "8.0.5"
-  }
-}

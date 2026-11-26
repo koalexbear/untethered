@@ -1,8 +1,8 @@
 # Local package: build the current checkout's committed Rust frontend.
 pkgname=untethered
 pkgver=0.1.0
-pkgrel=8
-pkgdesc='Native Rust/Iced Matrix client powered by gomuks'
+pkgrel=9
+pkgdesc='Native Rust/Iced Matrix client'
 arch=('x86_64')
 conflicts=('gomuks-native' 'unteathered')
 replaces=('gomuks-native' 'unteathered')
@@ -18,10 +18,8 @@ depends=('ca-certificates' 'fontconfig' 'gcc-libs' 'glibc' 'libpipewire' 'libx11
 makedepends=('cargo' 'git' 'clang' 'glib2' 'cmake' 'protobuf')
 options=('!debug' '!lto')
 
-source "$startdir/scripts/gomuks.env"
-source=("untethered-src::git+file://$startdir#commit=$(git -C "$startdir" rev-parse HEAD)"
-        "gomuks-$GOMUKS_VERSION-linux-amd64::https://github.com/gomuks/gomuks/releases/download/v$GOMUKS_VERSION/gomuks-amd64")
-sha256sums=('SKIP' "$GOMUKS_LINUX_SHA256")
+source=("untethered-src::git+file://$startdir#commit=$(git -C "$startdir" rev-parse HEAD)")
+sha256sums=('SKIP')
 
 build() {
     cd "$srcdir/untethered-src/rust-client"
@@ -37,7 +35,6 @@ package() {
     cd "$srcdir/untethered-src"
     install -Dm755 "$srcdir/target/release/untethered-iced" "$pkgdir/usr/bin/untethered"
     install -Dm755 "$srcdir/target/release/untethered-cameras" "$pkgdir/usr/lib/untethered/untethered-cameras"
-    install -Dm755 "$srcdir/gomuks-$GOMUKS_VERSION-linux-amd64" "$pkgdir/usr/lib/untethered/gomuks"
     install -Dm644 untethered.desktop "$pkgdir/usr/share/applications/untethered.desktop"
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/untethered/LICENSE"
     install -Dm644 rust-client/assets/LICENSE "$pkgdir/usr/share/licenses/untethered/Liberation-fonts"

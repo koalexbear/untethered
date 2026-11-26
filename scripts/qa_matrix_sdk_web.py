@@ -1,7 +1,7 @@
 """The matrix-sdk engine in Chromium (step 7 of rust-client/docs/matrix-sdk-migration.md).
 
-Serves a Trunk build of the web client, signs the fixture account in with
-`?engine=matrix-sdk`, verifies the device with its recovery key in the page's
+Serves a Trunk build of the web client, signs the fixture account in,
+verifies the device with its recovery key in the page's
 dialog, opens the encrypted room, and checks with the gomuks peer: text both
 ways, a pasted image (decrypted by the peer byte for byte), the peer's
 encrypted image saved byte for byte and previewed inline, and a browser
@@ -124,7 +124,7 @@ def check_web(dist, fixture, peer, png, room_name="sdk-proof"):
         server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Quiet, directory=str(dist)))
         threading.Thread(target=server.serve_forever, daemon=True).start()
         stack.callback(server.shutdown)
-        url = f"http://127.0.0.1:{server.server_address[1]}/?engine=matrix-sdk"
+        url = f"http://127.0.0.1:{server.server_address[1]}/"
         pw = stack.enter_context(sync_playwright())
         browser = pw.chromium.launch(executable_path=chromium, args=["--disable-dev-shm-usage"])
         stack.callback(browser.close)
