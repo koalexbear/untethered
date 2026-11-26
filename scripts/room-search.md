@@ -12,7 +12,7 @@ ELEMENT_WEB_DIR=/path/to/element-v1.12.35 \
 Element sends a reply, changes its wording to “Saffron comet launch,” and
 adds 150 newer messages. A second encrypted room contains “Saffron comet
 diversion.” The fixture checks that the native device decrypted both, then
-restarts Untethered and gomuks and scrolls away from the bottom of the
+restarts Untethered and scrolls away from the bottom of the
 recent timeline. It records the visible ledger rows and their pixel positions.
 
 The Iced search must report 153 readable messages in the selected room:
@@ -21,8 +21,10 @@ message. Searching the retired wording must return no matches; searching
 “saffron comet” must return the edited reply alone. A loopback proxy checks
 that searching makes no Matrix search, event lookup or context request.
 
-Opening the hit must request `/context` for the **base reply**, render its
-edited body, identify the quoted parent and show the neighboring message.
+Opening the hit must render the **base reply** with its edited body,
+identify the quoted parent and show the neighboring message. A reply the
+timeline already holds opens in place; otherwise the only `/context`
+request must be for the base reply, never the edit.
 **Back to results** must retain the hit. While the user is in context again,
 three messages arrive and an offscreen row above the bookmark grows to
 five lines. **Return to timeline** must restore the same ledger row within

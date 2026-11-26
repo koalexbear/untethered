@@ -63,8 +63,12 @@ def check_room_search(tmp,hs,page,room,native,hdr,http,messages,restart,words,lo
         return at and any(v=="edited" for v,_,_ in line_words(ui.image(),*at))
     locate("exact edited reply highlighted with context",lambda ws:edited(ws,"launch")
            and point(ws,"beacon") and point(ws,"briefing") and point(ws,"match"))
-    assert [p for p in paths if "/context/" in p]==[f"/_matrix/client/v3/rooms/{room}/context/{reply}"],paths
-    print(f"Opened base reply {reply} (not edit {edit}); screen showed 'Saffron comet launch' and 'Context beacon'.",flush=True)
+    # A reply the timeline already holds opens in place (replies.rs jump());
+    # otherwise the client fetches its context: then for the base, not the edit.
+    contexts=[p for p in paths if "/context/" in p]
+    assert contexts in ([],[f"/_matrix/client/v3/rooms/{room}/context/{reply}"]),paths
+    how=f"fetched the context of base reply {reply} (not edit {edit})" if contexts else "opened the loaded reply in place, no context fetch"
+    print(f"Search result {how}; screen showed 'Saffron comet launch' and 'Context beacon'.",flush=True)
     tap("results")
     click(locate("retained search results",result))
     locate("reopened result in context",lambda ws:point(ws,"launch") and point(ws,"match") and point(ws,"beacon"))
