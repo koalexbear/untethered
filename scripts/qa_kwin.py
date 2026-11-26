@@ -19,7 +19,7 @@ APP_ID = "io.github.koalexbear.Untethered"
 
 class KWin:
     def __init__(self, stack, tmp, root, backend, *, env=None, screencast=False, native_log=None,
-                 global_shortcuts=False):
+                 global_shortcuts=False, tray=False):
         self.tmp = tmp
         self.stack = stack
         self.env = env = env if env is not None else isolated_env(tmp, backend, "wayland")
@@ -80,6 +80,20 @@ class KWin:
             self.portal=stack.enter_context(child([PORTAL_KDE],env,stderr=log("portal-kde")))
             wait_for("private xdg-desktop-portal-kde",lambda:self.portal.poll() is None and
                      re.search(rf"\b{self.portal.pid}\b",self.owner("org.freedesktop.impl.portal.desktop.kde")))
+        if tray:
+            # KDE's StatusNotifierWatcher is a kded module; the client's tray
+            # icon registers with it at start. "plasma" adds Plasma's panel,
+            # which draws the icon, for screenshots.
+            env["QT_QPA_PLATFORM"]="wayland"
+            stack.enter_context(child(["kded6"],env,stderr=log("kded")))
+            wait_for("KDE StatusNotifierWatcher",lambda:self.owner("org.kde.StatusNotifierWatcher").strip(),15)
+            if tray=="plasma":
+                # No first-run Welcome Center over the client.
+                (Path(env["XDG_CONFIG_HOME"])/"plasma-welcomerc").write_text("[General]\nShouldShow=false\nLastSeenVersion=6.8.3\n")
+                stack.enter_context(child(["plasmashell","--no-respawn"],env,stderr=log("plasmashell")))
+                wait_for("Plasma's tray host",lambda:"true" in self.command("busctl","--address="+env["DBUS_SESSION_BUS_ADDRESS"],
+                    "get-property","org.kde.StatusNotifierWatcher","/StatusNotifierWatcher","org.kde.StatusNotifierWatcher",
+                    "IsStatusNotifierHostRegistered",check=False).stdout and self.owner("org.kde.plasmashell").strip(),40)
         # No XWayland server or DISPLAY is started. Both clients use kwin-proof.
         env["QT_QPA_PLATFORM"]="wayland"
         limit=["taskset","-c",",".join(map(str,sorted(os.sched_getaffinity(0))[:4]))] if screencast else []

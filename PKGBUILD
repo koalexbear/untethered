@@ -16,7 +16,8 @@ optdepends=('xdg-desktop-portal: file pickers, file drops, window sharing and ca
             'gst-plugin-pipewire: read portal-authorized camera and window streams'
             'gst-plugins-good: MP4 and WebM videos in the media viewer'
             'gst-libav: H.264 and other video codecs in the media viewer'
-            'libpulse: microphone capture and playback for encrypted DM calls')
+            'libpulse: microphone capture and playback for encrypted DM calls'
+            'gnome-shell-extension-appindicator: the system tray icon on GNOME')
 depends=('ca-certificates' 'fontconfig' 'gcc-libs' 'glibc' 'gstreamer' 'gst-plugins-base-libs'
          'libpipewire' 'libx11' 'libxcb' 'libxcursor' 'libxi' 'libxkbcommon-x11' 'libxrandr' 'wayland')
 makedepends=('cargo' 'git' 'clang' 'glib2' 'cmake' 'protobuf')

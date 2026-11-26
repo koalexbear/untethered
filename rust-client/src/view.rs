@@ -15,6 +15,8 @@ mod rich;
 mod room_people;
 mod room_search;
 mod sdk_account;
+#[cfg(not(target_arch = "wasm32"))]
+mod tray;
 mod viewer;
 use iced::{
     Alignment::Center,
@@ -3674,6 +3676,10 @@ impl App {
                     control.into(),
                 )],
             ));
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            page = page.push(group("SYSTEM TRAY", self.tray_settings(&setting)));
         }
         page = page.push(self.sdk_account_settings());
         if !self.status.is_empty() {
