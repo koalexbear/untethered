@@ -636,10 +636,11 @@ impl App {
         task
     }
 
-    /// Mention `user` in the composer, as plain text for now. When M2
-    /// (branch claude/m2-autocomplete) merges, this becomes
-    /// `self.mention(user)` from `autocomplete.rs`: a real pill with
-    /// `m.mentions`.
+    /// Mention `user` in the composer, as plain text for now. Once M2
+    /// (branch claude/m2-autocomplete) is on main too, the body becomes
+    /// `if room == self.selected { return self.mention(user); }` with
+    /// `mention` from `autocomplete.rs`, a real pill sent with `m.mentions`,
+    /// and the `#[allow(dead_code)]` on `mention` comes off.
     pub fn insert_mention(&mut self, room: &str, user: &str) -> Task<Msg> {
         let Some(r) = self.live.list.get(room) else {
             return Task::none();
