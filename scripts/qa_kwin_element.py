@@ -18,6 +18,7 @@ from playwright.sync_api import sync_playwright
 import qa_events
 from qa_kwin import KWin
 from qa_native_paste import child, wait_for
+from qa_ui import regions
 from qa_upload_cancel import slow_gateway
 
 
@@ -208,9 +209,11 @@ def round_trip(tmp,hs,gateway,uploads,release,root,backend,seed,plain,web_client
             return res.ok and res.json()["event_id"]==all_events[0]["event_id"]
         wait_for("focused receiver read both returned files",read_latest,15)
         def both_previews():
+            # Two separate pink halves of Map.png, each at least 100 px square
+            # (the timeline draws image previews about 240×128).
             im=kde.capture().crop((345,85,672,854))
-            return sum(n for n,(r,g,b) in im.getcolors(im.width*im.height)
-                       if r>209 and g<54 and 94<b<130)>45000
+            pink=regions(im,(0,0,im.width,im.height),lambda c:c[0]>209 and c[1]<54 and 94<c[2]<130,min_height=100)
+            return len([b for b in pink if b[2]-b[0]>=100])>=2
         wait_for("both image previews laid out",both_previews)
         for idx,(name,src) in enumerate(returned.items()):
             point=wait_for("native Save "+src.name,lambda:kde.save_button(src.name))
