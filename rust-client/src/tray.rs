@@ -211,6 +211,8 @@ pub enum Event {
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     Host(bool),
     Open,
+    /// Untethered was launched again (instance.rs).
+    Launched(crate::instance::Launch),
     Mute,
     Deafen,
     Dnd,
@@ -252,7 +254,10 @@ pub struct Tray {
 impl App {
     /// Load the settings, open the window unless this is a start at sign-in,
     /// and put the icon in the tray.
-    pub fn boot_tray(&mut self) -> Task<Msg> {
+    pub fn boot_tray(
+        &mut self,
+        launches: Option<async_channel::Receiver<crate::instance::Launch>>,
+    ) -> Task<Msg> {
         self.tray.settings = Settings::load();
         self.tray.start_at_login = autostart::enabled();
         self.tray.hidden_start = std::env::args().any(|a| a == HIDDEN_FLAG);
@@ -265,7 +270,10 @@ impl App {
         } else {
             self.open_window()
         };
-        Task::batch([window, start, Task::run(rx, Msg::Tray)])
+        let launched = launches.map_or_else(Task::none, |launches| {
+            Task::run(launches, |launch| Msg::Tray(Event::Launched(launch)))
+        });
+        Task::batch([window, start, Task::run(rx, Msg::Tray), launched])
     }
     pub fn tray_event(&mut self, event: Event) -> Task<Msg> {
         let task = self.handle_tray(event);
@@ -288,6 +296,14 @@ impl App {
                 self.tray.shown = None;
             }
             Event::Open => return self.open_window(),
+            // Launching Untethered again shows this one, as Open does. While
+            // it quits, the new launch waits and then starts afresh.
+            Event::Launched(launch) => {
+                launch.answer(!self.closing);
+                if !self.closing {
+                    return self.open_window();
+                }
+            }
             #[cfg(target_os = "linux")]
             Event::Mute => return self.update(Msg::ToggleMic),
             #[cfg(target_os = "linux")]
