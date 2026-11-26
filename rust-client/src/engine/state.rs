@@ -68,6 +68,7 @@ pub async fn room_state(client: &Client, room: &str) -> Result<RoomState, Failur
                         .as_str()
                         .unwrap_or_default()
                         .into(),
+                    avatar: e["content"]["avatar_url"].as_str().map(Into::into),
                     event: event_id.into(),
                 };
                 state.members.insert(user.into(), member);
@@ -102,6 +103,10 @@ pub fn member_changes(client: &Client, events: async_channel::Sender<super::Even
                     .as_original()
                     .and_then(|e| e.content.displayname.clone())
                     .unwrap_or_default(),
+                avatar: event
+                    .as_original()
+                    .and_then(|e| e.content.avatar_url.as_ref())
+                    .map(ToString::to_string),
                 event: event.event_id().to_string(),
             };
             let _ = events

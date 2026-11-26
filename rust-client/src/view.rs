@@ -11,6 +11,7 @@ mod reaction_bar;
 mod room_people;
 mod room_search;
 mod sdk_account;
+mod viewer;
 use iced::{
     Alignment::Center,
     Border, Color, Element, Fill, Font, Length, Padding, Theme, border, color, font, keyboard,
@@ -149,7 +150,17 @@ fn nav(active: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
         ..Default::default()
     }
 }
-fn avatar(name: &str, size: f32) -> El<'static> {
+/// A profile picture, or the name's initials on a colored disc while there
+/// is none (or it hasn't loaded).
+fn face(name: &str, picture: Option<&iced::widget::image::Handle>, size: f32) -> El<'static> {
+    if let Some(picture) = picture {
+        return image(picture.clone())
+            .width(size)
+            .height(size)
+            .content_fit(iced::ContentFit::Cover)
+            .border_radius(size / 2.)
+            .into();
+    }
     let colors = [
         color!(0x5865a1),
         color!(0x337a79),
@@ -181,7 +192,12 @@ fn label_owned(s: String) -> El<'static> {
     text(s).font(BOLD).size(12).color(CHANNEL).into()
 }
 /// A member-list row: avatar, name and an optional status line.
-fn member_row<'a>(name: &'a str, status: Option<&'a str>, action: Option<Msg>) -> El<'a> {
+fn member_row<'a>(
+    name: &'a str,
+    picture: Option<&iced::widget::image::Handle>,
+    status: Option<&'a str>,
+    action: Option<Msg>,
+) -> El<'a> {
     let mut who = column![text(name).size(15).wrapping(text::Wrapping::None)];
     if let Some(s) = status {
         who = who.push(
@@ -191,21 +207,25 @@ fn member_row<'a>(name: &'a str, status: Option<&'a str>, action: Option<Msg>) -
                 .wrapping(text::Wrapping::None),
         );
     }
-    button(row![avatar(name, 32.), who].spacing(12).align_y(Center))
-        .width(Fill)
-        .padding([5, 8])
-        .on_press_maybe(action)
-        .style(|_, s| button::Style {
-            background: (s == button::Status::Hovered).then(|| HOVER.into()),
-            text_color: if s == button::Status::Hovered {
-                BODY
-            } else {
-                CHANNEL
-            },
-            border: Border::default().rounded(4),
-            ..Default::default()
-        })
-        .into()
+    button(
+        row![face(name, picture, 32.), who]
+            .spacing(12)
+            .align_y(Center),
+    )
+    .width(Fill)
+    .padding([5, 8])
+    .on_press_maybe(action)
+    .style(|_, s| button::Style {
+        background: (s == button::Status::Hovered).then(|| HOVER.into()),
+        text_color: if s == button::Status::Hovered {
+            BODY
+        } else {
+            CHANNEL
+        },
+        border: Border::default().rounded(4),
+        ..Default::default()
+    })
+    .into()
 }
 fn field_style(_: &Theme, status: text_editor::Status) -> text_editor::Style {
     text_editor::Style {
@@ -470,9 +490,21 @@ impl Mark {
         }
     }
 }
-fn rail_button<'a>(glyph: String, hint: &'a str, active: bool, msg: Msg, mark: Mark) -> El<'a> {
+/// A rail entry: the server's icon, or its initials while it has none.
+fn rail_button<'a>(
+    glyph: String,
+    picture: Option<&iced::widget::image::Handle>,
+    hint: &'a str,
+    active: bool,
+    msg: Msg,
+    mark: Mark,
+) -> El<'a> {
     let size = if glyph.chars().count() > 2 { 15 } else { 18 };
-    let b = button(container(text(glyph).font(BOLD).size(size)).center(48))
+    let face: El = match picture {
+        Some(p) => image(p.clone()).width(48).height(48).into(),
+        None => text(glyph).font(BOLD).size(size).into(),
+    };
+    let b = button(container(face).center(48))
         .padding(0)
         .on_press(msg)
         .style(move |_, s| {
@@ -570,7 +602,7 @@ impl App {
         line = match r.quote(target).or_else(|| history.quote(target)) {
             Some(q) => {
                 let who = r.display(&q.sender).to_owned();
-                line.push(avatar(&who, 16.))
+                line.push(face(&who, self.user_picture(r, &q.sender), 16.))
                     .push(
                         text(format!("@{who}"))
                             .size(14)
@@ -596,9 +628,57 @@ impl App {
             tooltip::Position::Top,
         )
     }
-    /// An inline image with a hover download control, or a Discord-style file card.
-    fn attachment<'a>(&'a self, file: &'a crate::media::Media) -> El<'a> {
+    /// An inline image or video (opening the media viewer) with a hover
+    /// download control, or a Discord-style file card.
+    fn attachment<'a>(&'a self, event: Option<&str>, file: &'a crate::media::Media) -> El<'a> {
+        use crate::media::Kind;
         let save = Msg::SaveFile(file.clone());
+        let open = event
+            .filter(|_| file.viewable())
+            .map(|e| Msg::OpenViewer(e.to_owned()));
+        let tools = || {
+            container(toolbar(tool(
+                Icon::Download,
+                "Download",
+                false,
+                Some(save.clone()),
+            )))
+            .width(Fill)
+            .align_right(Fill)
+            .padding(6)
+        };
+        let clickable = |content: El<'a>| -> El<'a> {
+            match open.clone() {
+                Some(msg) => mouse_area(content)
+                    .on_press(msg)
+                    .interaction(iced::mouse::Interaction::Pointer)
+                    .into(),
+                None => content,
+            }
+        };
+        if file.kind == Kind::Video {
+            let poster: El = match file.preview.as_ref().and_then(|s| self.inline.ready(s)) {
+                Some(handle) => image(handle)
+                    .content_fit(iced::ContentFit::Contain)
+                    .border_radius(8)
+                    .into(),
+                None => container(Space::new())
+                    .width(400)
+                    .height(225)
+                    .style(|_| surface(FLOAT, 8.))
+                    .into(),
+            };
+            let play = container(
+                container(icon(Icon::Play, 24., Color::WHITE))
+                    .center(56)
+                    .style(|_| surface(Color::from_rgba(0., 0., 0., 0.6), 28.)),
+            )
+            .center(Fill);
+            let video = container(stack![poster, play])
+                .max_width(400)
+                .max_height(300);
+            return iced::widget::hover(clickable(video.into()), tools());
+        }
         if let Some(source) = &file.preview {
             if let Some(handle) = self.inline.ready(source) {
                 let picture = container(
@@ -608,11 +688,7 @@ impl App {
                 )
                 .max_width(400)
                 .max_height(300);
-                let tools = container(toolbar(tool(Icon::Download, "Download", false, Some(save))))
-                    .width(Fill)
-                    .align_right(Fill)
-                    .padding(6);
-                return iced::widget::hover(picture, tools);
+                return iced::widget::hover(clickable(picture.into()), tools());
             }
             let (label, action) = if self.inline.pending(source) {
                 ("Loading image…", None)
@@ -1018,7 +1094,10 @@ impl App {
             .get(&call.room)
             .filter(|_| self.verified && !call.stage_open && !call.cancel.is_closed());
         let dock = Column::new()
-            .extend(preview.map(|room| call_stage::popover(call, room, !self.setup_busy())))
+            .extend(preview.map(|room| {
+                let picture = self.avatars.get(room.avatar.as_deref());
+                call_stage::popover(call, room, picture, !self.setup_busy())
+            }))
             .push(controls)
             .spacing(6);
         Some(container(dock).width(Fill).padding(8).into())
@@ -1107,6 +1186,9 @@ impl App {
                 container(community::view(self, form)).center(Fill)
             ]
             .into();
+        }
+        if let Some(v) = &self.viewer {
+            return stack![base, viewer::view(self, v)].into();
         }
         if !self.server_menu {
             return base;
@@ -1246,7 +1328,7 @@ impl App {
         #[cfg(not(any(target_os = "linux", target_arch = "wasm32")))]
         let muted = false;
         let leading: El = if r.dm {
-            avatar(&r.name, 32.)
+            self.room_face(r, 32.)
         } else {
             icon(
                 if r.voice { Icon::Speaker } else { Icon::Hash },
@@ -1317,7 +1399,7 @@ impl App {
         for user in r.voice_users() {
             let speaking = speakers.as_ref().is_some_and(|s| s.contains(user));
             let name = r.display(user);
-            let face = container(avatar(name, 24.))
+            let face = container(face(name, self.user_picture(r, user), 24.))
                 .padding(2)
                 .style(move |_| container::Style {
                     border: Border {
@@ -1465,6 +1547,17 @@ impl App {
         }
         list
     }
+    /// A member's loaded profile picture in `r`.
+    pub(super) fn user_picture(
+        &self,
+        r: &Room,
+        user: &str,
+    ) -> Option<&iced::widget::image::Handle> {
+        self.avatars.get(r.avatars.get(user).map(String::as_str))
+    }
+    fn room_face(&self, r: &Room, size: f32) -> El<'static> {
+        face(&r.name, self.avatars.get(r.avatar.as_deref()), size)
+    }
     fn user_panel(&self) -> El<'_> {
         let name = if self.logged_in {
             self.profile.as_str()
@@ -1483,7 +1576,7 @@ impl App {
             (status, dot)
         };
         let face = stack![
-            avatar(name, 32.),
+            face(name, self.avatars.get(self.own_avatar.as_deref()), 32.),
             container(
                 container(
                     container(Space::new())
@@ -1548,6 +1641,7 @@ impl App {
         let mut icons = column![
             rail_button(
                 "U".into(),
+                None,
                 "Direct Messages",
                 self.section == Section::Direct,
                 Msg::Section(Section::Direct),
@@ -1555,6 +1649,7 @@ impl App {
             ),
             rail_button(
                 "#".into(),
+                None,
                 "All Rooms",
                 self.section == Section::All,
                 Msg::Section(Section::All),
@@ -1585,6 +1680,7 @@ impl App {
                 let mark = self.rail_mark(&s);
                 icons = icons.push(rail_button(
                     initials,
+                    self.avatars.get(r.avatar.as_deref()),
                     &r.name,
                     self.section == s,
                     Msg::Section(s),
@@ -1876,7 +1972,15 @@ impl App {
             .spacing(10);
             let panel = column![container(header).padding([10, 16]).width(Fill)]
                 .extend(self.incoming_banner())
-                .push(call_stage::view(c, r, &self.matrix_id));
+                .push(call_stage::view(
+                    c,
+                    r,
+                    &self.matrix_id,
+                    &call_stage::Pictures {
+                        avatars: &self.avatars,
+                        own: self.own_avatar.as_deref(),
+                    },
+                ));
             let panel = container(panel)
                 .style(|_| surface(color!(0x111214), 0.))
                 .width(Fill)
@@ -1896,7 +2000,7 @@ impl App {
         }
         let channel = room.map(|r| r.name.as_str()).unwrap_or("Rooms");
         let lead: El = match room {
-            Some(r) if r.dm => avatar(&r.name, 24.),
+            Some(r) if r.dm => self.room_face(r, 24.),
             Some(r) if r.voice => icon(Icon::Speaker, 24., color!(0x80848e)),
             _ => icon(Icon::Hash, 24., color!(0x80848e)),
         };
@@ -2273,6 +2377,7 @@ impl App {
             room_search::view(
                 s,
                 r,
+                &self.avatars,
                 self.pending
                     .values()
                     .any(|p| matches!(p, Request::Context(..))),
@@ -2309,7 +2414,7 @@ impl App {
             .padding([20, 8]);
             for sender in people {
                 let n = r.display(sender);
-                list = list.push(member_row(n, None, None));
+                list = list.push(member_row(n, self.user_picture(r, sender), None, None));
             }
             middle = middle.push(
                 container(
@@ -2361,8 +2466,15 @@ impl App {
             .center_x(Fill)
             .padding([4, 0])
         };
+        let paging = self.paging(&self.selected);
         if original.is_none() && timeline.start > 0 {
             feed = feed.push(edge("Earlier messages", Some(Msg::TimelineEdge(true))));
+        } else if original.is_none() && self.logged_in && !r.end && paging {
+            feed = feed.push(
+                container(text("Loading earlier messages…").size(13).color(CHANNEL))
+                    .center_x(Fill)
+                    .padding([8, 0]),
+            );
         } else if original.is_none() && self.logged_in && !r.end {
             feed = feed.push(edge(
                 "Earlier messages",
@@ -2372,7 +2484,7 @@ impl App {
         if original.is_none() && timeline.start == 0 && (r.end || !self.logged_in) {
             let (badge, title, intro): (El, String, String) = if r.dm {
                 (
-                    avatar(&r.name, 80.),
+                    self.room_face(r, 80.),
                     r.name.clone(),
                     format!(
                         "This is the beginning of your direct message history with {}.",
@@ -2557,7 +2669,7 @@ impl App {
                 message = message.push(text("(edited)").size(11).color(CHANNEL));
             }
             if let Some(file) = &p.media {
-                message = message.push(self.attachment(file));
+                message = message.push(self.attachment(p.event_id.as_deref(), file));
             }
             if let Some(bar) = reaction_bar::view(self, p) {
                 message = message.push(bar);
@@ -2615,7 +2727,7 @@ impl App {
                 .spacing(8)
                 .align_y(Center);
                 row![
-                    container(avatar(name, 40.)).padding(Padding {
+                    container(face(name, self.user_picture(r, &p.sender), 40.)).padding(Padding {
                         top: 2.,
                         ..Padding::ZERO
                     }),
@@ -2689,6 +2801,14 @@ impl App {
         }
         let has_older = timeline.start > 0;
         let has_newer = timeline.end < count;
+        // Older messages come from the server once the local ones are shown,
+        // a little before the top so they're usually there when you get there.
+        let server_older = !has_older
+            && self.logged_in
+            && self.connected
+            && !r.end
+            && !paging
+            && self.auto_page_failed.as_deref() != Some(self.selected.as_str());
         if original.is_none() && has_newer {
             feed = feed.push(edge("Newer messages", Some(Msg::TimelineEdge(false))));
         }
@@ -2707,17 +2827,64 @@ impl App {
         } else {
             feed.anchor_bottom().on_scroll(move |v| {
                 let away = has_newer || v.absolute_offset().y > 1.;
+                // Discord offers Jump to present once you're a screen or so up.
+                let far = has_newer || v.absolute_offset().y > v.bounds().height * 1.5;
                 if v.content_bounds().height > v.bounds().height {
                     if has_older && v.absolute_offset_reversed().y < 24. {
                         return Msg::TimelineEdge(true);
+                    }
+                    if server_older && v.absolute_offset_reversed().y < v.bounds().height {
+                        return Msg::AutoPage(self.selected.clone());
                     }
                     if has_newer && v.absolute_offset().y < 24. {
                         return Msg::TimelineEdge(false);
                     }
                 }
-                Msg::ReadingScroll(self.selected.clone(), away)
+                Msg::ReadingScroll(self.selected.clone(), away, far)
             })
         };
+        // The feed always sits in this stack: adding the layer only while
+        // scrolled up would rebuild the scrollable and lose its position.
+        let jump: El = if original.is_none() && self.scrolled_far {
+            let bar = container(
+                row![
+                    text("You're viewing older messages")
+                        .size(14)
+                        .color(Color::WHITE)
+                        .width(Fill),
+                    button(
+                        row![
+                            text("Jump to present").size(14).font(BOLD),
+                            icon(Icon::ChevronDown, 14., Color::WHITE)
+                        ]
+                        .spacing(6)
+                        .align_y(Center)
+                    )
+                    .padding([2, 8])
+                    .style(plain(Color::WHITE, color!(0xdee0fc)))
+                    .on_press(Msg::Latest)
+                ]
+                .align_y(Center),
+            )
+            .padding([6, 16])
+            .width(Fill)
+            .style(|_| container::Style {
+                background: Some(color!(0x5865f2).into()),
+                border: Border::default().rounded(border::top(8)),
+                ..Default::default()
+            });
+            container(bar)
+                .align_bottom(Fill)
+                .padding(Padding {
+                    left: 16.,
+                    right: 16.,
+                    ..Padding::ZERO
+                })
+                .into()
+        } else {
+            Space::new().into()
+        };
+        let feed: El = stack![feed, jump].into();
         let mut viewport = Column::new();
         if let Some(c) = original {
             let jump = |label: &'static str, msg: Msg| {
@@ -3363,9 +3530,13 @@ impl App {
                 }),
             container(
                 row![
-                    container(avatar(&self.profile, 72.))
-                        .padding(5)
-                        .style(|_| surface(TRAY, 41.)),
+                    container(face(
+                        &self.profile,
+                        self.avatars.get(self.own_avatar.as_deref()),
+                        72.
+                    ))
+                    .padding(5)
+                    .style(|_| surface(TRAY, 41.)),
                     column![
                         text(&self.profile).size(20).font(BOLD).color(TEXT),
                         text(&self.matrix_id).size(14).color(MUTED)

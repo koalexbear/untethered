@@ -28,4 +28,11 @@ pub enum Command {
     },
     #[cfg(target_arch = "wasm32")]
     Download { id: i64, media: crate::media::Media },
+    /// Save an attachment (decrypted) for the media viewer to play.
+    #[cfg(target_os = "linux")]
+    Fetch {
+        media: crate::media::Media,
+        destination: std::path::PathBuf,
+        result: Sender<bool>,
+    },
 }

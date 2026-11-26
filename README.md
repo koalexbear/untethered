@@ -50,8 +50,9 @@ composer (Enter sends, Shift+Enter adds a line). Preview messages are never sent
 the client adds `https://`. This prototype supports password login and verification
 with the account’s existing recovery key (grouped or compact) or recovery passphrase.
 The web verification form supports ordinary keyboard and context-menu paste.
-Single sign-on and emoji comparison (SAS) are desktop-only for now. The UI
-currently renders plain text and initial-based avatars.
+Single sign-on and emoji comparison (SAS) are desktop-only for now. Messages
+render as plain text. Profile pictures and server icons load from the
+homeserver, cropped to circles; anyone without one shows their initials.
 
 **Discord-style layout:** Hover a message to show its toolbar: **Add Reaction**,
 **Reply**, **Edit** (your own text messages) and **Report Message** (other
@@ -71,6 +72,12 @@ exact Matrix event. If it
 is outside the loaded timeline, Untethered loads that part of the room’s
 history from the homeserver. **Preceding messages** shows what led up to it, and
 **Back to latest** returns to the conversation.
+
+**History:** Older messages load from the homeserver as you scroll up, a
+screen before you reach the top, and a room opens with at least a screenful.
+**Page Up** and **Page Down** scroll the messages, also while you type. Once
+you're a screen or more above the newest message, a **Jump to present** bar
+appears above the composer.
 
 **Linux desktop notifications:** Click the bell (**Notification Settings**) in
 the room header. **All
@@ -168,6 +175,16 @@ shows image thumbnails or file-type cards; use **×** to remove a file. PNG,
 JPEG, GIF and WebP previews are static. Oversized or unsupported images still
 send as ordinary attachments within the upload limit. Each file is a standard
 Matrix media event. Draft attachments stay in their original room when you switch.
+
+**Media viewer:** Click an image or video in a room to open it over the
+window. Images load at full size (originals up to 48 MiB); **←** and **→**
+or the side arrows step through the room's images and videos, loading older
+history past the first. **Escape**, **×** or a click outside closes it, and
+**Download** saves the file. On Linux, videos play in the viewer through
+GStreamer with play/pause (**Space** or a click on the picture), seeking and
+mute; common codecs need `gst-plugins-good` and `gst-libav`. The decrypted
+copy lives in `$XDG_RUNTIME_DIR` only while the viewer shows it. Elsewhere
+the viewer shows the video's thumbnail and a Download button.
 Uploads are sequential, with up to 10 staged files per room and a 64 MiB/file cap
 (lower if the homeserver advertises a smaller limit). Click a received file’s
 name or its **Download** button to save it. Preview mode simulates a send locally; it never uploads.

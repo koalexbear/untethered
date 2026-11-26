@@ -452,6 +452,10 @@ impl App {
                 a.user_id.clone()
             }
         });
+        // Like the name, a report without a picture keeps the known one.
+        if a.avatar.is_some() || !a.logged_in {
+            self.own_avatar.clone_from(&a.avatar);
+        }
         let unavailable = a.logged_in && a.recovery == Recovery::Disabled;
         let was_verified = self.verified;
         if !a.logged_in && self.logged_in {
@@ -509,8 +513,9 @@ impl App {
                 self.verification_note = recovery_error(failure, format).into();
             }
             (Request::Page(_), Ok(())) => {}
-            (Request::Page(_), Err(_)) => {
+            (Request::Page(room), Err(_)) => {
                 self.status = "Could not load history. Use Earlier messages to retry.".into();
+                self.auto_page_failed = Some(room);
             }
             (Request::Send(room, sent, reply), Ok(())) => {
                 // Same draft handling as the gomuks send_message response.
@@ -719,6 +724,7 @@ mod tests {
             logged_in: true,
             user_id: "@me:example".into(),
             display_name: Some("Me".into()),
+            avatar: None,
             verified,
             identity: true,
             recovery: Recovery::Enabled,
@@ -901,6 +907,7 @@ mod tests {
             crate::moderation::Member {
                 kind: crate::moderation::Kind::Joined,
                 name: "Quiet One".into(),
+                avatar: None,
                 event: "$member".into(),
             },
         );
@@ -917,6 +924,7 @@ mod tests {
                 event_id: Some("$1".into()),
                 sender: "@you:example".into(),
                 sender_name: Some("You".into()),
+                sender_avatar: None,
                 time: 1,
                 body: "hello".into(),
                 kind: crate::engine::Kind::Text,
@@ -991,6 +999,7 @@ mod tests {
                 event_id: Some("$0".into()),
                 sender: "@you:example".into(),
                 sender_name: None,
+                sender_avatar: None,
                 time: 0,
                 body: "original".into(),
                 kind: crate::engine::Kind::Text,
@@ -1154,6 +1163,7 @@ mod tests {
         let member = |event: &str| Member {
             kind: crate::moderation::Kind::Joined,
             name: String::new(),
+            avatar: None,
             event: event.into(),
         };
         crate::room_state::RoomState {

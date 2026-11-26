@@ -87,23 +87,23 @@ pub const INLINE_WIDTH: u32 = 400;
 pub const INLINE_HEIGHT: u32 = 260;
 
 #[cfg(not(target_arch = "wasm32"))]
-pub async fn inline(bytes: Vec<u8>) -> Option<Handle> {
+pub async fn inline(bytes: Vec<u8>, fit: crate::media::Fit) -> Option<Handle> {
     let _permit = DECODERS.acquire().await;
-    tokio::task::spawn_blocking(move || {
-        decode(std::io::Cursor::new(bytes), INLINE_WIDTH, INLINE_HEIGHT)
-    })
-    .await
-    .ok()
-    .flatten()
+    let (width, height) = fit.bounds();
+    tokio::task::spawn_blocking(move || decode(std::io::Cursor::new(bytes), width, height))
+        .await
+        .ok()
+        .flatten()
 }
 
 /// An inline timeline image from fetched bytes, decoded by the browser.
 #[cfg(target_arch = "wasm32")]
-pub async fn inline(bytes: Vec<u8>) -> Option<Handle> {
+pub async fn inline(bytes: Vec<u8>, fit: crate::media::Fit) -> Option<Handle> {
     let _permit = DECODERS.acquire().await;
     let parts = js_sys::Array::of1(&js_sys::Uint8Array::from(bytes.as_slice()));
     let blob = web_sys::Blob::new_with_u8_array_sequence(&parts).ok()?;
-    blob_thumbnail(&blob, INLINE_WIDTH, INLINE_HEIGHT).await
+    let (width, height) = fit.bounds();
+    blob_thumbnail(&blob, width, height).await
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -118,9 +118,17 @@ pub async fn blob_thumbnail(source: &web_sys::Blob, width: u32, height: u32) -> 
     let head = source.slice_with_f64_and_f64(0., 262144.).ok()?;
     let bytes = js_sys::Uint8Array::new(&JsFuture::from(head.array_buffer()).await.ok()?).to_vec();
     let dims = imagesize::blob_size(&bytes).ok()?;
-    if !valid_size(dims.width.try_into().ok()?, dims.height.try_into().ok()?) {
+    let (w, h): (u32, u32) = (dims.width.try_into().ok()?, dims.height.try_into().ok()?);
+    if !valid_size(w, h) {
         return None;
     }
+    // The picture's own shape within the bounds, never enlarged, so the
+    // canvas has no empty borders.
+    let scale = (f64::from(width) / f64::from(w))
+        .min(f64::from(height) / f64::from(h))
+        .min(1.);
+    let width = ((f64::from(w) * scale).round() as u32).max(1);
+    let height = ((f64::from(h) * scale).round() as u32).max(1);
     let pixels = crate::web_files::thumbnail(source, width, height)
         .await
         .ok()?;

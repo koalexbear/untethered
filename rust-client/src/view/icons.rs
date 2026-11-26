@@ -34,7 +34,14 @@ pub(super) enum Icon {
     Copy,
     ChevronDown,
     ChevronRight,
+    ChevronLeft,
     Close,
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    Play,
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    Pause,
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    Muted,
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     Phone,
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
@@ -209,6 +216,31 @@ fn outline(icon: Icon) -> Path {
         }
         Icon::ChevronDown => poly(b, &[(6., 9.), (12., 15.), (18., 9.)]),
         Icon::ChevronRight => poly(b, &[(9., 6.), (15., 12.), (9., 18.)]),
+        Icon::ChevronLeft => poly(b, &[(15., 6.), (9., 12.), (15., 18.)]),
+        Icon::Play => {
+            poly(b, &[(6., 3.), (20., 12.), (6., 21.)]);
+            b.close();
+        }
+        Icon::Pause => {
+            b.rounded_rectangle(p(6., 4.), Size::new(4., 16.), 1.0.into());
+            b.rounded_rectangle(p(14., 4.), Size::new(4., 16.), 1.0.into());
+        }
+        Icon::Muted => {
+            poly(
+                b,
+                &[
+                    (11., 5.),
+                    (6., 9.),
+                    (2., 9.),
+                    (2., 15.),
+                    (6., 15.),
+                    (11., 19.),
+                ],
+            );
+            b.close();
+            poly(b, &[(22., 9.), (16., 15.)]);
+            poly(b, &[(16., 9.), (22., 15.)]);
+        }
         Icon::Close => {
             poly(b, &[(18., 6.), (6., 18.)]);
             poly(b, &[(6., 6.), (18., 18.)]);

@@ -130,6 +130,7 @@ fn message(event: &TimelineEvent, row: i64, me: &str, sources: &Sources) -> Opti
         event_id: Some(id),
         sender,
         sender_name: None,
+        sender_avatar: None,
         time,
         body: String::new(),
         kind: Kind::Undecryptable,

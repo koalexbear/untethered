@@ -43,6 +43,10 @@ pub struct Room {
     pub has_metadata: bool,
     pub end: bool,
     pub members: BTreeMap<String, String>,
+    /// The room's picture (mxc URI).
+    pub avatar: Option<String>,
+    /// Members' profile pictures (mxc URIs), as the timeline shows them.
+    pub avatars: BTreeMap<String, String>,
     pub history: BTreeMap<i64, Post>,
     // Keep the timestamp and row-ID ordering used by the timeline.
     pub(super) order: Vec<(i64, i64)>,

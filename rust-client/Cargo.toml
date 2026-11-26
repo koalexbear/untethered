@@ -58,6 +58,10 @@ ashpd = { version = "0.11.1", default-features = false, features = ["tokio"] }
 # Desktop-wide push-to-talk on X11: XInput2 raw key events (hotkeys/x11.rs).
 x11rb = { version = "0.13.2", features = ["xinput"] }
 libc = "0.2"
+# Video playback in the media viewer (player.rs).
+gstreamer = "0.25"
+gstreamer-app = "0.25"
+gstreamer-video = "0.25"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 # The live tests' and the sign-in tests' own HTTP calls.

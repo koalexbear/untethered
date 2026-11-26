@@ -1,5 +1,5 @@
 use super::{
-    ACTIVE, BODY, BOLD, CHANNEL, El, Icon, LINK, MUTED, Msg, Room, SIDE, TEXT, avatar, icon,
+    ACTIVE, BODY, BOLD, CHANNEL, El, Icon, LINK, MUTED, Msg, Room, SIDE, TEXT, face, icon,
     input_style, plain, primary, scroll_style, thin_scrollbar,
 };
 use crate::search::Search;
@@ -10,7 +10,12 @@ use iced::{
     widget::{Column, button, column, container, row, scrollable, text, text_input},
 };
 
-pub(super) fn view<'a>(s: &'a Search, room: &'a Room, opening: bool) -> El<'a> {
+pub(super) fn view<'a>(
+    s: &'a Search,
+    room: &'a Room,
+    avatars: &'a crate::avatars::Avatars,
+    opening: bool,
+) -> El<'a> {
     let link = |label: &'static str, msg: Option<Msg>| {
         button(text(label).size(14))
             .padding([4, 8])
@@ -117,7 +122,11 @@ pub(super) fn view<'a>(s: &'a Search, room: &'a Room, opening: bool) -> El<'a> {
         list = list.push(
             button(
                 row![
-                    avatar(sender, 40.),
+                    face(
+                        sender,
+                        avatars.get(room.avatars.get(&hit.sender).map(String::as_str)),
+                        40.,
+                    ),
                     column![
                         row![
                             text(sender).size(16).font(BOLD).color(TEXT),

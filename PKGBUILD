@@ -14,11 +14,11 @@ url='https://github.com/koalexbear/untethered'
 license=('AGPL-3.0-or-later' 'OFL-1.1' 'MIT')
 optdepends=('xdg-desktop-portal: file pickers, file drops, window sharing and camera access'
             'gst-plugin-pipewire: read portal-authorized camera and window streams'
-            'gstreamer: gst-launch-1.0 for video capture'
-            'gst-plugins-base-libs: video conversion, scaling and framerate control'
+            'gst-plugins-good: MP4 and WebM videos in the media viewer'
+            'gst-libav: H.264 and other video codecs in the media viewer'
             'libpulse: microphone capture and playback for encrypted DM calls')
-depends=('ca-certificates' 'fontconfig' 'gcc-libs' 'glibc' 'libpipewire' 'libx11' 'libxcb'
-         'libxcursor' 'libxi' 'libxkbcommon-x11' 'libxrandr' 'wayland')
+depends=('ca-certificates' 'fontconfig' 'gcc-libs' 'glibc' 'gstreamer' 'gst-plugins-base-libs'
+         'libpipewire' 'libx11' 'libxcb' 'libxcursor' 'libxi' 'libxkbcommon-x11' 'libxrandr' 'wayland')
 makedepends=('cargo' 'git' 'clang' 'glib2' 'cmake' 'protobuf')
 options=('!debug' '!lto')
 

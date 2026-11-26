@@ -38,6 +38,7 @@ impl Rooms {
             }
             room.has_metadata = true;
             room.name = s.name;
+            room.avatar = s.avatar;
             room.topic = s.topic;
             room.space = space;
             room.dm = s.dm;
@@ -130,6 +131,9 @@ impl Room {
         for m in messages {
             if let Some(name) = &m.sender_name {
                 self.members.insert(m.sender.clone(), name.clone());
+            }
+            if let Some(avatar) = &m.sender_avatar {
+                self.avatars.insert(m.sender.clone(), avatar.clone());
             }
             if let Some((sender, body)) = m.reply_to.as_ref().and_then(|r| r.quoted.clone()) {
                 let id = m.reply_to.as_ref().unwrap().event_id.clone();
@@ -236,6 +240,7 @@ mod tests {
             event_id: Some(format!("${row}")),
             sender: "@a:example".into(),
             sender_name: Some("Alice".into()),
+            sender_avatar: None,
             time,
             body: body.into(),
             kind: Kind::Text,

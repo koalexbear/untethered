@@ -474,6 +474,9 @@ pub struct Account {
     pub logged_in: bool,
     pub user_id: String,
     pub display_name: Option<String>,
+    /// The account's profile picture (mxc URI).
+    #[serde(default)]
+    pub avatar: Option<String>,
     /// This device is cross-signed by its owner.
     pub verified: bool,
     /// The account has published cross-signing keys, so another device can
@@ -503,6 +506,9 @@ pub struct RoomList {
 pub struct RoomSummary {
     pub id: String,
     pub name: String,
+    /// The room's picture (mxc URI); a DM without one uses the peer's.
+    #[serde(default)]
+    pub avatar: Option<String>,
     pub topic: String,
     pub space: bool,
     pub dm: bool,
@@ -556,6 +562,9 @@ pub struct Message {
     pub event_id: Option<String>,
     pub sender: String,
     pub sender_name: Option<String>,
+    /// The sender's profile picture (mxc URI) as the timeline knows it.
+    #[serde(default)]
+    pub sender_avatar: Option<String>,
     pub time: i64,
     pub body: String,
     pub kind: Kind,
@@ -859,7 +868,7 @@ impl Engine {
                     Ok(client) => {
                         // Signed in before the request completes, so the form
                         // never offers a second sign-in in between.
-                        let now = account(&client, None).await;
+                        let now = account(&client, None, None).await;
                         self.go_live(client).await;
                         if self.live.is_some() {
                             self.emit(Event::Account(now)).await;
@@ -880,7 +889,7 @@ impl Engine {
                     if result.is_ok() {
                         // Report the verified state before completing the request.
                         let _ = events
-                            .send(Event::Account(account(&client, None).await))
+                            .send(Event::Account(account(&client, None, None).await))
                             .await;
                     }
                     let _ = events.send(Event::Done { id, result }).await;
@@ -1309,6 +1318,22 @@ impl Engine {
                     let _ = events.send(Event::Done { id, result }).await;
                 });
             }
+            #[cfg(target_os = "linux")]
+            Transfer::Fetch {
+                media,
+                destination,
+                result,
+            } => {
+                rt::spawn(async move {
+                    let fetched = match live {
+                        Some(client) => media::download(client, sources, media, destination)
+                            .await
+                            .is_ok(),
+                        None => false,
+                    };
+                    let _ = result.send(fetched).await;
+                });
+            }
             #[cfg(target_arch = "wasm32")]
             Transfer::Download { media, result } => {
                 rt::spawn(async move {
@@ -1432,7 +1457,7 @@ impl Engine {
                 Ok(key) => {
                     let _ = events.send(Event::RecoveryKey(key)).await;
                     let _ = events
-                        .send(Event::Account(account(&client, None).await))
+                        .send(Event::Account(account(&client, None, None).await))
                         .await;
                     Ok(())
                 }
@@ -1480,7 +1505,7 @@ impl Engine {
                 self.browser_id = None;
                 match result {
                     Ok(client) => {
-                        let now = account(&client, None).await;
+                        let now = account(&client, None, None).await;
                         self.go_live(client).await;
                         if self.live.is_some() {
                             self.emit(Event::Account(now)).await;
@@ -1519,7 +1544,11 @@ impl Engine {
     }
 }
 
-pub(super) async fn account(client: &Client, display_name: Option<String>) -> Account {
+pub(super) async fn account(
+    client: &Client,
+    display_name: Option<String>,
+    avatar: Option<String>,
+) -> Account {
     let encryption = client.encryption();
     let verified = encryption
         .get_own_device()
@@ -1544,6 +1573,7 @@ pub(super) async fn account(client: &Client, display_name: Option<String>) -> Ac
             .map(ToString::to_string)
             .unwrap_or_default(),
         display_name,
+        avatar,
         verified,
         identity,
         recovery: match encryption.recovery().state() {
@@ -1561,6 +1591,7 @@ async fn account_updates(client: Client, events: Sender<Event>) {
     let mut verification = client.encryption().verification_state();
     let mut recovery = client.encryption().recovery().state_stream();
     let mut name = None;
+    let mut avatar = None;
     let mut last = None;
     // Ask the homeserver once, so a fresh device knows whether the account
     // already has cross-signing keys before offering to create them.
@@ -1579,7 +1610,15 @@ async fn account_updates(client: Client, events: Sender<Event>) {
                 .and_then(Result::ok)
                 .flatten();
         }
-        let now = account(&client, name.clone()).await;
+        if avatar.is_none() {
+            avatar = rt::timeout(Duration::from_secs(10), client.account().get_avatar_url())
+                .await
+                .ok()
+                .and_then(Result::ok)
+                .flatten()
+                .map(|u| u.to_string());
+        }
+        let now = account(&client, name.clone(), avatar.clone()).await;
         if last.as_ref() != Some(&now) {
             if events.send(Event::Account(now.clone())).await.is_err() {
                 return;

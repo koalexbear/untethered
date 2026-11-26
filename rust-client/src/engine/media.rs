@@ -10,7 +10,7 @@
 use super::{Event, Failure, rt};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::media::NativeSource;
-use crate::media::{INLINE_BYTES, LocalFile, Media, PreviewRef};
+use crate::media::{FULL_BYTES, Fit, INLINE_BYTES, LocalFile, Media, PreviewRef};
 use async_channel::{Receiver, Sender};
 use matrix_sdk::{
     Client, TransmissionProgress,
@@ -18,6 +18,7 @@ use matrix_sdk::{
     ruma::{
         MxcUri, OwnedMxcUri, UInt,
         events::room::{EncryptedFile, MediaSource, message::MessageType},
+        media::Method,
     },
 };
 use matrix_sdk_crypto::AttachmentEncryptor;
@@ -84,7 +85,8 @@ pub async fn inline(
     sources: Arc<Sources>,
     preview: PreviewRef,
 ) -> Option<iced::widget::image::Handle> {
-    crate::preview::inline(inline_bytes(client, sources, preview).await?).await
+    let fit = preview.fit;
+    crate::preview::inline(inline_bytes(client, sources, preview).await?, fit).await
 }
 
 /// The bytes of a small image for the timeline. Plain images use the
@@ -96,14 +98,28 @@ pub async fn inline_bytes(
 ) -> Option<Vec<u8>> {
     let source = sources.get(&preview.mxc, preview.encrypted)?;
     let media = client.media();
+    let limit = if preview.fit == Fit::Full {
+        FULL_BYTES
+    } else {
+        INLINE_BYTES
+    };
     let bytes = match source {
+        // The media viewer shows the original.
+        _ if preview.fit == Fit::Full => whole(&media, source).await?,
         MediaSource::Plain(_) => {
+            let size = if preview.fit == Fit::Avatar {
+                // Cropped to a square, at twice the largest size drawn.
+                MediaThumbnailSettings::with_method(
+                    Method::Crop,
+                    UInt::from(160u32),
+                    UInt::from(160u32),
+                )
+            } else {
+                MediaThumbnailSettings::new(UInt::from(800u32), UInt::from(600u32))
+            };
             let thumbnail = MediaRequestParameters {
                 source: source.clone(),
-                format: MediaFormat::Thumbnail(MediaThumbnailSettings::new(
-                    UInt::from(800u32),
-                    UInt::from(600u32),
-                )),
+                format: MediaFormat::Thumbnail(size),
             };
             match media.get_media_content(&thumbnail, true).await {
                 Ok(bytes) => bytes,
@@ -112,7 +128,7 @@ pub async fn inline_bytes(
         }
         MediaSource::Encrypted(_) => whole(&media, source).await?,
     };
-    (bytes.len() <= INLINE_BYTES).then_some(bytes)
+    (bytes.len() <= limit).then_some(bytes)
 }
 
 async fn whole(media: &matrix_sdk::Media, source: MediaSource) -> Option<Vec<u8>> {

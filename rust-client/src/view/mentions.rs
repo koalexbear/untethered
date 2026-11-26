@@ -1,5 +1,5 @@
 use super::{
-    ACTIVE, App, BODY, BOLD, CHANNEL, El, Icon, LINK, MUTED, Msg, SIDE, TEXT, avatar, icon,
+    ACTIVE, App, BODY, BOLD, CHANNEL, El, Icon, LINK, MUTED, Msg, SIDE, TEXT, face, icon,
     line_rule, plain, scroll_style, thin_scrollbar,
 };
 use crate::mentions::Inbox;
@@ -59,7 +59,7 @@ pub(super) fn view<'a>(app: &'a App, inbox: &'a Inbox) -> El<'a> {
         list = list.push(
             button(
                 row![
-                    avatar(sender, 40.),
+                    face(sender, app.user_picture(r, &h.sender), 40.),
                     column![
                         row![
                             text(sender).size(16).font(BOLD).color(TEXT),

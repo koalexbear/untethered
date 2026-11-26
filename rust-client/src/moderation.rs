@@ -26,6 +26,9 @@ impl Kind {
 pub struct Member {
     pub kind: Kind,
     pub name: String,
+    /// The member's profile picture (mxc URI).
+    #[serde(default)]
+    pub avatar: Option<String>,
     /// The membership event, which a change is checked against.
     pub event: String,
 }
@@ -278,6 +281,7 @@ mod tests {
         let member = |event: &str| Member {
             kind: Kind::Joined,
             name: "Same display name".into(),
+            avatar: None,
             event: event.into(),
         };
         RoomState {

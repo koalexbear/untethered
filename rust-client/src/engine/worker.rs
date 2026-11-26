@@ -180,7 +180,13 @@ async fn relay(
     }
     let session = super::web::saved_session();
     post_to(worker, &ToWorker::Start { session }, None)?;
-    let mut previews: HashMap<u64, Sender<Option<iced::widget::image::Handle>>> = HashMap::new();
+    let mut previews: HashMap<
+        u64,
+        (
+            Sender<Option<iced::widget::image::Handle>>,
+            crate::media::Fit,
+        ),
+    > = HashMap::new();
     let mut next = 0;
     loop {
         tokio::select! {
@@ -200,11 +206,11 @@ async fn relay(
                         super::web::persist_session(session.as_deref());
                     }
                     Some(FromWorker::Inline { request }) => {
-                        if let Some(result) = previews.remove(&request) {
+                        if let Some((result, fit)) = previews.remove(&request) {
                             let image = bytes(&data);
                             rt::spawn(async move {
                                 let handle = match image {
-                                    Some(image) => crate::preview::inline(image).await,
+                                    Some(image) => crate::preview::inline(image, fit).await,
                                     None => None,
                                 };
                                 let _ = result.send(handle).await;
@@ -234,7 +240,7 @@ async fn relay(
             transfer = backend.recv() => match transfer {
                 Ok(crate::backend::Command::Inline { source, result }) => {
                     next += 1;
-                    previews.insert(next, result);
+                    previews.insert(next, (result, source.fit));
                     post_to(worker, &ToWorker::Inline { request: next, source }, None)?;
                 }
                 Ok(crate::backend::Command::Upload { id, cancel, file, encrypt, limit }) => {

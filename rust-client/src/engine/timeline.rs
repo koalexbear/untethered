@@ -465,6 +465,10 @@ fn message(item: &EventTimelineItem, row: i64, me: &str, sources: &Sources) -> O
             TimelineDetails::Ready(p) => p.display_name.clone(),
             _ => None,
         },
+        sender_avatar: match item.sender_profile() {
+            TimelineDetails::Ready(p) => p.avatar_url.as_ref().map(ToString::to_string),
+            _ => None,
+        },
         time: u64::from(item.timestamp().0) as i64,
         body,
         kind,

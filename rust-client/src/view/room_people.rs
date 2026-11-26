@@ -1,6 +1,6 @@
 use super::{
     ACTIVE, App, BLURPLE, BODY, BOLD, CHANNEL, El, FLOAT, HOVER, Icon, MUTED, Msg, RED, SIDE, TEXT,
-    avatar, icon_button, input_style, label_owned, plain, scroll_style, surface, thin_scrollbar,
+    face, icon_button, input_style, label_owned, plain, scroll_style, surface, thin_scrollbar,
 };
 use crate::moderation::{Action, Kind};
 use iced::{
@@ -40,6 +40,27 @@ fn action_button<'a>(action: Action, msg: Option<Msg>) -> El<'a> {
 /// A membership kind, its heading and the (ID, name) pairs shown under it.
 type Group<'a> = (Kind, &'static str, Vec<(&'a String, &'a str)>);
 
+impl App {
+    /// A member's loaded profile picture: from their membership, or as the
+    /// open room's timeline shows them.
+    fn member_picture(&self, user: &str) -> Option<&iced::widget::image::Handle> {
+        let mxc = self
+            .directory
+            .users
+            .get(user)
+            .and_then(|m| m.avatar.as_deref())
+            .or_else(|| {
+                self.live
+                    .list
+                    .get(&self.selected)?
+                    .avatars
+                    .get(user)
+                    .map(String::as_str)
+            });
+        self.avatars.get(mxc)
+    }
+}
+
 pub(super) fn view(app: &App) -> El<'_> {
     let d = &app.directory;
     let busy = app.membership_busy();
@@ -71,7 +92,7 @@ pub(super) fn view(app: &App) -> El<'_> {
         };
         let mut card = column![
             row![
-                avatar(name, 48.),
+                face(name, app.member_picture(id), 48.),
                 column![
                     text(name).size(16).font(BOLD).color(TEXT),
                     text(id).size(12).color(MUTED),
@@ -187,7 +208,7 @@ pub(super) fn view(app: &App) -> El<'_> {
             list = list.push(
                 button(
                     row![
-                        avatar(name, 32.),
+                        face(name, app.member_picture(id), 32.),
                         column![
                             text(name).size(15).wrapping(text::Wrapping::None),
                             text(id.as_str())

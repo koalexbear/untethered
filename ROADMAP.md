@@ -1,10 +1,100 @@
 # Untethered: roadmap to Discord parity
 
-**2026-11-24 · `rust-discord-ui` at `bfa75b3`**
+**2026-11-26 · `main`**
 
-**Next: drag-and-drop attachments and voice calls.** Start the technical proof for both now. Ship files first while proving encrypted call interoperability with Element. This is a delivery order, not a calendar estimate.
+**Next: make messages feel like Discord.** Rich text, mention and emoji
+autocomplete, typing indicators and right-click menus are what people notice
+first now that rooms, calls, files and media work. Calls continue in their own
+plan ([calls-parity-plan.md](rust-client/docs/calls-parity-plan.md)).
 
-## First implementation checkpoint
+## Where it stands
+
+- **Engine:** matrix-rust-sdk on desktop and in the browser (a Web Worker);
+  gomuks is gone from the client.
+- **Layout:** Discord-style server rail with server icons, channel list with
+  collapsible categories, header actions, hover toolbars, user panel and
+  settings.
+- **Messaging:** replies with jump-to-original, edits, reactions, mentions
+  inbox, room search, read markers and unread divider, reports, moderation,
+  permissions, space and room alerts.
+- **History:** older messages load as you scroll up, rooms open with a
+  screenful, Page Up/Down, and a Jump to present bar.
+- **People:** profile pictures in messages, DMs, the member list, calls and
+  the user panel.
+- **Files and media:** drop, paste and pick files with progress, cancel and
+  retry; inline image and video previews; a media viewer with full-size
+  images, arrow-key browsing through a room's media and (Linux) video
+  playback with seeking.
+- **Calls:** encrypted DM calls and voice rooms with Element interop, screen
+  and window sharing with app audio, cameras, push-to-talk (also global), the
+  call dock, per-participant volume, recovery after network loss.
+
+## Next steps
+
+Ordered by what a community moving from Discord misses most, then by effort.
+Each step names the check that says it's done; add it to the QA scripts
+(`scripts/qa_ui.py` and friends) as it lands.
+
+### Phase 1 — messages that feel like Discord
+
+| Step | Deliverable | Done when |
+|---|---|---|
+| **M1. Rich text** | Render received `formatted_body` (and Markdown from clients that only send `body`): bold, italic, strikethrough, inline code, code blocks with a copy button, quotes, lists, links, headings, and spoilers (`data-mx-spoiler`, `\|\|text\|\|`) that reveal on click. Sanitise as Element does. | A message from Element with each construct looks the same in Untethered, and a spoiler stays hidden until clicked. |
+| **M2. Composer autocomplete** | `@` members, `#` rooms and `:` emoji shortcodes with a popup above the composer (arrow keys, Tab/Enter), sending proper `m.mentions` and pills; an emoji button that reuses the reaction picker. | Mentioning someone by typing `@mi` + Tab highlights them in Element and in their mentions inbox. |
+| **M3. Typing indicators** | Send typing notices while composing (with a privacy toggle) and show "Mira is typing…" / "Several people are typing…" under the composer. | Typing in Element shows the indicator within a second and it clears when they stop or send. |
+| **M4. Right-click menus** | Context menus for messages (Reply, Edit, Delete, Copy text, Copy link, Mark unread, Pin, Report), users (Profile, Message, Mention, Kick/Ban by permission) and channels (Mark read, Notifications, Copy link, Leave). | Every action in the hover toolbar is also reachable by right-click and keyboard (Shift+F10 / menu key). |
+| **M5. Profiles** | Click an avatar or name for a profile card (picture, name, user ID, power level, Message button); edit your own display name and picture in User Settings. | Changing your picture here updates it in Element and in this client's member list. |
+| **M6. Delete and drafts** | Delete (redact) your own messages and, with permission, others'; drafts and staged-file captions survive a restart; a "N new messages since 14:02" bar at the top with Mark as read. | A redaction from either client removes the message in both; a draft typed before quitting is still there after restarting. |
+| **M7. Link previews** | URL embeds through the homeserver's `preview_url`, off by default in encrypted rooms, with a per-room switch; image links show inline. | A link to a page with Open Graph tags shows its title, description and image; turning previews off stops the request. |
+
+### Phase 2 — navigation
+
+| Step | Deliverable | Done when |
+|---|---|---|
+| **N1. Quick switcher** | Ctrl+K: fuzzy search over rooms, DMs and spaces, unread first. | Ctrl+K, three letters and Enter opens a room without the mouse. |
+| **N2. Remember where you were** | Last room per space and scroll position per room, restored on switch and restart. | Leave a room mid-history, visit two others, come back to the same message. |
+| **N3. Pins and threads** | Pinned messages panel (`m.room.pinned_events`); Matrix threads in a side panel with a thread list per channel. | A thread started in Element shows its replies in the panel; pinning here shows in Element. |
+| **N4. Presence** | Online/idle/offline dots and custom status where the homeserver enables presence; hide them cleanly where it doesn't. | Going idle in Element turns the dot amber here within a minute. |
+| **N5. Channel order** | Drag to reorder channels and categories, writing `m.space.child` `order`. | The order made here appears in Element's space view. |
+
+### Phase 3 — media follow-ups
+
+| Step | Deliverable | Done when |
+|---|---|---|
+| **P1. Animated images** | Play GIF and animated WebP in the timeline and viewer (pause when off screen). | A GIF sent from Element animates here and stops using CPU when scrolled away. |
+| **P2. Inline players** | Play videos inline in the timeline as Discord does, plus an audio player for voice notes and `m.audio`. | A short clip plays without opening the viewer; an audio file shows a waveform-less player with seek. |
+| **P3. Viewer polish** | Zoom and pan, a thumbnail strip, copy image, preloading the neighbouring images, and a gallery layout for several attachments in one message. | Ten screenshots step without a loading pause; scroll-zoom keeps the point under the cursor. |
+| **P4. Video everywhere** | Video playback on Windows (Media Foundation or bundled GStreamer) and in the browser (an HTML `<video>` element over the canvas). | The same MP4 plays on Linux, Windows and Chromium. |
+| **P5. Sending video** | Thumbnail, dimensions and duration for videos you send, so other clients show a poster. | A clip sent from here shows its poster frame in Element. |
+
+### Phase 4 — calls
+
+Follow the [calls plan](rust-client/docs/calls-parity-plan.md): A2 (noise
+suppression and input sensitivity) and V2 (simulcast, per-tile quality) finish
+Phase 1 there; then U1–U6: the Voice Connected panel, a persisted Voice & Video
+settings page, participant menus, Go Live and Watch Stream, the incoming call
+card, and stage polish.
+
+### Phase 5 — settings, account and release
+
+| Step | Deliverable | Done when |
+|---|---|---|
+| **S1. Settings pages** | Appearance (theme, font scale, compact mode), Notifications, Keybinds, Privacy (read receipts, typing, link previews), Voice & Video (U2). | Every setting persists across restarts and devices where Matrix has an account-data equivalent. |
+| **S2. Account** | Logout everywhere, session list with verification state, key backup health, recovery reset. | A new device can be verified and an old one signed out from here. |
+| **S3. Release** | Accessibility names and keyboard paths, scaling, signed Windows builds with a runtime test, Flatpak, upgrade tests. | A new user installs, signs in, recovers history, shares a file, calls someone and upgrades without the terminal. |
+
+### Known gaps from the 2026-11-26 work
+
+- Dragging the timeline's scrollbar thumb can snap back to the newest
+  message; the wheel and Page Up/Down keep their position. Not yet
+  investigated (seen with `anchor_bottom` in Iced 0.14).
+- With the tiny-skia renderer, switching images in the viewer can leave a
+  one-pixel line from the previous image (partial redraw); wgpu redraws fully.
+- Video playback is Linux-only and depends on the system's GStreamer codecs.
+- Profile pictures of members who never posted come from their membership
+  event, so they appear once the member list has loaded.
+
+## Checkpoint log
 
 - **Files available:** Native and web staging tray, multi-file drop/picker, explicit Send,
   per-room drafts, optional caption, sequential encrypted uploads and attachment save.
@@ -345,7 +435,7 @@ Keep the frontend in **Rust/Iced**. The Matrix engine is **matrix-rust-sdk**, wh
 
 **Done when:** Untethered and Element can initiate calls to one another on separate networks, including a relay-required connection. Two Untethered users can do the same. Both hear audio, can change channels without dropping the call, mute/deafen correctly, recover from a disconnect and hang up cleanly. Check a server without RTC support. Record real Linux, Windows and browser results separately; keep the feature experimental if encrypted interop fails.
 
-## Remaining delivery order
+## Delivery order as planned on 2026-11-24
 
 | Milestone | Deliverable | Acceptance example |
 |---|---|---|

@@ -5,6 +5,7 @@
 mod account;
 #[cfg(target_os = "linux")]
 mod app_id;
+mod avatars;
 mod backend;
 #[cfg(target_arch = "wasm32")]
 mod browser_verification;
@@ -30,6 +31,8 @@ mod notifications;
 #[cfg(not(target_arch = "wasm32"))]
 mod paste;
 mod permissions;
+#[cfg(target_os = "linux")]
+mod player;
 mod preview;
 mod reactions;
 mod reading;
@@ -40,6 +43,7 @@ mod rooms;
 mod search;
 mod transfers;
 mod view;
+mod viewer;
 #[cfg(target_os = "linux")]
 mod wayland_drop;
 #[cfg(target_arch = "wasm32")]
@@ -111,6 +115,7 @@ enum Msg {
     CancelUpload(String, u64, i64),
     SaveFile(media::Media),
     InlineReady(u64, media::PreviewRef, Option<iced::widget::image::Handle>),
+    AvatarReady(String, Option<iced::widget::image::Handle>),
     ShowInline(media::PreviewRef),
     #[cfg(not(target_arch = "wasm32"))]
     SaveTo(media::Media, Option<std::path::PathBuf>),
@@ -181,7 +186,12 @@ enum Msg {
     Open(String),
     Setup(community::Input),
     CheckReading,
-    ReadingScroll(String, bool),
+    /// Scrolled the timeline: away from the bottom, and far enough for Jump to present.
+    ReadingScroll(String, bool, bool),
+    /// Scrolled near the top of what's loaded: fetch older messages.
+    AutoPage(String),
+    /// Page Up (true) or Page Down: scroll the timeline by most of a screen.
+    PageScroll(bool),
     ShareReads(bool),
     ReadVisible(String, String, String, bool),
     MarkRoom(String, Option<String>),
@@ -229,6 +239,20 @@ enum Msg {
     ServerMenu(bool),
     /// Close the topmost menu, dialog or settings page.
     Escape,
+    /// Open an image or video in the media viewer.
+    OpenViewer(String),
+    /// The previous (-1) or next (+1) image or video.
+    ViewerStep(i32),
+    CloseViewer,
+    ViewerImage(u64, Option<iced::widget::image::Handle>),
+    #[cfg(target_os = "linux")]
+    ViewerVideo(u64, bool),
+    #[cfg(target_os = "linux")]
+    Player(player::Event),
+    #[cfg(target_os = "linux")]
+    PlayerControl(player::Control),
+    #[cfg(target_os = "linux")]
+    PlayerScrub(f32),
     /// Collapse or expand a channel category, keyed by section and kind.
     Collapse(String),
     MemberFilter(String),
@@ -304,6 +328,13 @@ struct App {
     setup: Option<community::Form>,
     read_sharing: reading::Sharing,
     scrolled_away: bool,
+    /// A screen or more above the newest messages: show Jump to present.
+    scrolled_far: bool,
+    /// The room whose automatic history load failed; Earlier messages retries.
+    auto_page_failed: Option<String>,
+    /// Each room's message count when history was last loaded to fill the
+    /// window, so a page that brings nothing doesn't repeat.
+    filled: BTreeMap<String, usize>,
     #[cfg(not(target_arch = "wasm32"))]
     focused: bool,
     #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
@@ -328,6 +359,10 @@ struct App {
     sdk_ui: engine::account_ui::AccountUi,
     outbox: media::Outbox,
     inline: inline::InlineImages,
+    avatars: avatars::Avatars,
+    viewer: Option<viewer::Viewer>,
+    /// The account's profile picture (mxc URI).
+    own_avatar: Option<String>,
     batch: Option<transfers::Batch>,
     hover_files: bool,
     media_limit: u64,
@@ -385,6 +420,9 @@ impl App {
             setup: None,
             read_sharing: Default::default(),
             scrolled_away: false,
+            scrolled_far: false,
+            auto_page_failed: None,
+            filled: BTreeMap::new(),
             #[cfg(not(target_arch = "wasm32"))]
             focused: false,
             #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
@@ -408,6 +446,9 @@ impl App {
             sdk_ui: Default::default(),
             outbox: Default::default(),
             inline: Default::default(),
+            avatars: Default::default(),
+            viewer: None,
+            own_avatar: None,
             batch: None,
             hover_files: false,
             media_limit: media::MAX_BYTES,
@@ -485,6 +526,35 @@ impl App {
     fn page(&mut self) {
         self.engine_page()
     }
+    /// A history request for `room` is in flight.
+    fn paging(&self, room: &str) -> bool {
+        self.pending
+            .values()
+            .any(|p| matches!(p, Request::Page(r) if r == room))
+    }
+    /// Load older messages until the open room has a screenful, as Discord
+    /// does on open; stop when a page brings nothing new.
+    fn fill_history(&mut self) {
+        const SCREENFUL: usize = 40;
+        let room = self.selected.clone();
+        let Some(r) = self.live.list.get(&room) else {
+            return;
+        };
+        let count = r.posts().len();
+        if !self.logged_in
+            || !self.connected
+            || r.end
+            || count >= SCREENFUL
+            || self.original.is_some()
+            || self.paging(&room)
+            || self.auto_page_failed.as_ref() == Some(&room)
+            || self.filled.get(&room).is_some_and(|last| *last >= count)
+        {
+            return;
+        }
+        self.filled.insert(room, count);
+        self.page();
+    }
     #[cfg(target_os = "linux")]
     fn minimize_call(&mut self) {
         if let Some(call) = &mut self.call {
@@ -500,7 +570,9 @@ impl App {
         #[cfg(target_os = "linux")]
         self.minimize_call();
         self.close_original();
+        self.close_viewer();
         self.scrolled_away = false;
+        self.scrolled_far = false;
         self.reset_directory();
         self.leave_permission_panel();
         #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
@@ -651,16 +723,6 @@ impl App {
         }
     }
     fn update(&mut self, msg: Msg) -> Task<Msg> {
-        let refresh_inline = match &msg {
-            #[cfg(target_os = "linux")]
-            Msg::ReturnToCall(_) => true,
-            Msg::Open(_)
-            | Msg::Section(_)
-            | Msg::Back
-            | Msg::InlineReady(..)
-            | Msg::ShowInline(_) => true,
-            _ => false,
-        };
         if matches!(
             msg,
             Msg::Setup(_) | Msg::Section(_) | Msg::Open(_) | Msg::Account | Msg::OpenMentions
@@ -746,6 +808,19 @@ impl App {
                 }
             }
             Msg::InlineReady(epoch, key, img) => self.inline.complete(epoch, key, img),
+            Msg::AvatarReady(mxc, img) => self.avatars.complete(mxc, img),
+            Msg::OpenViewer(event) => return self.open_viewer(event),
+            Msg::ViewerStep(delta) => return self.step_viewer(delta),
+            Msg::CloseViewer => self.close_viewer(),
+            Msg::ViewerImage(epoch, img) => self.viewer_image(epoch, img),
+            #[cfg(target_os = "linux")]
+            Msg::ViewerVideo(epoch, fetched) => self.viewer_video(epoch, fetched),
+            #[cfg(target_os = "linux")]
+            Msg::Player(event) => self.player_event(event),
+            #[cfg(target_os = "linux")]
+            Msg::PlayerControl(control) => self.player_control(control),
+            #[cfg(target_os = "linux")]
+            Msg::PlayerScrub(at) => self.player_scrub(at),
             Msg::ShowInline(key) => self.inline.request(key),
             Msg::Engine(event) => {
                 let jumped = matches!(event, engine::Event::Context { .. });
@@ -1321,8 +1396,26 @@ impl App {
                 self.open_mentions();
             }
             Msg::CheckReading => return self.check_reading(),
-            Msg::ReadingScroll(room, away) if room == self.selected && self.original.is_none() => {
-                self.scrolled_away = away
+            Msg::ReadingScroll(room, away, far)
+                if room == self.selected && self.original.is_none() =>
+            {
+                self.scrolled_away = away;
+                self.scrolled_far = far;
+            }
+            Msg::PageScroll(up) if self.viewer.is_none() => {
+                // Anchored at the bottom, a positive offset moves toward older messages.
+                let step = 600.;
+                return iced::widget::operation::scroll_by(
+                    self.timeline_id(),
+                    iced::widget::operation::AbsoluteOffset {
+                        x: 0.,
+                        y: if up { step } else { -step },
+                    },
+                );
+            }
+            Msg::AutoPage(room) if room == self.selected && self.original.is_none() => {
+                self.scrolled_away = true;
+                self.page();
             }
             Msg::ShareReads(value) => self.set_read_sharing(value),
             Msg::ReadVisible(room, event, row, true)
@@ -1345,7 +1438,9 @@ impl App {
             }
             Msg::ServerMenu(open) => self.server_menu = open,
             Msg::Escape => {
-                if self.server_menu {
+                if self.viewer.is_some() {
+                    self.close_viewer();
+                } else if self.server_menu {
                     self.server_menu = false;
                 } else if self.setup.is_some() && !self.setup_busy() {
                     return self.setup_input(community::Input::Close);
@@ -1483,6 +1578,8 @@ impl App {
             Msg::Latest => {
                 self.close_original();
                 self.timeline_end = None;
+                self.scrolled_away = false;
+                self.scrolled_far = false;
                 return self.anchor_history();
             }
             Msg::Preceding => {
@@ -1539,7 +1636,10 @@ impl App {
                     self.editor = text_editor::Content::new();
                 }
             }
-            Msg::More => self.page(),
+            Msg::More => {
+                self.auto_page_failed = None;
+                self.page();
+            }
             Msg::TimelineRestored => self.timeline_restoring = false,
             Msg::TimelineEdge(older) => {
                 if self.timeline_restoring || self.original.is_some() || self.search.is_some() {
@@ -1660,11 +1760,11 @@ impl App {
                 doc.set_title(&title);
             }
         }
-        let task = if refresh_inline {
-            self.schedule_inline()
-        } else {
-            Task::none()
-        };
+        // Previews and pictures for what's on screen now, also once a room's
+        // messages arrive after it opened; both skip what they have.
+        let task = self.schedule_inline();
+        self.fill_history();
+        let task = Task::batch([task, self.schedule_avatars()]);
         #[cfg(target_os = "linux")]
         let task = Task::batch([task, self.start_ringtone()]);
         #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
@@ -1746,6 +1846,15 @@ fn main() -> iced::Result {
                 }else{iced::Subscription::none()},
                 #[cfg(not(target_arch = "wasm32"))]
                 iced::event::listen_with(|event, _, _| match event {
+                    // Page Up and Down scroll the messages, also while typing, as on Discord.
+                    iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                        key: iced::keyboard::Key::Named(iced::keyboard::key::Named::PageUp),
+                        ..
+                    }) => Some(Msg::PageScroll(true)),
+                    iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                        key: iced::keyboard::Key::Named(iced::keyboard::key::Named::PageDown),
+                        ..
+                    }) => Some(Msg::PageScroll(false)),
                     // Right Ctrl is a non-repeating modifier. On X11 the first
                     // repeat of an ordinary key after refocus can look like a
                     // fresh press. Always handle release/blur, even in an editor.
@@ -1786,17 +1895,46 @@ fn main() -> iced::Result {
                 iced::window::close_requests().map(|_| Msg::Close),
                 #[cfg(target_os = "linux")]
                 hotkeys::subscription(app.room_ptt).map(Msg::Hotkey),
+                #[cfg(target_os = "linux")]
+                app.viewer
+                    .as_ref()
+                    .and_then(|v| v.video.as_ref())
+                    .map_or_else(iced::Subscription::none, |p| p.subscription().map(Msg::Player)),
                 iced::keyboard::listen().filter_map(|event| match event {
                     iced::keyboard::Event::KeyPressed {
                         key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Tab),
                         modifiers,
                         ..
                     } => Some(Msg::Tab(modifiers.shift())),
+                    // The media viewer's keys, while no text field has them.
+                    iced::keyboard::Event::KeyPressed {
+                        key: iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowLeft),
+                        ..
+                    } => Some(Msg::ViewerStep(-1)),
+                    iced::keyboard::Event::KeyPressed {
+                        key: iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowRight),
+                        ..
+                    } => Some(Msg::ViewerStep(1)),
+                    #[cfg(target_os = "linux")]
+                    iced::keyboard::Event::KeyPressed {
+                        key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Space),
+                        ..
+                    } => Some(Msg::PlayerControl(player::Control::Toggle)),
                     #[cfg(target_arch = "wasm32")]
                     iced::keyboard::Event::KeyPressed {
                         key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
                         ..
                     } => Some(Msg::Escape),
+                    #[cfg(target_arch = "wasm32")]
+                    iced::keyboard::Event::KeyPressed {
+                        key: iced::keyboard::Key::Named(iced::keyboard::key::Named::PageUp),
+                        ..
+                    } => Some(Msg::PageScroll(true)),
+                    #[cfg(target_arch = "wasm32")]
+                    iced::keyboard::Event::KeyPressed {
+                        key: iced::keyboard::Key::Named(iced::keyboard::key::Named::PageDown),
+                        ..
+                    } => Some(Msg::PageScroll(false)),
                     _ => None,
                 }),
             ])

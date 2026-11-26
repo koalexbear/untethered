@@ -1,5 +1,7 @@
-use super::{ACTIVE, BOLD, El, HOVER, MUTED, Msg, RAIL, Room, TEXT, TRAY, avatar, nav, surface};
+use super::{ACTIVE, BOLD, El, HOVER, MUTED, Msg, RAIL, Room, TEXT, TRAY, face, nav, surface};
+use crate::avatars::Avatars;
 use crate::desktop_call::{ActiveCall, Feed, VideoInput};
+use iced::widget::image::Handle;
 use iced::{
     Alignment::Center,
     Border, Fill, Length, color,
@@ -8,6 +10,7 @@ use iced::{
 
 struct Card {
     name: String,
+    picture: Option<Handle>,
     live: bool,
     speaking: bool,
     feed: Option<Feed>,
@@ -21,9 +24,13 @@ fn card(c: &Card, id: uuid::Uuid, small: bool, selectable: bool) -> El<'static> 
             .height(Fill)
             .into()
     } else {
-        container(avatar(&c.name, if small { 40. } else { 76. }))
-            .center(Fill)
-            .into()
+        container(face(
+            &c.name,
+            c.picture.as_ref(),
+            if small { 40. } else { 76. },
+        ))
+        .center(Fill)
+        .into()
     };
     let mut badge = row![
         text(c.name.clone())
@@ -86,7 +93,18 @@ fn card(c: &Card, id: uuid::Uuid, small: bool, selectable: bool) -> El<'static> 
     }
 }
 
-fn cards(call: &ActiveCall, room: &Room, me: &str) -> (Option<String>, Vec<Card>) {
+/// Whose pictures the cards show: the loaded ones and the account's own.
+pub(super) struct Pictures<'a> {
+    pub avatars: &'a Avatars,
+    pub own: Option<&'a str>,
+}
+
+fn cards(
+    call: &ActiveCall,
+    room: &Room,
+    me: &str,
+    pictures: &Pictures,
+) -> (Option<String>, Vec<Card>) {
     let (focus, feeds) = call.previews.snapshot();
     let speakers = call.speaking.borrow();
     let mut out = Vec::new();
@@ -105,6 +123,15 @@ fn cards(call: &ActiveCall, room: &Room, me: &str) -> (Option<String>, Vec<Card>
     for u in users {
         let local = u == me;
         let name = if local { "You" } else { room.display(u) };
+        let theirs = pictures
+            .avatars
+            .get(room.avatars.get(u).map(String::as_str));
+        let picture = if local {
+            pictures.avatars.get(pictures.own).or(theirs)
+        } else {
+            theirs
+        }
+        .cloned();
         let mut camera = false;
         for f in feeds.iter().filter(|f| {
             if local {
@@ -125,6 +152,7 @@ fn cards(call: &ActiveCall, room: &Room, me: &str) -> (Option<String>, Vec<Card>
                 } else {
                     name.into()
                 },
+                picture: picture.clone(),
                 local,
                 live,
                 speaking: !live && speakers.contains(u),
@@ -134,6 +162,7 @@ fn cards(call: &ActiveCall, room: &Room, me: &str) -> (Option<String>, Vec<Card>
         if !camera {
             out.push(Card {
                 name: name.into(),
+                picture,
                 local,
                 live: false,
                 speaking: speakers.contains(u),
@@ -145,8 +174,8 @@ fn cards(call: &ActiveCall, room: &Room, me: &str) -> (Option<String>, Vec<Card>
     (focus, out)
 }
 
-pub(super) fn view(call: &ActiveCall, room: &Room, me: &str) -> El<'static> {
-    let (focus, cards) = cards(call, room, me);
+pub(super) fn view(call: &ActiveCall, room: &Room, me: &str, pictures: &Pictures) -> El<'static> {
+    let (focus, cards) = cards(call, room, me, pictures);
     let pinned = cards.iter().position(|c| {
         c.feed
             .as_ref()
@@ -248,7 +277,12 @@ pub(super) fn view(call: &ActiveCall, room: &Room, me: &str) -> El<'static> {
 }
 
 /// Keep the call preview above the controls until the user opens the stage.
-pub(super) fn popover(call: &ActiveCall, room: &Room, can_expand: bool) -> El<'static> {
+pub(super) fn popover(
+    call: &ActiveCall,
+    room: &Room,
+    picture: Option<&Handle>,
+    can_expand: bool,
+) -> El<'static> {
     let (focus, feeds) = call.previews.snapshot();
     let feed = feeds
         .into_iter()
@@ -284,7 +318,7 @@ pub(super) fn popover(call: &ActiveCall, room: &Room, can_expand: bool) -> El<'s
         .into()
     } else {
         row![
-            avatar(&room.name, 30.),
+            face(&room.name, picture, 30.),
             column![
                 text(room.name.clone()).size(13).color(TEXT).height(17),
                 hint.color(MUTED),

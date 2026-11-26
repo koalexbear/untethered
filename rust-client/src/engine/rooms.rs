@@ -62,7 +62,25 @@ async fn summary(room: &Room) -> RoomSummary {
     let dm = room.is_direct().await.unwrap_or(false);
     let counts = room.unread_notification_counts();
     let voice = room.is_call();
+    let peer = dm
+        .then(|| {
+            room.direct_targets()
+                .iter()
+                .find_map(|t| t.as_user_id().map(ToOwned::to_owned))
+        })
+        .flatten();
+    let avatar = match (room.avatar_url(), &peer) {
+        (Some(url), _) => Some(url.to_string()),
+        (None, Some(peer)) => room
+            .get_member_no_sync(peer)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|m| m.avatar_url().map(ToString::to_string)),
+        (None, None) => None,
+    };
     RoomSummary {
+        avatar,
         name: room
             .cached_display_name()
             .map(|n| n.to_string())
@@ -72,13 +90,7 @@ async fn summary(room: &Room) -> RoomSummary {
         topic: room.topic().unwrap_or_default(),
         space: room.is_space(),
         dm,
-        dm_peer: dm
-            .then(|| {
-                room.direct_targets()
-                    .iter()
-                    .find_map(|t| t.as_user_id().map(ToString::to_string))
-            })
-            .flatten(),
+        dm_peer: peer.map(|p| p.to_string()),
         voice,
         call_members: if voice {
             call_members(room).await

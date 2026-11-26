@@ -214,14 +214,65 @@ pub struct Media {
     pub mxc: String,
     pub encrypted: bool,
     pub preview: Option<PreviewRef>,
+    #[serde(default)]
+    pub kind: Kind,
+    /// Width and height as the event's `info` gives them.
+    #[serde(default)]
+    pub dims: Option<(u32, u32)>,
+}
+/// The attachment's `msgtype`.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum Kind {
+    #[default]
+    File,
+    Image,
+    Video,
+    Audio,
+}
+/// What a fetched picture is for, which sets the size it is fetched and
+/// decoded at.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    serde::Serialize,
+    serde::Deserialize,
+)]
+pub enum Fit {
+    /// A timeline preview.
+    #[default]
+    Inline,
+    /// A profile picture or room icon: a small square thumbnail.
+    Avatar,
+    /// The original, for the media viewer.
+    Full,
+}
+impl Fit {
+    /// The largest decoded size.
+    pub fn bounds(self) -> (u32, u32) {
+        match self {
+            Self::Inline => (crate::preview::INLINE_WIDTH, crate::preview::INLINE_HEIGHT),
+            Self::Avatar => (160, 160),
+            Self::Full => (2560, 1600),
+        }
+    }
 }
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, serde::Serialize, serde::Deserialize)]
 pub struct PreviewRef {
     pub mxc: String,
     pub encrypted: bool,
+    #[serde(default)]
+    pub fit: Fit,
 }
 // Cap the bytes read, not just the size claimed in the Matrix event.
 pub const INLINE_BYTES: usize = 4 * 1024 * 1024;
+/// The largest original the media viewer fetches to show.
+pub const FULL_BYTES: usize = 48 * 1024 * 1024;
 impl Media {
     pub fn parse(content: &Value) -> Option<Self> {
         if !matches!(
@@ -240,7 +291,18 @@ impl Media {
         media_path(mxc)?;
         let info = &content["info"];
         let size = info["size"].as_u64();
-        let preview = (content["msgtype"] == "m.image")
+        let kind = match content["msgtype"].as_str() {
+            Some("m.image") => Kind::Image,
+            Some("m.video") => Kind::Video,
+            Some("m.audio") => Kind::Audio,
+            _ => Kind::File,
+        };
+        let dims = info["w"]
+            .as_u64()
+            .zip(info["h"].as_u64())
+            .and_then(|(w, h)| Some((u32::try_from(w).ok()?, u32::try_from(h).ok()?)))
+            .filter(|(w, h)| *w > 0 && *h > 0);
+        let preview = matches!(kind, Kind::Image | Kind::Video)
             .then(|| {
                 let thumbnail = info["thumbnail_file"]["url"]
                     .as_str()
@@ -260,12 +322,14 @@ impl Media {
                                 .is_none_or(|n| n <= INLINE_BYTES as u64)
                     })
                     .or_else(|| {
-                        size.filter(|n| *n <= INLINE_BYTES as u64)
+                        // A video only shows its thumbnail; an image may be its own.
+                        size.filter(|n| kind == Kind::Image && *n <= INLINE_BYTES as u64)
                             .map(|_| (mxc, encrypted))
                     })?;
                 Some(PreviewRef {
                     mxc: picked.0.to_owned(),
                     encrypted: picked.1,
+                    fit: Fit::Inline,
                 })
             })
             .flatten();
@@ -288,7 +352,23 @@ impl Media {
             preview,
             mxc: mxc.into(),
             encrypted,
+            kind,
+            dims,
         })
+    }
+    /// The original image, as the media viewer shows it.
+    pub fn full(&self) -> Option<PreviewRef> {
+        (self.kind == Kind::Image && self.size.is_none_or(|n| n <= FULL_BYTES as u64)).then(|| {
+            PreviewRef {
+                mxc: self.mxc.clone(),
+                encrypted: self.encrypted,
+                fit: Fit::Full,
+            }
+        })
+    }
+    /// Shown in the media viewer.
+    pub fn viewable(&self) -> bool {
+        matches!(self.kind, Kind::Image | Kind::Video)
     }
 }
 pub fn media_path(mxc: &str) -> Option<String> {
@@ -392,5 +472,35 @@ mod preview_tests {
         );
         data["info"]["size"] = json!(INLINE_BYTES + 1);
         assert!(Media::parse(&data).unwrap().preview.is_none());
+    }
+
+    #[test]
+    fn a_video_previews_only_its_thumbnail_and_opens_in_the_viewer() {
+        let mut data = json!({"msgtype":"m.video","url":"mxc://s/clip","info":{
+            "size":900_000,"w":1280,"h":720,"thumbnail_url":"mxc://s/poster"}});
+        let video = Media::parse(&data).unwrap();
+        assert_eq!(video.kind, Kind::Video);
+        assert_eq!(video.dims, Some((1280, 720)));
+        assert!(video.viewable());
+        assert_eq!(video.preview.unwrap().mxc, "mxc://s/poster");
+        // No thumbnail: never the video file itself as a picture.
+        data["info"]
+            .as_object_mut()
+            .unwrap()
+            .remove("thumbnail_url");
+        assert!(Media::parse(&data).unwrap().preview.is_none());
+        // The viewer fetches originals of images only.
+        assert!(Media::parse(&data).unwrap().full().is_none());
+    }
+
+    #[test]
+    fn the_viewer_shows_an_image_original_within_its_size_limit() {
+        let mut data = json!({"msgtype":"m.image","url":"mxc://s/photo","info":{"size":5_000_000}});
+        let full = Media::parse(&data).unwrap().full().unwrap();
+        assert_eq!((full.mxc.as_str(), full.fit), ("mxc://s/photo", Fit::Full));
+        data["info"]["size"] = json!(FULL_BYTES + 1);
+        assert!(Media::parse(&data).unwrap().full().is_none());
+        let file = json!({"msgtype":"m.file","url":"mxc://s/doc","info":{"size":10}});
+        assert!(!Media::parse(&file).unwrap().viewable());
     }
 }
