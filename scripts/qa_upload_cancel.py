@@ -160,15 +160,21 @@ def test(tmp, hs, port, web, backend, root, seed):
             until("native cancelled draft",cancelled,100)
             assert_cancel("Native",0)
             (tmp/"native.retry").touch()
+            def sent():
+                assert proc.poll() is None, "native test exited before its retry was confirmed"
+                return (tmp/"native.sent").exists()
+            until("native retry confirmed",sent,60)
+            assert_retry("Native",0)
+            # Verify the successful encrypted upload independently of the UI, with
+            # the descriptor the device decrypted from its own synced event. The
+            # test keeps its engine syncing until this has been read.
+            content=until("the device decrypted its event",lambda:qa_events.event(tmp/"seed",room,events()[0]["event_id"]))["content"]
+            (tmp/"native.checked").touch()
             assert proc.wait(timeout=60)==0
         finally:
             if proc.poll() is None:
-                (tmp/"native.retry").touch()
+                for name in ("native.retry","native.checked"):(tmp/name).touch()
                 proc.terminate();proc.wait(timeout=8)
-        assert_retry("Native",0)
-        # Verify the successful encrypted upload independently of the UI, with
-        # the descriptor the device decrypted from its own synced event.
-        content=until("the device decrypted its event",lambda:qa_events.event(tmp/"seed",room,events()[0]["event_id"]))["content"]
         assert content["body"]=="native cancel proof" and content["filename"]=="throttled.bin"
         def b64(s):return base64.urlsafe_b64decode(s+"="*(-len(s)%4))
         def decrypt_stored_object(desc):

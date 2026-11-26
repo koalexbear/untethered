@@ -498,7 +498,8 @@ async fn stop(app: App, engine: tokio::task::JoinHandle<Result<(), String>>) {
 /// sends a 16 MiB file through the fixture's throttling gateway, cancels it
 /// mid-upload, then retries. `scripts/qa_upload_cancel.py` checks the
 /// transport, Synapse's media and events, and the decrypted event (from the
-/// QA event log); files in UNTETHERED_UPLOAD_QA pace both sides.
+/// QA event log); files in UNTETHERED_UPLOAD_QA pace both sides
+/// (`native.cancelled`, `native.retry`, `native.sent`, `native.checked`).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "run scripts/test-media-interop.py --upload-cancel (disposable throttled server)"]
 async fn throttled_encrypted_upload_cancel_retry() {
@@ -552,6 +553,10 @@ async fn throttled_encrypted_upload_cancel_retry() {
             })
     })
     .await;
+    // The fixture then reads the event as this device's sync brought it back
+    // (the QA event log), so keep syncing until it has.
+    std::fs::write(dir.join("native.sent"), "").unwrap();
+    signal(&dir, "native.checked").await;
     stop(app, engine).await;
 }
 
