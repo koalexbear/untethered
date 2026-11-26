@@ -13,6 +13,11 @@
      "at": "2026-11-26T16:30:14Z",
      "by": "m4-context-menus",
      "text": "M4 (right-click menus, branch claude/m4-context-menus) will make small, separate edits in your files. main.rs: one 'mod context_menu;' line, one Msg::ContextMenu variant, one Request::LeaveRoom variant, one App field (+ its init in App::new), one update() arm, one line at the top of the Escape chain, and a Shift+F10 / Menu key arm in the keyboard subscription. view.rs: wrap the message row (the hover::row(...) call in conversation()), the sender avatar+name in the group header, channel_row's button and the root view() with a context-menu area; message_tools() returns None while a menu is open. I won't touch message body rendering (your rich text). engine/mod.rs: one Command::LeaveRoom variant + its dispatch arm (the leave function itself goes in engine/rooms.rs). engine/app.rs: one engine_done arm for Request::LeaveRoom. README.md: one short paragraph about right-click menus. Menu logic lives in new files src/context_menu.rs and src/view/context_menu.rs."
+    },
+    {
+     "at": "2026-11-26T16:30:28Z",
+     "by": "m4-context-menus",
+     "text": "[M4] shares README.md, rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: Small, separate hooks only: main.rs gets mod line, Msg::ContextMenu + Request::LeaveRoom variants, one App field, one update arm, Escape-chain line, Shift+F10/Menu key in the keyboard subscription; view.rs wraps the message row, sender avatar/name, channel_row and root view() in a context-menu area and hides hover tools while a menu is open (no changes to body rendering); engine/mod.rs one LeaveRoom command + dispatch arm; engine/app.rs one engine_done arm; README one paragraph. Menu logic is in new files context_menu.rs and view/context_menu.rs."
     }
    ],
    "owner": "m1-rich-text",
@@ -37,6 +42,29 @@
    "title": "Rich text in received messages",
    "updated": "2026-11-26T16:13:08Z",
    "worktree": "."
+  },
+  "M4": {
+   "branch": "claude/m4-context-menus",
+   "claimed": "2026-11-26T16:30:28Z",
+   "notes": [],
+   "owner": "m4-context-menus",
+   "paths": [
+    "README.md",
+    "rust-client/src/context_menu.rs",
+    "rust-client/src/engine/app.rs",
+    "rust-client/src/engine/mod.rs",
+    "rust-client/src/engine/rooms.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/moderation.rs",
+    "rust-client/src/reading.rs",
+    "rust-client/src/view.rs",
+    "rust-client/src/view/context_menu.rs",
+    "rust-client/src/view/room_people.rs"
+   ],
+   "status": "working",
+   "title": "Right-click menus",
+   "updated": "2026-11-26T16:30:28Z",
+   "worktree": ".claude/worktrees/m4-context-menus"
   }
  },
  "done": []
