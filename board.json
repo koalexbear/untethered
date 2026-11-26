@@ -1,31 +1,5 @@
 {
- "claims": {
-  "single-instance": {
-   "branch": "single-instance",
-   "claimed": "2026-11-26T19:48:38Z",
-   "notes": [
-    {
-     "at": "2026-11-26T19:54:59Z",
-     "by": "single-instance",
-     "text": "Ready for review: 84b6b38 on single-instance. Unit tests + live tray fixture pass."
-    }
-   ],
-   "owner": "main-session",
-   "paths": [
-    "README.md",
-    "ROADMAP.md",
-    "rust-client/src/instance.rs",
-    "rust-client/src/main.rs",
-    "rust-client/src/tray.rs",
-    "scripts/qa_tray.py",
-    "scripts/tray.md"
-   ],
-   "status": "review",
-   "title": "Single instance: a second launch shows the running window",
-   "updated": "2026-11-26T19:55:05Z",
-   "worktree": "."
-  }
- },
+ "claims": {},
  "done": [
   {
    "branch": "main",
@@ -71,6 +45,15 @@
    "owner": "n6-system-tray",
    "result": "merged as 4145624",
    "title": "System tray"
+  },
+  {
+   "branch": "single-instance",
+   "claimed": "2026-11-26T19:48:38Z",
+   "finished": "2026-11-26T21:28:37Z",
+   "id": "single-instance",
+   "owner": "main-session",
+   "result": "merged as 2d29437",
+   "title": "Single instance: a second launch shows the running window"
   }
  ]
 }
