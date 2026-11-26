@@ -8,6 +8,11 @@
      "at": "2026-11-26T23:53:43Z",
      "by": "claude/room-upgrades",
      "text": "room-upgrades (upgraded rooms as one chat) will touch shared files in small, separate places: engine/mod.rs (new RoomSummary fields successor/predecessor, Message.from, TimelineSnapshot.seams, Command::FollowUpgrade), engine/timeline.rs (Timelines become chains of room segments; forward() is replaced by a segment mirror + emitter), engine/rooms.rs (two summary fields), engine/app.rs (one Command route, Context mapping), rooms/engine.rs (apply_engine drops superseded rooms; seams), main.rs (one Msg variant, open()/reconcile() resolve the newest room), view.rs (seam divider in conversation(), upgrade banner in the composer tray), README feature line. New logic lives in src/upgrades.rs, src/engine/upgrades.rs, src/view/upgrades.rs."
+    },
+    {
+     "at": "2026-11-26T23:53:45Z",
+     "by": "room-upgrades",
+     "text": "[room-upgrades] shares README.md, rust-client/src/engine/app.rs, rust-client/src/engine/messaging.rs, rust-client/src/engine/mod.rs, rust-client/src/engine/rooms.rs, rust-client/src/engine/search.rs, rust-client/src/engine/timeline.rs, rust-client/src/engine/upgrades.rs, rust-client/src/main.rs, rust-client/src/rooms/engine.rs, rust-client/src/view.rs: Small, separate edits: new fields/variants in engine/mod.rs, timeline.rs chain of segments, one Msg variant and newest-room resolution in main.rs open()/reconcile(), seam divider + upgrade banner in view.rs conversation(), README feature line"
     }
    ],
    "owner": "m3-typing",
@@ -27,6 +32,37 @@
    "title": "Typing indicators",
    "updated": "2026-11-26T23:47:37Z",
    "worktree": ".claude/worktrees/m3-typing"
+  },
+  "room-upgrades": {
+   "branch": "claude/room-upgrades",
+   "claimed": "2026-11-26T23:53:45Z",
+   "notes": [],
+   "owner": "room-upgrades",
+   "paths": [
+    "README.md",
+    "rust-client/src/context_menu.rs",
+    "rust-client/src/engine/app.rs",
+    "rust-client/src/engine/messaging.rs",
+    "rust-client/src/engine/mod.rs",
+    "rust-client/src/engine/rooms.rs",
+    "rust-client/src/engine/search.rs",
+    "rust-client/src/engine/timeline.rs",
+    "rust-client/src/engine/upgrades.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/mentions.rs",
+    "rust-client/src/reading.rs",
+    "rust-client/src/replies.rs",
+    "rust-client/src/rooms.rs",
+    "rust-client/src/rooms/engine.rs",
+    "rust-client/src/search.rs",
+    "rust-client/src/upgrades.rs",
+    "rust-client/src/view.rs",
+    "rust-client/src/view/upgrades.rs"
+   ],
+   "status": "working",
+   "title": "Upgraded rooms as one chat",
+   "updated": "2026-11-26T23:53:45Z",
+   "worktree": ".claude/worktrees/room-upgrades"
   }
  },
  "done": [
