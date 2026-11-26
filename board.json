@@ -3,7 +3,13 @@
   "M1": {
    "branch": "claude/sharp-tesla-b37444",
    "claimed": "2026-11-26T16:13:08Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-26T16:13:17Z",
+     "by": "coordinator",
+     "text": "Registered for you by the session that started you. Read AGENTS.md (on main once committed): touch this claim when you commit, check notes, mark it done when merged."
+    }
+   ],
    "owner": "m1-rich-text",
    "paths": [
     "README.md",
