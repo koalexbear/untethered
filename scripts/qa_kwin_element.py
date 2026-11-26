@@ -195,7 +195,7 @@ def round_trip(tmp,hs,gateway,uploads,release,root,backend,seed,plain,web_client
         def read_back():
             # Decrypted (or plain) on the native device, as its sync brought them.
             rows={e["event_id"]:e["content"] for e in qa_events.entries(tmp/"seed") if e["room_id"]==room and
-                  e["sender"]==bob and e["encrypted"]==(wire_type=="m.room.encrypted") and qa_events.decrypted(e)}
+                  e["sender"]==bob and e["type"]=="m.room.message" and e["encrypted"]==(wire_type=="m.room.encrypted")}
             return rows if len(rows)==2 and all(c.get("msgtype") for c in rows.values()) else None
         rows=wait_for("native device received both return events",read_back)
         assert set(rows)==back_ids

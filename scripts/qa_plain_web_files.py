@@ -5,7 +5,7 @@ from PIL import Image
 from qa_kwin_element import element_return,check_plain_objects
 from qa_native_paste import wait_for
 from qa_replies import screen_words
-from qa_ui import CHAT_X,Ui,map_fixture,near,regions
+from qa_ui import CHAT_X,Ui,line_words,map_fixture,near,regions
 from qa_web_login import login_client
 
 
@@ -32,7 +32,10 @@ def browser_roundtrip(tmp,hs,browser,fixture,element,room,alice,bob,hdr,uploads,
         line={t for t,x,y in ws if x>CHAT_X and y>440}
         return {"oversize.bin","65537","65536-byte"}<=line
     caption="Browser boundary proof"
-    point("room composer rendered",lambda ws:any(w=="message" and x>CHAT_X and y>615 for w,x,y in ws))
+    # The composer's grey "Message #media-proof" placeholder needs a 4x
+    # reading; the whole-page passes make it "roams media-proat".
+    point("room composer rendered",lambda ws:any(w=="message" and x>CHAT_X and y>615 for w,x,y in ws)
+          or any(w=="message" for w,_,_ in line_words(image(),440,708)))
     page.mouse.click(545,690);page.keyboard.type(caption)
     point("caption entered",lambda ws:any(t=="boundary" and y>600 for t,_,y in ws))
     pick(sources/"Oversize.bin")

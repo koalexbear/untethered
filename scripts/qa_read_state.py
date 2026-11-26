@@ -121,10 +121,18 @@ def check_read_state(stack,tmp,hs,backend,room,me,hdr,http,web,peer,web_words):
     hold(second)
     web.mouse.click(*find("explicitly mark read",lambda ws:phrase(ws,"mark","read"),web_words))
     exact(third);wait_for("manual flag cleared",lambda:marker(room,"m.marked_unread")=={"unread":False})
-    for read in (native_words,web_words):
+    def native_image():
+        return Image.open(io.BytesIO(sp.check_output(["import","-window",win,"png:-"],env=env,timeout=6))).convert("RGB")
+    def web_image():return Image.open(io.BytesIO(web.screenshot())).convert("RGB")
+    def badge(ws,im):
+        # The red count badge (#f23f43) at the end of Orchard's sidebar row;
+        # OCR misses its small white digit.
+        row=next((y for w,x,y in ws if w=="orchard" and x<CHAT_X),None)
+        return row is not None and sum(im.getpixel((x,y))[:3]==(242,63,67)
+            for x in range(150,CHAT_X) for y in range(row-8,row+9))>=40
+    for read,image in ((native_words,native_image),(web_words,web_image)):
         find("clean room on both clients",lambda ws:phrase(ws,"mark","unread"),read)
-        find("other room highlight badge retained",lambda ws:any(w=="orchard" and xx<CHAT_X and any(
-            x2<CHAT_X and x2>xx and abs(y-y2)<6 and "1" in v for v,x2,y2 in ws) for w,xx,y in ws),read)
+        find("other room highlight badge retained",lambda ws:badge(ws,image()),read)
     assert receipts(other).get("m.read.private")!=orchard and marker(other,"m.fully_read")!={"event_id":orchard}
     assert receipts(room).get("m.read")==initial.get("m.read")
     visible=peer.evaluate("""([r,u])=>window.mxMatrixClientPeg.get().getRoom(r).getEventReadUpTo(u)""",[room,me])
