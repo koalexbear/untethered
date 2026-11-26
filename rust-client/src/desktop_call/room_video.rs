@@ -786,6 +786,12 @@ impl Publisher {
         }
         Ok(())
     }
+    /// A LiveKit restart republished our track under a new SID.
+    pub(super) fn rebind(&mut self, previous: &TrackSid, now: &LocalTrackPublication) {
+        if self.published.as_ref() == Some(previous) {
+            self.published = Some(now.sid());
+        }
+    }
     pub(super) async fn next(&mut self) -> Update {
         tokio::select! {
             p=self.picker.join_next(),if !self.picker.is_empty()=>Update::Chosen(p.and_then(|r|r.ok()).unwrap_or(Err("Video start interrupted.")).map(Box::new)),

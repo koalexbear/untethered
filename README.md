@@ -282,10 +282,17 @@ picture without redialing. If the selected camera disappears, your video
 stops; choose another camera and press **Start camera** to resume.
 [Camera switching test with Element](experiments/rtc-audio/README.md#verify-live-camera-switching).
 
-During a brief network interruption, the Linux call bar shows **Reconnecting**
-and releases the audio devices. If both devices are still in the same Matrix
-call when connectivity returns, encrypted audio resumes automatically. Once
-membership has expired, starting another call requires a new **Start Voice Call**.
+During a network interruption, the Linux call bar shows **Reconnecting**.
+A DM call releases the audio devices; a voice room keeps your microphone and
+stops playback. When connectivity returns, encrypted audio resumes on the same
+call membership. After a longer outage (16 seconds or more), the homeserver has
+already ended your membership. Untethered then rejoins on its own with a new
+membership and a new encryption key, for up to five minutes, and doesn't ring
+again. A DM rejoins only while the other person is still in the call: when they
+hang up, or their client leaves once you have, as Element does, the call ends.
+If the other person's connection drops instead, your call waits for them to
+rejoin. The [voice-room reconnect test](experiments/rtc-audio/README.md#verify-voice-room-recovery)
+covers short outages, a blocked SFU and a rejoin.
 
 If direct media is blocked, both clients can use the TURN relay advertised by
 LiveKit. The [relay-only test](experiments/rtc-audio/README.md#verify-turn-only-calls)

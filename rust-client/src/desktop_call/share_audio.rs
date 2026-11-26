@@ -116,6 +116,12 @@ impl Publisher {
         self.worker.spawn(record(src, app, mode, window, id));
         Ok(())
     }
+    /// A LiveKit restart republished our track under a new SID.
+    pub(super) fn rebind(&mut self, previous: &TrackSid, now: &LocalTrackPublication) {
+        if self.sid.as_ref() == Some(previous) {
+            self.sid = Some(now.sid());
+        }
+    }
     pub(super) async fn ended(&mut self) -> Result<()> {
         if self.worker.is_empty() {
             return std::future::pending().await;

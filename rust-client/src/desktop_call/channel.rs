@@ -83,22 +83,31 @@ struct GroupKeys {
     outbound: SenderKey,
     members: Roster,
     ready: BTreeSet<String>,
+    /// The members may not have the current outbound key yet.
+    unsent: bool,
 }
 impl GroupKeys {
-    fn new(session: &Session) -> Result<Self> {
-        let local = format!("{}:{}", session.user, session.device);
-        let outbound = SenderKey::fresh(0)?;
+    /// A fresh provider with a fresh key at `index`. A rejoin starts past the
+    /// previous index, so a key never reuses one the peers may still hold.
+    fn new(session: &Session, index: u8) -> Result<Self> {
+        let local = session.identity();
+        let outbound = SenderKey::fresh(index)?;
         let provider = rtc_keys::provider();
-        if !provider.set_key(&local.clone().into(), 0, outbound.bytes.to_vec()) {
+        if !provider.set_key(&local.clone().into(), index.into(), outbound.bytes.to_vec()) {
             return Err("Cannot install voice room key.");
         }
+        recovery::trace_key(index);
         Ok(Self {
             provider,
             local,
             outbound,
             members: Roster::new(),
             ready: BTreeSet::new(),
+            unsent: false,
         })
+    }
+    fn next_index(&self) -> u8 {
+        (self.outbound.index + 1) % 255
     }
     async fn reconcile<S: CallSignal>(
         &mut self,
@@ -116,7 +125,7 @@ impl GroupKeys {
         // Fresh, independent key for each roster change, including departures.
         // Select it on the existing publication *before* distributing it: do
         // not publish new frames for a departed device with the old key.
-        let key = SenderKey::fresh((self.outbound.index + 1) % 255)?;
+        let key = SenderKey::fresh(self.next_index())?;
         let local = lk.local_participant().identity();
         let cryptors = lk.e2ee_manager().frame_cryptors();
         if !cryptors.contains_key(&(local.clone(), mic.sid()))
@@ -126,31 +135,35 @@ impl GroupKeys {
         {
             return Err("Cannot rotate voice room key.");
         }
-        for (sid, p) in lk.local_participant().track_publications() {
-            let fc = cryptors
-                .get(&(local.clone(), sid))
-                .ok_or("Missing voice room track cryptor.")?;
-            if p.encryption_type() != EncryptionType::Gcm || !fc.enabled() {
-                return Err("Voice room track encryption unavailable.");
-            }
-            fc.set_key_index(key.index.into());
-            if fc.key_index() != i32::from(key.index) {
-                return Err("Cannot select voice room key.");
-            }
-        }
-        if !next.is_empty() {
-            let targets: Vec<(String, String)> = next
-                .values()
-                .filter(|p| !p.device.is_empty() && p.device != "*")
-                .map(|p| (p.user.clone(), p.device.clone()))
-                .collect();
-            w.signal
-                .send_to_device(KEY, key.content(w.room, &self.local, &s.device), &targets)
-                .await?;
-        }
+        select_key(lk, key.index)?;
+        recovery::trace_key(key.index);
         self.outbound = key;
         self.members = next;
+        self.unsent = true;
+        self.flush(w, s).await;
         Ok(())
+    }
+    /// Send the current key to every member. A failure (offline, or a device
+    /// whose keys are unknown yet) is retried on the next heartbeat.
+    async fn flush<S: CallSignal>(&mut self, w: &mut Wire<'_, S>, s: &Session) {
+        if !self.unsent {
+            return;
+        }
+        let targets: Vec<(String, String)> = self
+            .members
+            .values()
+            .filter(|p| !p.device.is_empty() && p.device != "*")
+            .map(|p| (p.user.clone(), p.device.clone()))
+            .collect();
+        if targets.is_empty() {
+            self.unsent = false;
+            return;
+        }
+        let content = self.outbound.content(w.room, &self.local, &s.device);
+        self.unsent = !matches!(
+            time::timeout(SECOND * 5, w.signal.send_to_device(KEY, content, &targets)).await,
+            Ok(Ok(()))
+        );
     }
     fn receive<S>(&mut self, w: &mut Wire<'_, S>) -> Result<()> {
         let mut early = Vec::new();
@@ -189,6 +202,17 @@ struct Subscriptions {
     tracks: HashMap<TrackSid, AbortHandle>,
 }
 impl Subscriptions {
+    /// Stop all playback, as the SFU connection drops.
+    fn stop(&mut self) {
+        self.jobs.abort_all();
+        self.tracks.clear();
+    }
+    /// The track behind `sid` was (re)subscribed: play the current one.
+    fn forget(&mut self, sid: &TrackSid) {
+        if let Some(job) = self.tracks.remove(sid) {
+            job.abort();
+        }
+    }
     fn sync(
         &mut self,
         lk: &Room,
@@ -264,30 +288,104 @@ impl Subscriptions {
     }
 }
 
+/// The voice room's lifetime: one LiveKit session after another, rejoining
+/// whenever one is lost, until the user leaves.
 pub(super) async fn joined<S: CallSignal>(
+    w: &mut Wire<'_, S>,
+    s: &mut Session,
+    m: &mut Membership,
+    events: &Sender<Value>,
+    media: &mut Media,
+    mode: watch::Receiver<AudioMode>,
+    views: GroupViews,
+) -> Result<&'static str> {
+    let mut keys = GroupKeys::new(s, 0)?;
+    let mut lease = LeaseWatch::new();
+    let mut rejoin: Option<Rejoin> = None;
+    loop {
+        if let Some(r) = &mut rejoin {
+            r.wait(w)
+                .await
+                .map_err(|_| "Could not reconnect to the voice room.")?;
+            let user = s.user.clone();
+            let step = r
+                .attempt(w, s, m, &mut lease, false, |state| check_room(state, &user))
+                .await?;
+            if let Step::Ready { fresh } = step {
+                recovery::trace(format_args!("RTC call rejoined fresh={fresh}"));
+            }
+            match step {
+                Step::Retry => continue,
+                // Peers see a new member, rotate, and send us their keys.
+                Step::Ready { fresh: true } => keys = GroupKeys::new(s, keys.next_index())?,
+                Step::Ready { fresh: false } => (),
+            }
+        }
+        let link = match publish_mic(s, &keys.provider, &mut media.live, false).await {
+            Ok(link) => link,
+            Err(why) if rejoin.is_none() => return Err(why),
+            Err(_) => {
+                close(&mut media.live).await;
+                continue;
+            }
+        };
+        let rejoined = rejoin.take().is_some();
+        let lost = live(
+            w, s, m, events, link, &mut keys, &mut lease, &mode, &views, rejoined,
+        )
+        .await?;
+        recovery::trace(format_args!("RTC call lost={lost:?}"));
+        close(&mut media.live).await;
+        if views.speakers.send_if_modified(|shown| {
+            let changed = !shown.is_empty();
+            shown.clear();
+            changed
+        }) {
+            let _ = events.send(json!({"command":"voice_redraw"})).await;
+        }
+        status(events, w.room, "Reconnecting…").await;
+        rejoin = Some(Rejoin::new(lost));
+    }
+}
+
+/// One LiveKit session of a voice room. It rides out the SDK's own
+/// reconnects and ends when the room or our membership is lost.
+#[allow(clippy::too_many_arguments)]
+async fn live<S: CallSignal>(
     w: &mut Wire<'_, S>,
     s: &Session,
     m: &mut Membership,
     events: &Sender<Value>,
-    media: &mut Option<Room>,
-    mut mode: watch::Receiver<AudioMode>,
-    views: GroupViews,
-) -> Result<&'static str> {
-    let mut keys = GroupKeys::new(s)?;
-    let (lk, mut rtc, src, mic) = publish_mic(s, &keys.provider, media, false).await?;
+    link: (
+        &Room,
+        tokio::sync::mpsc::UnboundedReceiver<RoomEvent>,
+        NativeAudioSource,
+        LocalTrackPublication,
+    ),
+    keys: &mut GroupKeys,
+    lease: &mut LeaseWatch,
+    mode: &watch::Receiver<AudioMode>,
+    views: &GroupViews,
+    rejoined: bool,
+) -> Result<Lost> {
+    let (lk, mut rtc, src, mut mic) = link;
+    let mut mode = mode.clone();
+    // A rejoin's key is not at the cryptor's default index.
+    select_key(lk, keys.outbound.index)?;
+    // The members may have rotated while we were away; they need ours too.
+    keys.unsent |= rejoined;
     let notices = DeviceNotices {
         events: events.clone(),
         room: w.room.to_owned(),
     };
+    let devices = mode.clone();
+    let capture = |mic: &LocalTrackPublication| {
+        controlled_capture(src.clone(), mic.clone(), devices.clone(), notices.clone())
+    };
     // Keep capture paced by the audio device while membership and key RPCs
     // are in flight. Dropping either task set releases its pacat children.
     let mut input = JoinSet::new();
-    input.spawn(controlled_capture(
-        src,
-        mic.clone(),
-        mode.clone(),
-        notices.clone(),
-    ));
+    input.spawn(capture(&mic));
     let mut subscriptions = Subscriptions::default();
     let mut share = room_video::Publisher::new(VideoInput::Window);
     let mut sound = share_audio::Publisher::default();
@@ -296,29 +394,41 @@ pub(super) async fn joined<S: CallSignal>(
     camera.local_preview = Some(views.previews.clone());
     let mut heartbeat = time::interval(SECOND * 4);
     heartbeat.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
-    let mut renew = Instant::now();
     #[cfg(debug_assertions)]
     let trace_video = room_video::trace_video_enabled();
     let mut label = String::new();
+    // Between the SDK's Reconnecting and Reconnected.
+    let mut online = true;
     w.roster_dirty = true;
     loop {
+        if lease.lost() {
+            return Ok(Lost::Lease);
+        }
         // Roster changes and keys can arrive alongside request answers.
         w.absorb();
-        if std::mem::take(&mut w.roster_dirty) {
-            let state = w.state(false).await?;
-            check_room(&state, &s.user)?;
-            keys.reconcile(w, s, roster(&state, &keys.local, &s.focus), lk, &mic)
-                .await?;
-            let next = format!("In voice · {} connected", keys.members.len() + 1);
-            if label != next {
-                status(events, w.room, &next).await;
-                label = next;
+        if online && std::mem::take(&mut w.roster_dirty) {
+            // Offline, the next heartbeat asks again.
+            if let Ok(Ok(state)) = time::timeout(SECOND * 5, w.state(false)).await {
+                check_room(&state, &s.user)?;
+                if !recovery::ours(&state, &s.user, &m.event_id) {
+                    return Ok(Lost::Lease);
+                }
+                keys.reconcile(w, s, roster(&state, &keys.local, &s.focus), lk, &mic)
+                    .await?;
+                let next = format!("In voice · {} connected", keys.members.len() + 1);
+                if label != next {
+                    status(events, w.room, &next).await;
+                    label = next;
+                }
             }
         }
         keys.receive(w)?;
-        let mut speaking = subscriptions.sync(lk, &keys, &mode, &notices, &views.previews)?;
-        if lk.local_participant().is_speaking() && !mic.is_muted() && !mode.borrow().mic_off() {
-            speaking.insert(s.user.clone());
+        let mut speaking = BTreeSet::new();
+        if online {
+            speaking = subscriptions.sync(lk, keys, &mode, &notices, &views.previews)?;
+            if lk.local_participant().is_speaking() && !mic.is_muted() && !mode.borrow().mic_off() {
+                speaking.insert(s.user.clone());
+            }
         }
         if views.speakers.send_if_modified(|shown| {
             if *shown == speaking {
@@ -329,30 +439,33 @@ pub(super) async fn joined<S: CallSignal>(
         }) {
             let _ = events.send(json!({"command":"voice_redraw"})).await;
         }
-        let (requests, route) = {
-            let m = mode.borrow_and_update();
-            (m.video, m.camera.clone())
-        };
-        share
-            .select(
-                requests[VideoInput::Window as usize],
-                lk,
-                CameraChoice::default(),
-            )
-            .await?;
-        camera
-            .select(requests[VideoInput::Camera as usize], lk, route)
-            .await?;
-        sound
-            .sync(
-                share.live_capture(),
-                lk,
-                keys.outbound.index,
-                &mode,
-                events,
-                w.room,
-            )
-            .await?;
+        if online {
+            // Publishing waits for the SDK's reconnect; do it once it is back.
+            let (requests, route) = {
+                let m = mode.borrow_and_update();
+                (m.video, m.camera.clone())
+            };
+            share
+                .select(
+                    requests[VideoInput::Window as usize],
+                    lk,
+                    CameraChoice::default(),
+                )
+                .await?;
+            camera
+                .select(requests[VideoInput::Camera as usize], lk, route)
+                .await?;
+            sound
+                .sync(
+                    share.live_capture(),
+                    lk,
+                    keys.outbound.index,
+                    &mode,
+                    events,
+                    w.room,
+                )
+                .await?;
+        }
         tokio::select! {
             changed=mode.changed()=>{changed.map_err(|_|ENDED)?;}
             update=share.next()=>share.update(update,lk,keys.outbound.index,events,w.room,&mode).await?,
@@ -365,15 +478,51 @@ pub(super) async fn joined<S: CallSignal>(
                 _=>return Err("Voice room playback failed."),
             },
             frame=w.pump()=>{frame?;}
+            // Notice the end of our lease as it happens, not at the next tick.
+            _=time::sleep_until(lease.deadline())=>(),
             _=heartbeat.tick()=>{
                 #[cfg(debug_assertions)]
-                if trace_video {room_video::trace_video_stats(lk).await;}
-                if renew.elapsed()>SECOND*36{m.renew(&mut w.signal).await.map_err(|_|"Could not renew voice room membership.")?;renew=Instant::now();}
-                else{m.heartbeat(&mut w.signal).await.map_err(|_|"Lost voice room membership.")?;}
+                if trace_video && online {room_video::trace_video_stats(lk).await;}
+                lease.keep(w, m).await;
+                if online {keys.flush(w, s).await;}
                 w.roster_dirty=true;
             }
             e=rtc.recv()=>match e {
-                Some(RoomEvent::Reconnecting|RoomEvent::Disconnected{..})|None=>return Err("Voice room connection lost."),
+                Some(RoomEvent::Reconnecting)=>{
+                    // Keep the room, keys, membership and microphone; only
+                    // playback stops until the SDK is back.
+                    online=false;
+                    subscriptions.stop();
+                    label.clear();
+                    status(events,w.room,"Reconnecting…").await;
+                }
+                Some(RoomEvent::Reconnected)=>{
+                    online=true;
+                    if let Some(current)=recovery::local_mic(lk) && current.sid()!=mic.sid() {
+                        mic=current;
+                        input.shutdown().await;
+                        input.spawn(capture(&mic));
+                    }
+                    // A restart republished our tracks with cryptors at index 0.
+                    if select_key(lk,keys.outbound.index).is_err() {return Ok(Lost::Media);}
+                    keys.unsent=true;
+                    w.roster_dirty=true;
+                    heartbeat.reset_immediately();
+                }
+                Some(RoomEvent::LocalTrackRepublished{previous_sid,publication,..})=>{
+                    if previous_sid==mic.sid() {
+                        mic=publication.clone();
+                        input.shutdown().await;
+                        input.spawn(capture(&mic));
+                    }
+                    share.rebind(&previous_sid,&publication);
+                    camera.rebind(&previous_sid,&publication);
+                    sound.rebind(&previous_sid,&publication);
+                    if select_one(lk,&publication,keys.outbound.index).is_err() {return Ok(Lost::Media);}
+                }
+                // A resubscribed track replaces the one a playback job holds.
+                Some(RoomEvent::TrackSubscribed{publication,..})=>subscriptions.forget(&publication.sid()),
+                Some(RoomEvent::Disconnected{..})|None=>return Ok(Lost::Media),
                 // Remote joins, subscriptions and leaves are reconciled independently.
                 _=>(),
             }

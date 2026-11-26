@@ -235,7 +235,7 @@ def check_speaking(desks,names):
     stage(set())
 
 
-def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=False,ptt=False,layout=False):
+def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=False,ptt=False,layout=False,reconnect=False,jwt=None):
     dirs=[tmp/f"p{i}" for i in range(3)]
     for p in dirs:p.mkdir()
     credentials=[seed(p,hs) for p in dirs]
@@ -254,9 +254,11 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
     api=hs+"/_matrix/client/v3/rooms/"+quote(room,safe="")
     for _,hdr in credentials[1:]:http("POST",api+"/join",headers=hdr,json={})
 
+    def member_events():
+        return [(e["sender"],e["event_id"],e["content"].get("created_ts")) for e in http("GET",api+"/state",headers=auth).json()
+                if e["type"]==MEMBER and e["content"].get("application")=="m.call"]
     def members():
-        return sorted(e["sender"] for e in http("GET",api+"/state",headers=auth).json()
-                      if e["type"]==MEMBER and e["content"].get("application")=="m.call")
+        return sorted(sender for sender,_,_ in member_events())
     def no_ring():
         # Prove no timeline event (including an encrypted wrapper hiding a ring)
         # was sent in this fresh room. Examine all pages, not just the last sync.
@@ -281,12 +283,22 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
     desks=[]
     with ExitStack() as stack:
         sock=tmp/"pulse"
+        link=logs=None
+        if reconnect:
+            # Bruno's own link to the Matrix and call services, to cut.
+            from urllib.parse import urlsplit
+            from qa_rtc_link import client_link
+            link=client_link(stack,[urlsplit(u).port for u in (hs,"https://"+name,jwt)]+[18820],"room")
+            logs=[Path(os.environ.get("KWIN_QA_DEBUG") or d)/f"native-{i}.log" for i,d in enumerate(dirs)]
         for i,d in enumerate(dirs):
             wayland=((share or camera) and i==0) or (layout and i in (1,2))
             env=isolated_env(d,backend,"wayland" if wayland else "x11");env.update(TOKIO_WORKER_THREADS="2",RAYON_NUM_THREADS="2",GOMAXPROCS="2")
             if not wayland:start_display(stack,d,env,"x11")
             env.update(PULSE_SERVER="unix:"+str(sock),PULSE_SOURCE=f"Mic{i}.monitor",PULSE_SINK=f"Out{i}")
             log=None
+            if reconnect:
+                env["UNTETHERED_QA_RECOVERY"]="1"
+                log=stack.enter_context(logs[i].open("w"))
             if share or camera:
                 # Debug builds print per-track video stats every heartbeat.
                 env["UNTETHERED_QA_VIDEO_STATS"]="1"
@@ -303,7 +315,8 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
             if wayland:
                 from qa_kwin import KWin
                 kde=KWin(stack,d,root,backend,env=env,screencast=True,native_log=log)
-            desks.append(Desktop(stack,root,env,i,kde,log=log))
+            prefix=link.prefix if reconnect and i==1 else ()
+            desks.append(Desktop(stack,root,env,i,kde,prefix=prefix,log=log))
             if log:desks[-1].stats=logs
         try:
             def audio_counts():
@@ -347,6 +360,11 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
             elif layout:
                 from qa_room_layout import check_layout
                 check_layout(stack,desks,users,secret,tracks,publications)
+            elif reconnect:
+                from qa_room_reconnect import check_reconnect
+                tracks=check_reconnect(desks,users,names,link,logs,member_events,members,publications,audio_counts)
+                # Clara's departure below must leave Alice's and Bruno's current tracks alone.
+                original={u:tracks[u] for u in users[:2]}
             elif not share and not camera:
                 from qa_room_volume import check_volume
                 check_volume(desks)

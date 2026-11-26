@@ -56,7 +56,7 @@ def sfu_audio(secret):
     return result
 
 
-def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=False,controls=False,devices=False,network_ports=None,relay_links=None,sibling=None,set_dnd=None,muted_peer=False):
+def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=False,controls=False,devices=False,network_ports=None,outage_seconds=None,relay_links=None,sibling=None,set_dnd=None,muted_peer=False):
     env=isolated_env(tmp,backend,"x11")
     start_display(stack,tmp,env,"x11",1280,900)
     sock=Path(env["XDG_RUNTIME_DIR"])/"qa-pulse"
@@ -189,6 +189,7 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
         page.on("console",log)
         # Unregister before the file closes: the browser outlives this stack.
         stack.callback(page.remove_listener,"console",log)
+    live=True
     try:
         if incoming:
             reverse_call(stack,page,room,alice,bob,secret,find,click,roster,streams,chime,received,env,cmd,check_relay,sibling,set_dnd,lambda:speakers[0],muted_peer)
@@ -223,7 +224,10 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
         if relay_links:
             check_relay(widget)
         elif network_ports:
-            reconnect_call(page,widget,room,lambda:speakers[0],new_tone,outage,find,streams,secret,alice,bob)
+            if outage_seconds<LEASE:
+                reconnect_call(page,widget,room,lambda:speakers[0],new_tone,outage,find,streams,secret,alice,bob,outage_seconds)
+            else:
+                live=rejoin_call(page,widget,room,lambda:speakers[0],new_tone,outage,find,streams,alice,bob,outage_seconds)
         elif devices:
             def select(port,option):
                 # Click the actual pick list on the line below the label (the
@@ -264,7 +268,8 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
             received.clear()
             assert received.wait(3)
             print("Both tones still present past the original 60-second membership expiry.",flush=True)
-        if devices or network_ports or relay_links:widget.get_by_role("button",name="End call",exact=True).click(timeout=8000)
+        if not live:pass  # Element already hung up.
+        elif devices or network_ports or relay_links:widget.get_by_role("button",name="End call",exact=True).click(timeout=8000)
         else:click("Hang")
         wait_for("desktop and Element left DM call",lambda:roster()==[],22)
         wait_for("desktop released both audio devices",lambda:not streams("source-outputs") and not streams("sink-inputs"))
@@ -295,7 +300,11 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
         raise
 
 
-def reconnect_call(page,widget,room,speaker,new_tone,outage,find,streams,secret,alice,bob):
+# The desktop's MSC4140 delayed leave fires this long after its last heartbeat.
+LEASE=16
+
+
+def reconnect_call(page,widget,room,speaker,new_tone,outage,find,streams,secret,alice,bob,seconds=6.5):
     def matrix():
         return page.evaluate("""room=>{const c=window.mxMatrixClientPeg.get(), r=c.getRoom(room);
           return [c.matrixRTC.getRoomSession(r).memberships.map(m=>[m.userId,m.deviceId,m.memberId]).sort(),
@@ -331,7 +340,7 @@ def reconnect_call(page,widget,room,speaker,new_tone,outage,find,streams,secret,
         wait_for("Linux reconnect indication",lambda:find("Reconnecting"),9)
         frozen=stats()["packets"]
         new_tone.set()
-        while time.monotonic()-start<6.5:
+        while time.monotonic()-start<seconds:
             check_rosters()
             assert stats()["packets"]==frozen and stats()["hits730"]==0
             page.wait_for_timeout(200)
@@ -352,6 +361,63 @@ def reconnect_call(page,widget,room,speaker,new_tone,outage,find,streams,secret,
     assert len(streams("source-outputs"))==len(streams("sink-inputs"))==1
     print(f"Recovered in {time.monotonic()-restored:.1f} s: new 730 Hz at Element, fresh 960 Hz at desktop for 1.2 s; "
           "two GCM microphones, two original Matrix devices, exactly one ring.",flush=True)
+
+
+def rejoin_call(page,widget,room,speaker,new_tone,outage,find,streams,alice,bob,seconds):
+    """An outage past the delayed leave. The desktop may rejoin only the same
+    call: with a new membership, no new ring, and only while the peer's
+    original session is active. Element's DM calls leave when everyone else
+    has (autoLeaveWhenOthersLeft), so this also checks the refusal."""
+    def memberships():
+        # The homeserver's state, not Element's view of it.
+        return {s:(e,c) for s,e,c in page.evaluate("""async room=>(await window.mxMatrixClientPeg.get().roomState(room))
+            .filter(e=>e.type==='org.matrix.msc3401.call.member' && e.content.application==='m.call')
+            .map(e=>[e.sender,e.event_id,e.content.created_ts])""",room)}
+    def rings():
+        return page.evaluate("""room=>window.mxMatrixClientPeg.get().getRoom(room).getLiveTimeline().getEvents()
+            .filter(e=>e.getType()==='org.matrix.msc4075.rtc.notification' && e.getContent().notification_type==='ring')
+            .map(e=>e.getId())""",room)
+    before=memberships()
+    ring=rings()
+    assert set(before)=={alice,bob} and len(ring)==1,(before,ring)
+    start=time.monotonic()
+    with outage():
+        wait_for("both clients lost audio after cable cut",
+                 lambda:widget.evaluate("window.qaAudioStats()")["quiet"]>=12 and speaker()[2]>=12,10)
+        wait_for("Linux reconnect indication",lambda:find("Reconnecting"),9)
+        new_tone.set()
+        wait_for("desktop's delayed leave fired",lambda:alice not in memberships(),seconds)
+        expired=time.monotonic()-start
+        wait_for(f"{seconds:.0f}-second outage",lambda:time.monotonic()-start>=seconds,seconds)
+        stayed=bob in memberships()
+        assert stayed or memberships()=={},memberships()
+    restored=time.monotonic()
+    print(f"Desktop link down for {restored-start:.1f} s; its membership expired after {expired:.1f} s. "
+          f"Element {'kept its session' if stayed else 'left the call when the desktop expired'}.",flush=True)
+    if not stayed:
+        # The peer's session is gone: the desktop ends the call instead of
+        # starting a new one without a ring.
+        wait_for("desktop ended the call",lambda:find("Voice"),30)
+        for _ in range(10):
+            assert memberships()=={},"the desktop published a membership into an ended call"
+            page.wait_for_timeout(500)
+        assert not streams("source-outputs") and not streams("sink-inputs")
+        assert rings()==ring
+        print(f"Ended {time.monotonic()-restored:.1f} s after the link returned: no new membership or ring, "
+              "both audio devices released, call control available again.",flush=True)
+        return False
+    first=speaker()[0]
+    def rejoined():
+        now=memberships()
+        if alice not in now or now[alice][1]<=before[alice][1]:return False
+        s=widget.evaluate("window.qaAudioStats()")
+        return s["run730"]>=12 and min(speaker()[0]-first,speaker()[1])>=12
+    wait_for("desktop rejoined with a fresh membership and two-way audio",rejoined,60)
+    after=memberships()
+    assert after[bob][1]==before[bob][1] and rings()==ring
+    print(f"Rejoined {time.monotonic()-restored:.1f} s after the link returned: new membership {after[alice][0]} "
+          f"(created {after[alice][1]-before[alice][1]} ms later), Element's original session, exactly one ring.",flush=True)
+    return True
 
 
 def continuity(widget,secret,sockets,alice,bob):

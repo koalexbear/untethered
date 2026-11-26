@@ -81,11 +81,12 @@ rtc:
         yield secret
 
 
-def test(tmp, hs, name, jwt, root, backend, seed, http, service, *, desktop=False,incoming=False,controls=False,devices=False,reconnect=False,turn=False,group=False,share=False,camera=False,ptt=False,layout=False,multi_ring=False,dnd_ring=False,muted_peer=False,native_dm=False,unsupported_dm=False,dm_video=False,element_video=False,switch_camera=False):
+def test(tmp, hs, name, jwt, root, backend, seed, http, service, *, desktop=False,incoming=False,controls=False,devices=False,reconnect=None,turn=False,group=False,share=False,camera=False,ptt=False,layout=False,room_reconnect=False,multi_ring=False,dnd_ring=False,muted_peer=False,native_dm=False,unsupported_dm=False,dm_video=False,element_video=False,switch_camera=False):
     if group:
         from qa_voice_room import test_group
         with call_services(tmp,name,jwt,service) as secret:
-            test_group(tmp,hs,name,root,backend,seed,http,secret,share=share,camera=camera,ptt=ptt,layout=layout)
+            test_group(tmp,hs,name,root,backend,seed,http,secret,share=share,camera=camera,ptt=ptt,layout=layout,
+                       reconnect=room_reconnect,jwt=jwt)
         return
     native,hdr=seed(tmp,hs)
     peer_dir=tmp/"peer";peer_dir.mkdir()
@@ -184,7 +185,7 @@ def test(tmp, hs, name, jwt, root, backend, seed, http, service, *, desktop=Fals
             return
         if desktop:
             from qa_desktop_dm import desktop_call
-            ports=[urlsplit(hs).port,urlsplit(jwt).port,urlsplit("https://"+name).port,18820] if reconnect else None
+            ports=[urlsplit(hs).port,urlsplit(jwt).port,urlsplit("https://"+name).port,18820] if reconnect is not None else None
             sibling=None
             if multi_ring:
                 from qa_multi_device_ring import Sibling
@@ -193,7 +194,7 @@ def test(tmp, hs, name, jwt, root, backend, seed, http, service, *, desktop=Fals
                 endpoint=hs+"/_matrix/client/v3/pushrules/global/override/.m.rule.master/enabled"
                 http("PUT",endpoint,headers=hdr,json={"enabled":on})
                 assert http("GET",endpoint,headers=hdr).json()=={"enabled":on}
-            desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,incoming=incoming,controls=controls,devices=devices,network_ports=ports,relay_links=links,sibling=sibling,set_dnd=set_dnd if dnd_ring else None,muted_peer=muted_peer)
+            desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,incoming=incoming,controls=controls,devices=devices,network_ports=ports,outage_seconds=reconnect,relay_links=links,sibling=sibling,set_dnd=set_dnd if dnd_ring else None,muted_peer=muted_peer)
             return
         sockets=[]
         def watch_sfu(ws):
