@@ -76,8 +76,9 @@ anyone without one shows their initials.
 **Reply**, **Edit** (your own text messages) and **Report Message** (other
 people’s). Header icons open notification settings, posting permissions, the
 member list and room search; hover any icon for its name. Click the space name
-at the top of the channel list for **Invite People**, **Create Channel** and
-**Notification Settings**, or use **+** beside a channel category. **+** at
+at the top of the channel list for **Invite People**, **Create Channel**,
+**Edit Server Profile** and **Notification Settings**, or use **+** beside a
+channel category. **+** at
 the bottom of the server rail creates a space. Click the gear at the bottom
 left for **User Settings**, or your name for your status (see Presence).
 Escape closes menus, dialogs and settings. Category headers collapse; a collapsed category still lists unread
@@ -198,6 +199,20 @@ Packs are read under the spec's names (`m.room.image_pack`,
 `m.image_pack.rooms`) and the unstable ones Cinny writes (`im.ponies.*`);
 "Use everywhere" is saved under both. Making or editing packs isn't here
 yet: use Cinny or FluffyChat for that.
+
+**Names:** as on Discord, you can have a nickname in each server: click the
+space name and **Edit Server Profile**, or right-click your own name in one
+of its channels, or open your profile card there. Matrix has no per-space
+names, so Untethered sets the nickname as your name in each room of the space
+(your `m.room.member` event in the space, its subspaces and channels). Element
+and other clients then show it in those rooms only, and your global name
+everywhere else. A channel you join later takes the nickname while it still
+shows your global name; **Reset Nickname** puts the global name back in every
+room of the space. In place of Discord's role colours, names carry a small
+**OWNER**, **ADMIN** or **MOD** badge and colour from the room's power levels:
+the creators of a version 12 room, 100 and 50, as Element names them, and
+only above what every member has. They show in the timeline, reply quotes,
+the member list and profile cards ([live test](scripts/qa_names.py)).
 
 **Replies:** Hover a message, click **Reply**, type your response, and send.
 The bar above the composer shows who you’re replying to; its **×** (Cancel

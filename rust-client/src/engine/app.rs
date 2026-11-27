@@ -352,6 +352,8 @@ impl App {
                 }
                 #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
                 self.sync_space_rules();
+                // A channel joined since its server's nickname was set takes it.
+                self.follow_nicknames();
                 // A room community setup created opens once it's listed.
                 self.open_created();
                 self.open_profile_dm();
@@ -623,6 +625,7 @@ impl App {
             (Request::Poll(op), result) => self.poll_done(op, result.is_ok()),
             (Request::Pack(op), result) => self.pack_done(op, result.is_ok()),
             (Request::Arrange, result) => self.arranged(id, result.is_ok()),
+            (Request::Nickname(write), result) => self.nickname_done(write, result.is_ok()),
             (Request::Report, result) => self.report_result(result.is_ok()),
             (Request::ReadState(room, event), result) => {
                 self.read_result(room, event, result.is_ok())

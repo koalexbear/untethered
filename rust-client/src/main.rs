@@ -44,6 +44,7 @@ mod link_previews;
 mod media;
 mod mentions;
 mod moderation;
+mod names;
 #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
 mod notifications;
 mod paging;
@@ -271,6 +272,8 @@ enum Msg {
     Poll(polls::Input),
     /// Dragging channels and categories in a space's sidebar (channel_order.rs).
     Order(channel_order::Input),
+    /// Edit Server Profile (names.rs).
+    Names(names::Input),
     /// The composer's + menu: Upload a File, Create Poll.
     ComposerMenu(bool),
     /// The quick switcher (switcher.rs).
@@ -504,6 +507,8 @@ enum Request {
     Pack(emotes::Op),
     /// Reordering or moving channels and categories (channel_order.rs).
     Arrange,
+    /// Setting a server nickname (names.rs).
+    Nickname(names::Write),
 }
 struct App {
     setup: Option<community::Form>,
@@ -572,6 +577,9 @@ struct App {
     new_message: Option<dms::NewMessage>,
     /// Forward To, for a message (forward.rs).
     forwarding: Option<forward::Form>,
+    /// Edit Server Profile, and rooms that took their server's nickname
+    /// (names.rs).
+    names: names::State,
     /// Explore, and what spaces contain (explore.rs).
     explore: explore::State,
     /// Create a Poll, and the composer's + menu that opens it (polls.rs).
@@ -733,6 +741,7 @@ impl App {
             join_address: String::new(),
             new_message: None,
             forwarding: None,
+            names: Default::default(),
             explore: Default::default(),
             polling: None,
             emotes: Default::default(),
@@ -1846,6 +1855,7 @@ impl App {
             Msg::Emote(input) => self.emote(input),
             Msg::EmoteReady(url, picture) => self.emotes.complete(url, picture),
             Msg::Order(input) => return self.arrange_input(input),
+            Msg::Names(input) => return self.names(input),
             Msg::ComposerMenu(open) => self.composer_menu = open && self.can_stage(),
             Msg::Switcher(input) => return self.switcher(input),
             Msg::Escape if self.shortcuts.open => self.shortcuts.open = false,
@@ -1916,6 +1926,8 @@ impl App {
                     return self.forward(forward::Input::Close);
                 } else if self.polling.is_some() {
                     return self.poll(polls::Input::Close);
+                } else if self.names.form.is_some() {
+                    return self.names(names::Input::Close);
                 } else if self.composer_menu {
                     self.composer_menu = false;
                 } else if self.emotes.stickers {

@@ -61,6 +61,8 @@ pub struct Room {
     pub avatars: BTreeMap<String, String>,
     /// Current membership has priority over profile data attached to old posts.
     pub profile_members: BTreeSet<String>,
+    /// This account's name here and when it was set (names.rs).
+    pub me: Option<crate::engine::names::Own>,
     /// The room that replaced this one, when this account hasn't joined it
     /// yet: the room is read-only and offers to join it (upgrades.rs).
     pub successor: Option<String>,

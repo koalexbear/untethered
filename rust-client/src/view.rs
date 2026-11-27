@@ -27,6 +27,7 @@ mod zoom;
 pub(crate) use link_preview::image_source as link_preview_image;
 pub(crate) mod discussions;
 mod mentions;
+mod names;
 mod popover;
 mod presence;
 mod profile;
@@ -689,7 +690,7 @@ impl App {
                         text(format!("@{who}"))
                             .size(14)
                             .font(BOLD)
-                            .color(BODY)
+                            .color(names::color(r.role(&q.sender), BODY))
                             .wrapping(text::Wrapping::None),
                     )
                     .push(
@@ -1333,6 +1334,7 @@ impl App {
             .or_else(|| self.block_dialog())
             .or_else(|| self.new_message_dialog())
             .or_else(|| self.forward_dialog())
+            .or_else(|| names::dialog(self))
             .or_else(|| self.poll_dialog())
             .or_else(|| self.end_poll_dialog())
             .or_else(|| self.shortcuts_view())
@@ -1415,10 +1417,6 @@ impl App {
                 ..Default::default()
             })
         };
-        #[cfg_attr(
-            not(any(target_os = "linux", target_arch = "wasm32")),
-            allow(unused_mut)
-        )]
         let mut menu = column![
             item(
                 Icon::UserPlus,
@@ -1434,6 +1432,15 @@ impl App {
             ),
         ]
         .spacing(2);
+        // Your nickname in this space (names.rs).
+        if self.may_edit_server_profile() {
+            menu = menu.push(item(
+                Icon::Pencil,
+                "Edit Server Profile",
+                MUTED,
+                ready.then(|| Msg::Names(crate::names::Input::Open(space.clone()))),
+            ));
+        }
         #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
         {
             menu = menu
@@ -3119,15 +3126,7 @@ impl App {
                     self.user_area(
                         &p.sender,
                         format!("name {place}"),
-                        profile::link(
-                            self,
-                            &p.sender,
-                            text(name)
-                                .size(16)
-                                .font(BOLD)
-                                .color(TEXT)
-                                .wrapping(text::Wrapping::None),
-                        )
+                        profile::link(self, &p.sender, names::author(name, r.role(&p.sender), 16.))
                     ),
                     text(stamp(p)).size(12).color(CHANNEL)
                 ]

@@ -180,6 +180,7 @@ async fn summary(room: &Room) -> RoomSummary {
         predecessor: room.predecessor_room().map(|p| p.room_id.to_string()),
         // Filled in for spaces by `snapshot`.
         child_order: Vec::new(),
+        me: super::names::own(room).await,
         id,
     }
 }

@@ -1,6 +1,6 @@
 //! Member cards and account profile editing.
 use super::{
-    ACTIVE, App, BODY, BOLD, El, FLOAT, MUTED, Msg, TEXT, TRAY, face, input_style, nav, surface,
+    ACTIVE, App, BODY, BOLD, El, FLOAT, MUTED, Msg, TRAY, face, input_style, nav, surface,
 };
 use crate::{
     context_menu::Event as Menu,
@@ -33,7 +33,10 @@ pub(super) fn card(app: &App) -> Option<El<'_>> {
         .then(|| app.directory.users.get(user))
         .flatten();
     let name = if user == &app.matrix_id {
-        &app.profile
+        // Your name in this room: a server nickname, or the global name.
+        r.me.as_ref()
+            .and_then(|me| me.name.as_deref())
+            .unwrap_or(&app.profile)
     } else {
         member
             .map(|m| m.name.as_str())
@@ -47,15 +50,17 @@ pub(super) fn card(app: &App) -> Option<El<'_>> {
             .and_then(|m| m.avatar.as_deref())
             .or_else(|| r.avatars.get(user).map(String::as_str))
     });
-    let power = r.posting.actor(user).map_or_else(
-        || "Room power level unavailable".into(),
-        |level| format!("Room power level {level}"),
-    );
+    let role = r.role(user);
+    let power = match (r.posting.actor(user), role) {
+        (None, _) => "Room power level unavailable".into(),
+        (Some(level), None) => format!("Room power level {level}"),
+        (Some(level), Some(role)) => format!("{} · room power level {level}", role.label()),
+    };
     let close = msg(Action::Close);
     // Their status dot, and status with any custom status (presence.rs).
     let presence = app.presence_of(user);
     let mut who = column![
-        text(name).size(23).font(BOLD).color(TEXT),
+        super::names::author(name, role, 23.),
         text(user).size(13).color(MUTED)
     ]
     .spacing(3)
@@ -107,6 +112,16 @@ pub(super) fn card(app: &App) -> Option<El<'_>> {
                 })
             }));
         details = details.push(row![message, block].spacing(8));
+    } else if app.may_edit_server_profile()
+        && let Some(space) = app.server_of(room)
+    {
+        // Your server nickname (names.rs).
+        details = details.push(
+            button(text("Edit Server Profile").size(14)).on_press_maybe(
+                app.connected
+                    .then(|| Msg::Names(crate::names::Input::Open(space))),
+            ),
+        );
     }
     if let Some(note) = ui.card_error {
         details = details.push(text(note).size(13).color(BODY));
