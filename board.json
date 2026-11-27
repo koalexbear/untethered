@@ -73,11 +73,21 @@
    ],
    "owner": "main-session",
    "paths": [
-    "rust-client/src/player.rs rust-client/src/media.rs rust-client/src/preview.rs rust-client/src/inline.rs rust-client/src/avatars.rs rust-client/src/view.rs rust-client/src/view/viewer.rs rust-client/src/viewer.rs rust-client/src/engine/media.rs rust-client/src/main.rs rust-client/src/web_files.rs ROADMAP.md README.md scripts/qa_phase4.py"
+    "rust-client/src/backend/mod.rs",
+    "rust-client/src/engine/app.rs",
+    "rust-client/src/engine/timeline.rs",
+    "rust-client/src/engine/worker.rs",
+    "rust-client/src/inline_player.rs",
+    "rust-client/src/player.rs rust-client/src/media.rs rust-client/src/preview.rs rust-client/src/inline.rs rust-client/src/avatars.rs rust-client/src/view.rs rust-client/src/view/viewer.rs rust-client/src/viewer.rs rust-client/src/engine/media.rs rust-client/src/main.rs rust-client/src/web_files.rs ROADMAP.md README.md scripts/qa_phase4.py",
+    "rust-client/src/view/animated.rs",
+    "rust-client/src/view/gallery.rs",
+    "rust-client/src/view/players.rs",
+    "rust-client/web/files.js",
+    "scripts/qa_web_video.py"
    ],
    "status": "working",
    "title": "Animated images (with P2, P4 browser, P5 on this branch)",
-   "updated": "2026-11-27T15:58:45Z",
+   "updated": "2026-11-27T16:19:43Z",
    "worktree": "."
   },
   "P2": {
