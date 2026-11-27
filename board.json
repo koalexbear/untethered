@@ -1,5 +1,29 @@
 {
- "claims": {},
+ "claims": {
+  "J3": {
+   "branch": "j3-dms-blocking",
+   "claimed": "2026-11-27T13:23:02Z",
+   "notes": [],
+   "owner": "main-session",
+   "paths": [
+    "README.md",
+    "ROADMAP.md",
+    "rust-client/src/blocking.rs",
+    "rust-client/src/dms.rs",
+    "rust-client/src/engine/app.rs",
+    "rust-client/src/engine/dms.rs",
+    "rust-client/src/engine/mod.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/view.rs",
+    "rust-client/src/view/dms.rs",
+    "scripts/qa_dms_blocking.py"
+   ],
+   "status": "working",
+   "title": "DMs and blocking",
+   "updated": "2026-11-27T13:23:02Z",
+   "worktree": "."
+  }
+ },
  "done": [
   {
    "branch": "main",

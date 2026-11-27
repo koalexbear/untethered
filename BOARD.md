@@ -2,7 +2,9 @@
 
 Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 
-Nothing claimed.
+| ID | Title | Agent | Branch | Status | Updated | Paths |
+|---|---|---|---|---|---|---|
+| J3 | DMs and blocking | main-session | `j3-dms-blocking` | working | 2026-11-27T13:23:02Z | `README.md`, `ROADMAP.md`, `rust-client/src/blocking.rs`, `rust-client/src/dms.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/dms.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/main.rs`, `rust-client/src/view.rs`, `rust-client/src/view/dms.rs`, `scripts/qa_dms_blocking.py` |
 
 ## Done
 
