@@ -117,6 +117,20 @@
    "updated": "2026-11-27T22:26:13Z",
    "worktree": "."
   },
+  "fix-left-rooms": {
+   "branch": "claude/great-lamport-46e7ea",
+   "claimed": "2026-11-27T23:10:46Z",
+   "notes": [],
+   "owner": "fix-room-ptt",
+   "paths": [
+    "rust-client/src/engine/live_test.rs",
+    "scripts/qa_left_rooms.py"
+   ],
+   "status": "working",
+   "title": "Rooms left elsewhere while closed stay listed",
+   "updated": "2026-11-27T23:10:46Z",
+   "worktree": ".claude/worktrees/great-lamport-46e7ea"
+  },
   "fix-room-ptt": {
    "branch": "claude/great-lamport-46e7ea",
    "claimed": "2026-11-27T22:52:52Z",
