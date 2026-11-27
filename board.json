@@ -34,9 +34,9 @@
    "paths": [
     "ROADMAP.md"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Roadmap: Matrix support per step and a policy for client-only features",
-   "updated": "2026-11-27T10:45:11Z",
+   "updated": "2026-11-27T10:45:45Z",
    "worktree": "."
   }
  },
