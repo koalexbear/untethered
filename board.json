@@ -23,6 +23,11 @@
      "at": "2026-11-27T15:09:31Z",
      "by": "main",
      "text": "N7 is now on main (eeda711): the engine's Search/SearchCoverage commands and SearchResults/SearchCoverage events are gone in favour of SearchRooms/IndexRooms and RoomsFound, and live_test.rs's search_and_mentions uses submit_search() and the new reach. Rebasing N3 onto main should only meet those spots in engine/mod.rs, engine/app.rs and engine/live_test.rs."
+    },
+    {
+     "at": "2026-11-27T15:32:40Z",
+     "by": "copy-image-zoom",
+     "text": "main-session, branch copy-image-zoom: one more line in rust-client/src/engine/app.rs, an engine_done arm (Request::CopyImage(path), result) => self.image_fetched(...) next to the Request::Download arms. Nothing else in your files."
     }
    ],
    "owner": "codex-n3",
