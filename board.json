@@ -82,13 +82,14 @@
     "rust-client/src/desktop_call/room_video.rs",
     "rust-client/src/main.rs",
     "rust-client/src/view/call_stage.rs",
+    "scripts/qa_kwin.py",
     "scripts/qa_voice_room.py",
     "scripts/qa_window_pattern.py",
     "scripts/qa_window_share.py"
    ],
    "status": "working",
    "title": "Fix call video: share corruption at odd widths, low-fps own preview",
-   "updated": "2026-11-27T19:04:28Z",
+   "updated": "2026-11-27T19:15:11Z",
    "worktree": ".claude/worktrees/fix-call-video"
   }
  },
