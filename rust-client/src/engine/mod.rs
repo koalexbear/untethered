@@ -27,6 +27,7 @@ mod keyring;
 mod live_test;
 mod media;
 mod messaging;
+pub mod polls;
 mod previews;
 pub mod profile;
 #[cfg(debug_assertions)]
@@ -188,6 +189,25 @@ pub enum Command {
         event: String,
         to: String,
         note: Option<String>,
+    },
+    /// Start a poll in `room` (ROADMAP M9).
+    CreatePoll {
+        id: i64,
+        room: String,
+        draft: polls::Draft,
+    },
+    /// Vote in the poll at `event`: `answers` replace an earlier vote, and
+    /// none takes it back.
+    Vote {
+        id: i64,
+        room: String,
+        event: String,
+        answers: Vec<String>,
+    },
+    EndPoll {
+        id: i64,
+        room: String,
+        event: String,
     },
     Report {
         id: i64,
@@ -838,6 +858,9 @@ pub struct Message {
     /// into a room this one was upgraded from. Such messages are read-only.
     #[serde(default)]
     pub from: Option<String>,
+    /// A poll's question, answers and votes (ROADMAP M9).
+    #[serde(default)]
+    pub poll: Option<polls::Poll>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
@@ -846,6 +869,8 @@ pub enum Kind {
     /// A file, image, audio or video message; `body` is its caption or name.
     Attachment,
     Sticker,
+    /// A poll (`poll` says what it asks); `body` is its question.
+    Poll,
     Redacted,
     Undecryptable(Unreadable),
 }
@@ -1384,6 +1409,29 @@ impl Engine {
             } => {
                 self.job(id, move |_, timelines, _| async move {
                     timelines.forward(&room, &event, &to, note).await
+                })
+                .await
+            }
+            Command::CreatePoll { id, room, draft } => {
+                self.job(id, move |_, timelines, _| async move {
+                    timelines.create_poll(&room, &draft).await
+                })
+                .await
+            }
+            Command::Vote {
+                id,
+                room,
+                event,
+                answers,
+            } => {
+                self.job(id, move |_, timelines, _| async move {
+                    timelines.vote(&room, &event, answers).await
+                })
+                .await
+            }
+            Command::EndPoll { id, room, event } => {
+                self.job(id, move |_, timelines, _| async move {
+                    timelines.end_poll(&room, &event).await
                 })
                 .await
             }

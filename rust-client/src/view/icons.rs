@@ -29,6 +29,10 @@ pub(super) enum Icon {
     Plus,
     Reply,
     Forward,
+    /// Bars of a chart: Create Poll and End Poll (polls.rs).
+    Poll,
+    /// A tick: a picked answer in a multiple-choice poll.
+    Check,
     Smile,
     Pencil,
     Flag,
@@ -192,6 +196,12 @@ fn outline(icon: Icon) -> Path {
             poly(b, &[(4., 18.), (4., 16.)]);
             arc(b, 8., 16., 4., 180., 270.);
             b.line_to(p(20., 12.));
+        }
+        Icon::Check => poly(b, &[(5., 12.5), (10., 17.5), (19., 7.)]),
+        Icon::Poll => {
+            poly(b, &[(5., 6.), (14., 6.)]);
+            poly(b, &[(5., 12.), (19., 12.)]);
+            poly(b, &[(5., 18.), (10., 18.)]);
         }
         Icon::Smile => {
             b.circle(p(11., 13.), 8.5);

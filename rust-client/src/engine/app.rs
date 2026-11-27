@@ -611,6 +611,7 @@ impl App {
                 self.status = "Could not delete this message. Try again.".into();
             }
             (Request::Forward(to), result) => self.forwarded(to, result.is_ok()),
+            (Request::Poll(op), result) => self.poll_done(op, result.is_ok()),
             (Request::Report, result) => self.report_result(result.is_ok()),
             (Request::ReadState(room, event), result) => {
                 self.read_result(room, event, result.is_ok())
@@ -915,6 +916,7 @@ mod tests {
             receipts: Vec::new(),
             media: None,
             from: None,
+            poll: None,
         }
     }
 
@@ -1135,6 +1137,7 @@ mod tests {
                 receipts: vec![("@you:example".into(), 1)],
                 media: None,
                 from: None,
+                poll: None,
             }],
             // An edit of "hello" came last; it has no message of its own.
             latest_event: Some("$edit".into()),
@@ -1213,6 +1216,7 @@ mod tests {
                 receipts: vec![],
                 media: None,
                 from: None,
+                poll: None,
             }],
         });
         let original = app.original.as_ref().expect("the original opens");

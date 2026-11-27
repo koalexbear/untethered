@@ -52,6 +52,7 @@ mod pills;
 mod places;
 #[cfg(target_os = "linux")]
 mod player;
+mod polls;
 mod preview;
 mod reactions;
 mod reading;
@@ -248,6 +249,10 @@ enum Msg {
     Dm(dms::Input),
     /// Forwarding a message (forward.rs).
     Forward(forward::Input),
+    /// Voting, ending and creating polls (polls.rs).
+    Poll(polls::Input),
+    /// The composer's + menu: Upload a File, Create Poll.
+    ComposerMenu(bool),
     /// The quick switcher (switcher.rs).
     Switcher(switcher::Input),
     /// Note where the open room is scrolled to, and what was measured;
@@ -463,6 +468,8 @@ enum Request {
     Forward(String),
     /// A page of the public room directory (explore.rs).
     Explore(engine::explore::DirectoryQuery),
+    /// Starting, voting in or ending a poll (polls.rs).
+    Poll(polls::Op),
 }
 struct App {
     setup: Option<community::Form>,
@@ -532,6 +539,9 @@ struct App {
     forwarding: Option<forward::Form>,
     /// Explore, and what spaces contain (explore.rs).
     explore: explore::State,
+    /// Create a Poll, and the composer's + menu that opens it (polls.rs).
+    polling: Option<polls::Form>,
+    composer_menu: bool,
     started_dm: Option<String>,
     /// Ctrl+K's quick switcher (switcher.rs).
     switcher: Option<switcher::Switcher>,
@@ -674,6 +684,8 @@ impl App {
             new_message: None,
             forwarding: None,
             explore: Default::default(),
+            polling: None,
+            composer_menu: false,
             started_dm: None,
             switcher: None,
             copy_note: None,
@@ -1615,6 +1627,7 @@ impl App {
                 }
             }
             Msg::PickFiles if self.can_stage() => {
+                self.composer_menu = false;
                 let room = self.selected.clone();
                 #[cfg(not(target_arch = "wasm32"))]
                 return Task::perform(
@@ -1753,6 +1766,8 @@ impl App {
             Msg::Explore(input) => return self.explore(input),
             Msg::Dm(input) => return self.new_message(input),
             Msg::Forward(input) => return self.forward(input),
+            Msg::Poll(input) => return self.poll(input),
+            Msg::ComposerMenu(open) => self.composer_menu = open && self.can_stage(),
             Msg::Switcher(input) => return self.switcher(input),
             Msg::NotePlace => return self.note_place(),
             Msg::PlaceNoted(room, hit) => self.place_noted(room, hit),
@@ -1815,6 +1830,10 @@ impl App {
                     return self.new_message(dms::Input::Close);
                 } else if self.forwarding.is_some() {
                     return self.forward(forward::Input::Close);
+                } else if self.polling.is_some() {
+                    return self.poll(polls::Input::Close);
+                } else if self.composer_menu {
+                    self.composer_menu = false;
                 } else if self.server_menu {
                     self.server_menu = false;
                 } else if self.setup.is_some() && !self.setup_busy() {
