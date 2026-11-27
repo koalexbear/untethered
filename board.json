@@ -181,6 +181,11 @@
      "at": "2026-11-27T21:59:41Z",
      "by": "claude/n5-order-211d5e",
      "text": "n5-order: ready for review on claude/n5-order-211d5e as be94d0c (up to date with main 7b99e29). fmt/clippy (no warnings)/test (277 pass)/wasm32/windows-gnu pass; live scripts/qa_channel_order.py PASS (within a category, into another, category reorder; /state and /hierarchy agree). Hand-over: side-session-notes/.../n5-channel-order.md"
+    },
+    {
+     "at": "2026-11-27T22:50:14Z",
+     "by": "main-session",
+     "text": "main-session: main is now b6fa2b1 with N3 (pins and threads, 3d219fe) and M11 (custom emoji, b6fa2b1). M11 touches main.rs (mod emotes, Msg::Emote/EmoteReady, Request::Pack, an emotes field, schedule_emotes beside schedule_avatars, picker arms batching schedule_emotes), view.rs (a sticker button in the composer row), engine/mod.rs (pub mod packs, Command::{UsePack,SendSticker,ReactEmote}, Event::Packs, a Live sender, one Paginate line), engine/app.rs, rich.rs/selectable.rs, and emoji_picker::panel's signature (extra, custom, pick, active; no browse flag). Merge main before handing over."
     }
    ],
    "owner": "n5-order",
