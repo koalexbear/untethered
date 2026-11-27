@@ -1,8 +1,12 @@
+use super::presence::with_dot;
 use super::{
     ACTIVE, App, BLURPLE, BODY, BOLD, CHANNEL, El, FLOAT, HOVER, Icon, MUTED, Msg, RED, SIDE, TEXT,
     face, icon_button, input_style, label_owned, plain, scroll_style, surface, thin_scrollbar,
 };
-use crate::moderation::{Action, Kind};
+use crate::{
+    moderation::{Action, Kind},
+    presence::Support,
+};
 use iced::{
     Alignment::Center,
     Border, Color, Fill, color,
@@ -90,15 +94,29 @@ pub(super) fn view(app: &App) -> El<'_> {
         } else {
             &m.name
         };
+        let presence = app.presence_of(id);
+        let mut who = column![
+            text(name).size(16).font(BOLD).color(TEXT),
+            text(id).size(12).color(MUTED),
+        ]
+        .spacing(2)
+        .width(Fill);
+        if let Some(p) = &presence {
+            let line = match p.message.as_ref().filter(|_| p.status.here()) {
+                Some(message) => format!("{} · {message}", p.status.label()),
+                None => p.status.label().to_owned(),
+            };
+            who = who.push(text(line).size(12).color(BODY));
+        }
         let mut card = column![
             row![
-                face(name, app.member_picture(id), 48.),
-                column![
-                    text(name).size(16).font(BOLD).color(TEXT),
-                    text(id).size(12).color(MUTED),
-                ]
-                .spacing(2)
-                .width(Fill),
+                with_dot(
+                    face(name, app.member_picture(id), 48.),
+                    48.,
+                    presence.as_ref().map(|p| p.status),
+                    FLOAT
+                ),
+                who,
                 icon_button(
                     Icon::Close,
                     "Close",
@@ -158,8 +176,17 @@ pub(super) fn view(app: &App) -> El<'_> {
         }
     }
     let query = d.filter.trim().to_lowercase();
-    let mut groups: [Group; 5] = [
-        (Kind::Joined, "MEMBERS", vec![]),
+    // Where the homeserver shares presence, members are Online or Offline
+    // as on Discord (presence.rs).
+    let presence = app.presence.support == Support::On;
+    let here = |id: &str| app.status_of(id).is_some_and(|s| s.here());
+    let mut groups: [Group; 6] = [
+        (
+            Kind::Joined,
+            if presence { "ONLINE" } else { "MEMBERS" },
+            vec![],
+        ),
+        (Kind::Joined, "OFFLINE", vec![]),
         (Kind::Knocking, "REQUESTED", vec![]),
         (Kind::Invited, "INVITED", vec![]),
         (Kind::Banned, "BANNED", vec![]),
@@ -185,7 +212,12 @@ pub(super) fn view(app: &App) -> El<'_> {
         } else {
             &m.name
         };
-        if let Some(group) = groups.iter_mut().find(|(k, ..)| *k == m.kind) {
+        let offline = presence && m.kind == Kind::Joined && !here(id);
+        if let Some(group) = groups
+            .iter_mut()
+            .skip(usize::from(offline))
+            .find(|(k, ..)| *k == m.kind)
+        {
             group.2.push((id, name));
         }
     }
@@ -204,13 +236,27 @@ pub(super) fn view(app: &App) -> El<'_> {
         );
         for (id, name) in members {
             let selected = d.selected.as_ref() == Some(id);
-            let dim = kind != Kind::Joined;
+            // Offline members have no dot and are dimmed, as on Discord.
+            let presence = (kind == Kind::Joined)
+                .then(|| app.presence_of(id))
+                .flatten()
+                .filter(|p| p.status.here());
+            let dim = kind != Kind::Joined || title == "OFFLINE";
+            let second = presence
+                .as_ref()
+                .and_then(|p| p.message.clone())
+                .unwrap_or_else(|| id.clone());
             let entry = button(
                 row![
-                    face(name, app.member_picture(id), 32.),
+                    with_dot(
+                        face(name, app.member_picture(id), 32.),
+                        32.,
+                        presence.map(|p| p.status),
+                        if selected { ACTIVE } else { SIDE }
+                    ),
                     column![
                         text(name).size(15).wrapping(text::Wrapping::None),
-                        text(id.as_str())
+                        text(second)
                             .size(12)
                             .color(CHANNEL)
                             .wrapping(text::Wrapping::None)

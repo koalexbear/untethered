@@ -425,6 +425,11 @@ impl App {
         };
         opened.discard().chain(anchor)
     }
+    /// The window is open (not only in the tray).
+    #[cfg_attr(test, allow(dead_code))]
+    pub fn window_open(&self) -> bool {
+        self.tray.window.is_some()
+    }
     /// Bring the window back if it must, and send the tray what changed.
     /// Runs after every update.
     pub fn sync_tray(&mut self) -> Task<Msg> {

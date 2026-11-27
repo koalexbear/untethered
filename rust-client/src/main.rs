@@ -52,6 +52,7 @@ mod places;
 #[cfg(target_os = "linux")]
 mod player;
 mod polls;
+mod presence;
 mod preview;
 mod reactions;
 mod reading;
@@ -273,6 +274,8 @@ enum Msg {
     Autocomplete(autocomplete::Input),
     /// Typing notices and their switch (typing.rs).
     Typing(typing::Input),
+    /// Our status, idling and the custom status dialog (presence.rs).
+    Presence(presence::Input),
     Send,
     Reply(String),
     Report(String, String),
@@ -448,6 +451,9 @@ enum Request {
     ReadState(String, Option<String>),
     ShareReads(bool, u64),
     ShareTyping(bool, u64),
+    /// Saving our status; what it was before, to put back on failure
+    /// (presence.rs).
+    SaveStatus(presence::Choice, String),
     /// Saving a room's link preview switch (link_previews.rs).
     LinkPreviews(String, bool),
     LeaveRoom(String),
@@ -589,6 +595,7 @@ struct App {
     editor: text_editor::Content,
     completion: autocomplete::State,
     typing: typing::Typing,
+    presence: presence::State,
     loaded: BTreeSet<String>,
     connected: bool,
     logged_in: bool,
@@ -721,6 +728,7 @@ impl App {
             editor: text_editor::Content::new(),
             completion: Default::default(),
             typing: Default::default(),
+            presence: Default::default(),
             loaded: Default::default(),
             connected: false,
             logged_in: false,
@@ -1016,6 +1024,7 @@ impl App {
             self.server_menu = false;
             self.context_menu.open = None;
             self.sdk_ui.profile.dismiss_card();
+            self.presence.menu = false;
         }
         #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
         if matches!(msg, Msg::SpaceAlerts) {
@@ -1823,6 +1832,9 @@ impl App {
                     return self.poll(polls::Input::Close);
                 } else if self.composer_menu {
                     self.composer_menu = false;
+                } else if self.presence.dialog.is_some() || self.presence.menu {
+                    self.presence.dialog = None;
+                    self.presence.menu = false;
                 } else if self.server_menu {
                     self.server_menu = false;
                 } else if self.setup.is_some() && !self.setup_busy() {
@@ -1899,6 +1911,7 @@ impl App {
                 return task;
             }
             Msg::Typing(input) => self.typing_input(input),
+            Msg::Presence(input) => return self.presence_input(input),
             Msg::Permissions => {
                 if self.permission_panel {
                     self.leave_permission_panel();
@@ -2172,6 +2185,7 @@ impl App {
         #[cfg(not(target_arch = "wasm32"))]
         let task = Task::batch([task, self.copy_fetched()]);
         self.fill_history();
+        self.sync_presence();
         self.schedule_link_previews();
         let task = Task::batch([task, self.schedule_avatars()]);
         #[cfg(target_os = "linux")]
@@ -2330,6 +2344,7 @@ fn main() -> iced::Result {
                     iced::time::every(std::time::Duration::from_millis(500)).map(|_| Msg::SaveDrafts)
                 } else { iced::Subscription::none() },
                 app.typing_subscription(),
+                app.presence_subscription(),
                 // A moment after the timeline stops moving, note the place.
                 if app.place_unnoted {
                     iced::time::every(std::time::Duration::from_millis(400)).map(|_| Msg::NotePlace)

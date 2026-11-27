@@ -414,6 +414,9 @@ impl App {
             Event::ReadSharing(public) => self.read_sharing.set_from_engine(public),
             Event::Typing { room, users } => self.typing_seen(room, users),
             Event::TypingSharing(send) => self.typing_shared(send),
+            Event::Presence(changes) => self.presence_seen(changes),
+            Event::PresenceSupport(support) => self.presence_support(support),
+            Event::OwnStatus { choice, message } => self.status_synced(choice, message),
             Event::UploadProgress { id, fraction } => self.upload_progress(id, fraction),
             Event::Uploaded { id, result } => {
                 // Absent after a cancel: that attempt must never send.
@@ -638,6 +641,9 @@ impl App {
             (Request::LinkPreviews(room, on), Err(_)) => self.link_previews_failed(&room, on),
             (Request::ShareTyping(send, revision), result) => {
                 self.typing_saved(send, revision, result.is_ok())
+            }
+            (Request::SaveStatus(choice, message), result) => {
+                self.status_saved((choice, message), result.is_ok())
             }
             (Request::MediaSend(room, attachment), Ok(())) => {
                 self.finish_delivery(&room, attachment, true)
