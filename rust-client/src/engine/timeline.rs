@@ -9,7 +9,7 @@
 //! scrolling back reaches the start of the one before. One snapshot carries
 //! them all, oldest first, with a seam where each room's history begins.
 use super::{
-    Delivery, Event, Failure, Kind, Message, Reply, TimelineSnapshot,
+    Delivery, Event, Failure, Kind, Message, Reply, TimelineSnapshot, Unreadable,
     media::Sources,
     upgrades::{self, Above, Seam},
 };
@@ -27,6 +27,7 @@ use matrix_sdk::{
     },
     send_queue::RoomSendQueueUpdate,
 };
+use matrix_sdk_crypto::types::events::UtdCause;
 use matrix_sdk_ui::{
     Timeline,
     eyeball_im::{Vector, VectorDiff},
@@ -147,6 +148,37 @@ pub struct Timelines {
     sources: Arc<Sources>,
     open: Mutex<HashMap<OwnedRoomId, Arc<Open>>>,
     segments: Mutex<HashMap<OwnedRoomId, Arc<Segment>>>,
+    keys: Arc<Keys>,
+}
+
+/// History older than this device has its keys in key backup only. The SDK
+/// fetches them one session at a time as each message fails to decrypt;
+/// far back in a room (an older room an upgrade replaced, especially) that
+/// is a long wait behind every page. So the first time a room shows
+/// messages waiting for keys, ask the backup for all of that room's keys at
+/// once; the SDK then decrypts what they open on its own.
+#[derive(Default)]
+struct Keys {
+    /// Rooms whose backup keys were asked for this session.
+    asked: Shared<std::collections::HashSet<String>>,
+}
+impl Keys {
+    fn fetch(self: &Arc<Self>, client: &Client, rooms: impl IntoIterator<Item = String>) {
+        for room in rooms {
+            if !self.asked.lock().unwrap().insert(room.clone()) {
+                continue;
+            }
+            let client = client.clone();
+            super::rt::spawn(async move {
+                let backups = client.encryption().backups();
+                if let Ok(id) = RoomId::parse(&room)
+                    && backups.are_enabled().await
+                {
+                    let _ = backups.download_room_keys_for_room(&id).await;
+                }
+            });
+        }
+    }
 }
 
 impl Timelines {
@@ -157,6 +189,7 @@ impl Timelines {
             sources,
             open: Default::default(),
             segments: Default::default(),
+            keys: Default::default(),
         }
     }
 
@@ -199,14 +232,12 @@ impl Timelines {
         }));
         let emitter = super::rt::spawn(emit(
             room.to_owned(),
-            self.client
-                .user_id()
-                .map(ToString::to_string)
-                .unwrap_or_default(),
+            self.client.clone(),
             chain.clone(),
             changed.clone(),
             self.events.clone(),
             self.sources.clone(),
+            self.keys.clone(),
         ));
         let entry = Arc::new(Open {
             chain,
@@ -215,6 +246,31 @@ impl Timelines {
         });
         open.insert(id, entry.clone());
         Ok(entry)
+    }
+
+    /// Stop showing `room`: drop its Timeline, and those of the older rooms
+    /// its chain reached that no other open room shows. Their events stay
+    /// in the event cache on disk, and with no Timeline listening the SDK
+    /// lets go of all but the newest in memory; opening the room again
+    /// reads them back from disk.
+    pub async fn close(&self, room: &str) {
+        let Ok(id) = RoomId::parse(room) else {
+            return;
+        };
+        let mut open = self.open.lock().await;
+        if open.remove(&id).is_none() {
+            return;
+        }
+        let shown: std::collections::HashSet<OwnedRoomId> = open
+            .values()
+            .flat_map(|o| o.segments())
+            .map(|s| s.room.clone())
+            .collect();
+        drop(open);
+        self.segments
+            .lock()
+            .await
+            .retain(|room, _| shown.contains(room));
     }
 
     /// Load older messages: from the newest segment whose start isn't shown
@@ -492,6 +548,23 @@ impl Timelines {
     }
 }
 
+/// What the SDK guesses about an undecryptable message.
+fn unreadable(cause: Option<UtdCause>) -> Unreadable {
+    match cause.unwrap_or_default() {
+        UtdCause::Unknown => Unreadable::Waiting,
+        UtdCause::SentBeforeWeJoined => Unreadable::BeforeJoined,
+        UtdCause::HistoricalMessageAndBackupIsDisabled => Unreadable::NoBackup,
+        UtdCause::HistoricalMessageAndDeviceIsUnverified => Unreadable::Unverified,
+        UtdCause::WithheldForUnverifiedOrInsecureDevice | UtdCause::WithheldBySender => {
+            Unreadable::Withheld
+        }
+        UtdCause::VerificationViolation | UtdCause::UnsignedDevice | UtdCause::UnknownDevice => {
+            Unreadable::Untrusted
+        }
+        UtdCause::Malformed => Unreadable::Malformed,
+    }
+}
+
 /// The HTML body of a text, notice or emote (`org.matrix.custom.html`).
 pub(super) fn html_body(msgtype: &MessageType) -> Option<String> {
     match msgtype {
@@ -573,12 +646,17 @@ async fn mirror(
 /// changes.
 async fn emit(
     room: String,
-    me: String,
+    client: Client,
     chain: Arc<Shared<Chain>>,
     changed: Arc<Notify>,
     events: Sender<Event>,
     sources: Arc<Sources>,
+    keys: Arc<Keys>,
 ) {
+    let me = client
+        .user_id()
+        .map(ToString::to_string)
+        .unwrap_or_default();
     let mut rows = Rows::default();
     loop {
         let (segments, seams, complete) = {
@@ -592,6 +670,13 @@ async fn emit(
             .map(|e| e.to_string());
         let mut snapshot = snapshot(&room, &me, &segments, &seams, complete, &mut rows, &sources);
         snapshot.latest_event = latest;
+        let waiting: std::collections::BTreeSet<&str> = snapshot
+            .messages
+            .iter()
+            .filter(|m| m.kind == Kind::Undecryptable(Unreadable::Waiting))
+            .map(|m| m.from.as_deref().unwrap_or(&room))
+            .collect();
+        keys.fetch(&client, waiting.into_iter().map(str::to_owned));
         if events.send(Event::Timeline(snapshot)).await.is_err() {
             return;
         }
@@ -741,7 +826,11 @@ fn message(item: &EventTimelineItem, row: i64, me: &str, sources: &Sources) -> O
         }
         MsgLikeKind::Sticker(s) => (Kind::Sticker, s.content().body.clone(), false),
         MsgLikeKind::Redacted => (Kind::Redacted, String::new(), false),
-        MsgLikeKind::UnableToDecrypt(_) => (Kind::Undecryptable, String::new(), false),
+        MsgLikeKind::UnableToDecrypt(m) => (
+            Kind::Undecryptable(unreadable(m.utd_cause())),
+            String::new(),
+            false,
+        ),
         // Polls, live locations and custom events have no Post form yet.
         _ => return None,
     };
@@ -787,7 +876,7 @@ fn message(item: &EventTimelineItem, row: i64, me: &str, sources: &Sources) -> O
         body,
         formatted,
         kind,
-        encrypted: item.encryption_info().is_some() || kind == Kind::Undecryptable,
+        encrypted: item.encryption_info().is_some() || matches!(kind, Kind::Undecryptable(_)),
         delivery,
         edited,
         reply_to,

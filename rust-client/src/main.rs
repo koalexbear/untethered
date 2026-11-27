@@ -48,6 +48,8 @@ mod reports;
 mod rich;
 mod room_state;
 mod rooms;
+#[cfg(not(target_arch = "wasm32"))]
+mod runtime;
 mod search;
 mod transfers;
 #[cfg(not(target_arch = "wasm32"))]
@@ -207,6 +209,8 @@ enum Msg {
     /// Scrolled the timeline: away from the bottom, and far enough for Jump to present.
     /// Where the room's timeline is scrolled to now.
     ReadingScroll(String, paging::Scrolled),
+    /// Open the room's timeline again after a pause (paging.rs).
+    ReopenTimeline(String),
     /// Scrolled near the top of what's loaded: fetch older messages.
     /// Page Up (true) or Page Down: scroll the timeline by most of a screen.
     PageScroll(bool),
@@ -372,6 +376,16 @@ struct App {
     auto_page_failed: Option<String>,
     /// Where the open room's timeline was last scrolled to (paging.rs).
     scrolled: Option<(String, paging::Scrolled)>,
+    /// Rooms whose timeline closed since they were loaded (paging.rs).
+    released: BTreeSet<String>,
+    /// The open room whose timeline is closed for a moment before it opens
+    /// again, and the room that last started over at its newest messages.
+    reopening: Option<String>,
+    restarted: Option<String>,
+    /// Another room opened: show its newest messages. The timeline keeps
+    /// its scroll offset across rooms (Iced keeps it by position), so the
+    /// last room's could open this one scrolled up, stuck at its top.
+    snap_to_newest: bool,
     /// Each room's message count when history was last loaded to fill the
     /// window, so a page that brings nothing doesn't repeat.
     filled: BTreeMap<String, usize>,
@@ -483,6 +497,10 @@ impl App {
             scrolled_far: false,
             auto_page_failed: None,
             scrolled: None,
+            released: Default::default(),
+            reopening: None,
+            restarted: None,
+            snap_to_newest: false,
             filled: BTreeMap::new(),
             #[cfg(not(target_arch = "wasm32"))]
             focused: false,
@@ -658,7 +676,9 @@ impl App {
             .insert(self.selected.clone(), self.editor.text());
         self.editor =
             text_editor::Content::with_text(self.drafts.get(&id).map(String::as_str).unwrap_or(""));
-        self.selected = id.clone();
+        let left = std::mem::replace(&mut self.selected, id.clone());
+        self.release_timeline(left);
+        self.snap_to_newest = true;
         self.timeline_end = None;
         if self.people {
             self.read_directory(None);
@@ -674,13 +694,24 @@ impl App {
     /// verified (right after signing in) loads once it is.
     fn load_selected(&mut self) {
         let id = self.selected.clone();
-        if self.logged_in && self.verified && !id.is_empty() && self.loaded.insert(id.clone()) {
+        if !self.logged_in || !self.verified || id.is_empty() {
+            return;
+        }
+        if self.loaded.insert(id.clone()) {
+            self.released.remove(&id);
             self.page();
             self.rpc(
                 "get_room_state",
                 json!({"room_id":id,"include_members":true}),
                 Request::Members(id),
             );
+        } else if self.released.contains(&id) {
+            // Its timeline closed when it was left (paging.rs); offline, this
+            // runs again after each update until it opens.
+            self.page();
+            if self.paging(&id) {
+                self.released.remove(&id);
+            }
         }
     }
     fn reconcile(&mut self) {
@@ -1498,7 +1529,12 @@ impl App {
                 self.open_mentions();
             }
             Msg::CheckReading => return self.check_reading(),
+            Msg::ReopenTimeline(room) => self.reopen_timeline(room),
             Msg::ReadingScroll(room, at) if room == self.selected && self.original.is_none() => {
+                if at.away {
+                    // Scrolled up: the next return may start over (paging.rs).
+                    self.restarted = None;
+                }
                 self.scrolled_away = at.away;
                 self.scrolled_far = at.far;
                 self.inline.depth = at.depth;
@@ -1883,7 +1919,17 @@ impl App {
         self.prune_context_menu();
         // Previews and pictures for what's on screen now, also once a room's
         // messages arrive after it opened; both skip what they have.
-        let task = Task::batch([self.schedule_inline(), self.keep_paging()]);
+        let snap = if std::mem::take(&mut self.snap_to_newest) {
+            self.anchor_history()
+        } else {
+            Task::none()
+        };
+        let task = Task::batch([
+            snap,
+            self.schedule_inline(),
+            self.keep_paging(),
+            self.bound_history(),
+        ]);
         self.fill_history();
         let task = Task::batch([task, self.schedule_avatars()]);
         #[cfg(target_os = "linux")]
@@ -1985,6 +2031,8 @@ fn main() -> iced::Result {
     if web_sys::window().is_none() {
         return Ok(());
     }
+    #[cfg(not(target_arch = "wasm32"))]
+    runtime::limit_arenas();
     // Call fixtures (debug builds): prepare a matrix-sdk profile and exit.
     #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
     if let Some(seed) = std::env::var_os("UNTETHERED_QA_SEED") {
@@ -2014,7 +2062,8 @@ fn main() -> iced::Result {
         App::window_view,
     )
     .title(App::window_title)
-    .theme(Theme::Dark);
+    .theme(Theme::Dark)
+    .executor::<runtime::Runtime>();
     #[cfg(target_arch = "wasm32")]
     let app = iced::application(App::boot, App::update, App::view)
         .title(App::title)

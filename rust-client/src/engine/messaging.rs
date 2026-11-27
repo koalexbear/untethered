@@ -165,7 +165,7 @@ fn message(event: &TimelineEvent, row: i64, me: &str, sources: &Sources) -> Opti
         time,
         body: String::new(),
         formatted: None,
-        kind: Kind::Undecryptable,
+        kind: Kind::Undecryptable(super::Unreadable::Waiting),
         encrypted,
         delivery: Delivery::Sent,
         edited: false,

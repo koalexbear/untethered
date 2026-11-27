@@ -361,6 +361,30 @@ impl Room {
     pub fn posts(&self) -> impl ExactSizeIterator<Item = &Post> + DoubleEndedIterator {
         self.posts_in(0..self.order.len())
     }
+    /// Keep only the newest `keep` posts, as when the room's timeline closes
+    /// (paging.rs): what's dropped can load again, so the start of history
+    /// counts as not reached.
+    pub fn keep_newest(&mut self, keep: usize) {
+        self.end = false;
+        let drop = self.order.len().saturating_sub(keep);
+        if drop == 0 {
+            return;
+        }
+        for (_, row) in self.order.drain(..drop) {
+            if let Some(post) = self.history.remove(&row)
+                && let Some(id) = post.event_id
+            {
+                self.event_rows.remove(&id);
+            }
+        }
+        self.seams.retain_mut(|seam| {
+            seam.index = match seam.index.checked_sub(drop) {
+                Some(index) => index,
+                None => return false,
+            };
+            true
+        });
+    }
     pub fn posts_in(
         &self,
         range: std::ops::Range<usize>,

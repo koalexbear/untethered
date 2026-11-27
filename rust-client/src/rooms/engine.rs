@@ -174,6 +174,21 @@ impl Room {
     }
 }
 
+/// What an undecryptable message says: waiting for its key, or why it
+/// won't come.
+fn unreadable(why: crate::engine::Unreadable) -> &'static str {
+    use crate::engine::Unreadable;
+    match why {
+        Unreadable::Waiting => "Waiting for encryption keys…",
+        Unreadable::BeforeJoined => "Can't decrypt · sent before you joined",
+        Unreadable::NoBackup => "Can't decrypt · sent before this device, and key backup is off",
+        Unreadable::Unverified => "Can't decrypt · verify this device to read older messages",
+        Unreadable::Withheld => "Can't decrypt · the sender didn't share the key with this device",
+        Unreadable::Untrusted => "Can't decrypt · sent from a device you don't trust",
+        Unreadable::Malformed => "Can't decrypt · the message is malformed",
+    }
+}
+
 fn post(m: Message, time: i64, previous: Option<&Post>) -> Post {
     let stamp = DateTime::from_timestamp_millis(m.time)
         .unwrap_or_default()
@@ -189,7 +204,7 @@ fn post(m: Message, time: i64, previous: Option<&Post>) -> Post {
         Kind::Attachment if media.is_some() => m.body,
         Kind::Attachment => format!("Attachment · {}", m.body),
         Kind::Redacted => "Message removed".into(),
-        Kind::Undecryptable => "Waiting for encryption keys…".into(),
+        Kind::Undecryptable(why) => unreadable(why).into(),
     };
     let content = body.len();
     let note = match m.delivery {
@@ -295,6 +310,45 @@ mod tests {
             media: None,
             from: None,
         }
+    }
+
+    #[test]
+    fn keeping_the_newest_posts_moves_the_seams_with_them() {
+        let mut r = Room::default();
+        r.apply_engine(
+            (1..=10).map(|n| message(n, n, &n.to_string())).collect(),
+            true,
+        );
+        let seam = |index| crate::engine::Seam {
+            index,
+            older: "!old:example".into(),
+            newer: "!new:example".into(),
+            time: None,
+            readable: true,
+        };
+        r.seams = vec![seam(3), seam(8)];
+        r.keep_newest(4);
+        let bodies: Vec<_> = r.posts().map(|p| p.body.as_str()).collect();
+        assert_eq!(bodies, ["7", "8", "9", "10"]);
+        assert_eq!(r.seams.iter().map(|s| s.index).collect::<Vec<_>>(), [2]);
+        assert!(!r.end, "what went can load again");
+        assert!(r.by_id("$3").is_none() && r.by_id("$9").is_some());
+    }
+
+    #[test]
+    fn an_undecryptable_message_says_whether_its_key_may_still_come() {
+        use crate::engine::Unreadable;
+        let mut m = message(1, 1, "");
+        m.kind = Kind::Undecryptable(Unreadable::Waiting);
+        assert_eq!(
+            post(m.clone(), 1, None).body,
+            "Waiting for encryption keys…"
+        );
+        m.kind = Kind::Undecryptable(Unreadable::BeforeJoined);
+        assert_eq!(
+            post(m, 1, None).body,
+            "Can't decrypt · sent before you joined"
+        );
     }
 
     /// A read marker on an edit, which has no row, keeps its place: the

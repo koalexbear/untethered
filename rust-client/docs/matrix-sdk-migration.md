@@ -351,8 +351,9 @@ features now use typed requests on the new engine:
 
 ### Things worth knowing (step 5)
 
-- **Search cost:** each query reads and decrypts every stored event of the
-  room. That's fine for thousands of messages. For large histories, the
+- **Search cost:** each query reads every stored event of the room (the
+  event cache keeps decrypted copies; what's still undecryptable is
+  skipped). That's fine for thousands of messages. For large histories, the
   full-text index in [(b)](#local-search-and-the-mentions-inbox) is still
   the plan.
 - **What search sees:** like gomuks, only what this device has stored, so

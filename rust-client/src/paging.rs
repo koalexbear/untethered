@@ -6,6 +6,11 @@
 //! even when nothing moves: a page that lands outside the shown window
 //! changes no scroll position to report, and scrolling up at the top
 //! reports nothing new either.
+//!
+//! Loaded history is let go again: a room's timeline closes when you leave
+//! it, keeping its newest posts, and the open room starts over from its
+//! newest messages once you're back there with a long history loaded. What
+//! goes stays in the engine's event cache on disk and loads again quickly.
 use crate::{App, Msg};
 use iced::{Task, widget::scrollable::Viewport};
 
@@ -47,7 +52,80 @@ impl Scrolled {
     }
 }
 
+/// Posts a room keeps once its timeline closes.
+const KEEP: usize = 60;
+/// Posts loaded in the open room before it starts over from its newest,
+/// once you're back there.
+const LIMIT: usize = 400;
+/// Between closing the open room's timeline and opening it again.
+const REOPEN: std::time::Duration = std::time::Duration::from_millis(600);
+
 impl App {
+    /// `room` is no longer shown: its timeline closes, and it keeps its
+    /// newest posts until it opens again (`load_selected`).
+    pub fn release_timeline(&mut self, room: String) {
+        if !self.logged_in || room.is_empty() {
+            return;
+        }
+        if let Some(sdk) = &self.sdk {
+            let _ = sdk.try_send(crate::engine::Command::CloseTimeline { room: room.clone() });
+        }
+        if let Some(r) = self.live.list.get_mut(&room) {
+            r.keep_newest(KEEP);
+        }
+        self.released.insert(room);
+    }
+
+    /// Back at the newest message after loading a long history, start the
+    /// open room over from there. Also open the room's timeline again if it
+    /// closed and couldn't reopen yet (offline).
+    pub fn bound_history(&mut self) -> Task<Msg> {
+        let room = self.selected.clone();
+        if self.released.contains(&room) {
+            if self.reopening.as_ref() != Some(&room) {
+                self.load_selected();
+            }
+            return Task::none();
+        }
+        if !self.logged_in
+            || self.scrolled_away
+            || self.restarted.as_ref() == Some(&room)
+            || self.timeline_end.is_some()
+            || self.original.is_some()
+            || self.search.is_some()
+            || self.editing.is_some()
+            || self.timeline_restoring
+            || self.paging(&room)
+            || self
+                .live
+                .list
+                .get(&room)
+                .is_none_or(|r| r.posts().len() <= LIMIT)
+        {
+            return Task::none();
+        }
+        // Once per visit to the newest messages: a timeline that opens with
+        // more (the SDK still holding them) mustn't start over again.
+        self.restarted = Some(room.clone());
+        self.release_timeline(room.clone());
+        // The SDK lets go of a room's events once its last timeline is gone,
+        // which takes a moment; opening again at once would get them back.
+        self.reopening = Some(room.clone());
+        Task::perform(crate::engine::rt::sleep(REOPEN), move |()| {
+            Msg::ReopenTimeline(room)
+        })
+    }
+
+    /// The pause after closing the open room's timeline is over.
+    pub fn reopen_timeline(&mut self, room: String) {
+        if self.reopening.as_ref() == Some(&room) {
+            self.reopening = None;
+            if room == self.selected {
+                self.load_selected();
+            }
+        }
+    }
+
     /// Load more while the timeline sits at an edge with more beyond it.
     pub fn keep_paging(&mut self) -> Task<Msg> {
         let Some((room, at)) = self.scrolled.clone() else {

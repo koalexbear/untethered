@@ -221,6 +221,10 @@ pub enum Command {
         room: String,
         typing: bool,
     },
+    /// The App no longer shows this room: drop its timeline (timeline.rs).
+    CloseTimeline {
+        room: String,
+    },
     /// Whether to send typing notices, synced as account data.
     ShareTyping {
         id: i64,
@@ -679,7 +683,27 @@ pub enum Kind {
     Attachment,
     Sticker,
     Redacted,
-    Undecryptable,
+    Undecryptable(Unreadable),
+}
+
+/// Why a message can't be read: its key may still come, or the SDK's best
+/// guess (`UtdCause`) says it won't.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub enum Unreadable {
+    /// From the sender's devices, or from key backup.
+    #[default]
+    Waiting,
+    /// Sent before we joined; its key was never shared with us.
+    BeforeJoined,
+    /// Sent before this device existed, with no key backup to restore it.
+    NoBackup,
+    /// Sent before this device existed; key backup needs it verified.
+    Unverified,
+    /// The sender's device didn't share the key with this device.
+    Withheld,
+    /// Sent from a device or identity this account doesn't trust.
+    Untrusted,
+    Malformed,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
@@ -1251,6 +1275,13 @@ impl Engine {
             Command::Typing { room, typing } => {
                 if let Some(live) = &self.live {
                     let _ = live.typing.try_send((room, typing));
+                }
+            }
+            // Before the next command: a Paginate after it opens the room
+            // afresh rather than paging the timeline that's going away.
+            Command::CloseTimeline { room } => {
+                if let Some(live) = &self.live {
+                    live.timelines.close(&room).await;
                 }
             }
             Command::ShareTyping { id, send } => {
