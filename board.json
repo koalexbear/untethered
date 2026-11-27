@@ -16,6 +16,7 @@
     "rust-client/src/main.rs",
     "rust-client/src/rooms.rs",
     "rust-client/src/rooms/engine.rs",
+    "rust-client/src/switcher.rs",
     "rust-client/src/view.rs",
     "rust-client/src/view/context_menu.rs",
     "rust-client/src/view/forward.rs",
@@ -25,7 +26,7 @@
    ],
    "status": "working",
    "title": "Forward messages",
-   "updated": "2026-11-27T17:45:49Z",
+   "updated": "2026-11-27T17:53:13Z",
    "worktree": "."
   },
   "N3": {
