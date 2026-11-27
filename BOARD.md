@@ -2,7 +2,9 @@
 
 Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 
-Nothing claimed.
+| ID | Title | Agent | Branch | Status | Updated | Paths |
+|---|---|---|---|---|---|---|
+| N1 | Quick switcher | main-session | `n1-quick-switcher` | working | 2026-11-27T13:44:37Z | `README.md`, `ROADMAP.md`, `rust-client/src/hotkeys.rs`, `rust-client/src/main.rs`, `rust-client/src/switcher.rs`, `rust-client/src/view.rs`, `rust-client/src/view/switcher.rs`, `scripts/qa_quick_switcher.py` |
 
 ## Done
 
