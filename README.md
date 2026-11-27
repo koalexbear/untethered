@@ -340,7 +340,13 @@ thumbnail.
 window; closing it leaves the timeline where it was. Images load at full size (originals up to 48 MiB); **←** and **→**
 or the side arrows step through the room's images and videos, loading older
 history past the first. **Escape**, **×** or a click outside closes it, and
-**Download** saves the file. On Linux, videos play in the viewer through
+**Download** saves the file. Click a picture to zoom in on that spot (to twice
+its size, or to its own pixels if it was shrunk to fit) and again to fit it;
+the mouse wheel zooms in and out around the pointer, up to eight times, and a
+drag moves a zoomed picture around.
+**Copy Image** puts a picture's original on the clipboard as a PNG, ready to
+paste elsewhere: in a message's right-click menu, and as the copy button in the
+viewer (desktop only). On Linux, videos play in the viewer through
 GStreamer with play/pause (**Space** or a click on the picture), seeking and
 mute; common codecs need `gst-plugins-good` and `gst-libav`. The decrypted
 copy lives in `$XDG_RUNTIME_DIR` only while the viewer shows it. Elsewhere

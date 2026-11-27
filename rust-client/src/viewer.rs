@@ -60,6 +60,7 @@ impl App {
             return Task::none();
         };
         let epoch = self.viewer.as_ref().map_or(0, |v| v.epoch) + 1;
+        self.copy_note = None;
         // Dropping the old viewer stops its video and removes its file.
         self.viewer = Some(Viewer {
             room,
@@ -181,6 +182,7 @@ impl App {
 
     pub fn close_viewer(&mut self) {
         self.viewer = None;
+        self.copy_note = None;
     }
 
     pub fn viewer_image(&mut self, epoch: u64, image: Option<Handle>) {

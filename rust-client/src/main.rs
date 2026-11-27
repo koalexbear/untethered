@@ -14,6 +14,8 @@ mod browser_verification;
 mod call_devices;
 mod community;
 mod context_menu;
+#[cfg(not(target_arch = "wasm32"))]
+mod copy_image;
 #[cfg(target_os = "linux")]
 mod desktop_call;
 mod dms;
@@ -314,6 +316,12 @@ enum Msg {
     /// The previous (-1) or next (+1) image or video.
     ViewerStep(i32),
     CloseViewer,
+    /// Copy an image attachment's original to the clipboard, and how that
+    /// went (copy_image.rs).
+    #[cfg(not(target_arch = "wasm32"))]
+    CopyImage(media::Media),
+    #[cfg(not(target_arch = "wasm32"))]
+    ImageCopied(Result<(), &'static str>),
     ViewerImage(u64, Option<iced::widget::image::Handle>),
     #[cfg(target_os = "linux")]
     ViewerVideo(u64, bool),
@@ -395,6 +403,9 @@ enum Request {
     Report,
     Search,
     IndexSearch,
+    /// Downloading an image's original to copy it (copy_image.rs).
+    #[cfg(not(target_arch = "wasm32"))]
+    CopyImage(tempfile::TempPath),
     Mentions,
     ReadState(String, Option<String>),
     ShareReads(bool, u64),
@@ -480,6 +491,11 @@ struct App {
     started_dm: Option<String>,
     /// Ctrl+K's quick switcher (switcher.rs).
     switcher: Option<switcher::Switcher>,
+    /// How the last Copy Image went, and a fetched original waiting to be
+    /// put on the clipboard (copy_image.rs).
+    copy_note: Option<&'static str>,
+    #[cfg(not(target_arch = "wasm32"))]
+    copy_ready: Option<tempfile::TempPath>,
     /// Where you were in each room and section (places.rs): what's
     /// remembered, unsaved, restored after signing in, scrolled since last
     /// noted, and the room being taken back to its place.
@@ -610,6 +626,9 @@ impl App {
             new_message: None,
             started_dm: None,
             switcher: None,
+            copy_note: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            copy_ready: None,
             places: Default::default(),
             places_dirty: false,
             places_restored: false,
@@ -1025,6 +1044,10 @@ impl App {
             Msg::OpenViewer(event) => return self.open_viewer(event),
             Msg::ViewerStep(delta) => return self.step_viewer(delta),
             Msg::CloseViewer => self.close_viewer(),
+            #[cfg(not(target_arch = "wasm32"))]
+            Msg::CopyImage(media) => self.copy_image(media),
+            #[cfg(not(target_arch = "wasm32"))]
+            Msg::ImageCopied(result) => self.image_copied(result),
             Msg::ViewerImage(epoch, img) => self.viewer_image(epoch, img),
             #[cfg(target_os = "linux")]
             Msg::ViewerVideo(epoch, fetched) => self.viewer_video(epoch, fetched),
@@ -2051,6 +2074,8 @@ impl App {
             self.bound_history(),
             self.continue_return(),
         ]);
+        #[cfg(not(target_arch = "wasm32"))]
+        let task = Task::batch([task, self.copy_fetched()]);
         self.fill_history();
         self.schedule_link_previews();
         let task = Task::batch([task, self.schedule_avatars()]);

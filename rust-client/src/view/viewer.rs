@@ -1,7 +1,8 @@
 //! The media viewer overlay (`crate::viewer`): the picture or video fitted
 //! to the window over a dark backdrop, the sender and date at the top left,
-//! Download and Close at the top right, and arrows to the room's previous
-//! and next images and videos.
+//! Copy (pictures), Download and Close at the top right, and arrows to the
+//! room's previous and next images and videos. A loaded picture zooms with
+//! the mouse wheel and a click (zoom.rs).
 use super::{App, BOLD, CHANNEL, El, Icon, Msg, TEXT, face, icon};
 use crate::{
     media::{Kind, Media},
@@ -70,6 +71,14 @@ fn picture<'a>(h: &Handle, size: (f32, f32)) -> El<'a> {
     )
 }
 
+/// Tells one picture's zoom from the next one's.
+fn key(event: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    event.hash(&mut hasher);
+    hasher.finish()
+}
+
 fn note<'a>(line: &'a str, media: &Media) -> El<'a> {
     opaque(
         column![
@@ -100,6 +109,10 @@ fn image_stage<'a>(app: &'a App, v: &'a Viewer, media: &'a Media, room: Size) ->
                     .map(|(w, h)| (w as f32, h as f32))
                     .or_else(|| dims(h))
             };
+            if v.image.is_some() {
+                let (w, h2) = natural.unwrap_or((room.width, room.height));
+                return super::zoom::zoom(h.clone(), Size::new(w, h2), key(&v.event)).into();
+            }
             let size = fit(natural.unwrap_or((room.width, room.height)), room);
             picture(h, size)
         }
@@ -238,20 +251,26 @@ fn header<'a>(app: &'a App, r: &'a Room, post: &'a crate::rooms::Post, media: &'
     ]
     .spacing(10)
     .align_y(Center);
-    row![
-        opaque(who),
-        Space::new().width(Fill),
-        opaque(
-            row![
-                round(Icon::Download, 36., Some(Msg::SaveFile(media.clone()))),
-                round(Icon::Close, 36., Some(Msg::CloseViewer)),
-            ]
-            .spacing(8)
-        ),
-    ]
-    .align_y(Center)
-    .padding([12, 16])
-    .into()
+    let mut buttons = row![].spacing(8);
+    #[cfg(not(target_arch = "wasm32"))]
+    if media.kind == Kind::Image {
+        buttons = buttons.push(round(
+            Icon::Copy,
+            36.,
+            (app.connected && !app.copying_image()).then(|| Msg::CopyImage(media.clone())),
+        ));
+    }
+    buttons = buttons
+        .push(round(
+            Icon::Download,
+            36.,
+            Some(Msg::SaveFile(media.clone())),
+        ))
+        .push(round(Icon::Close, 36., Some(Msg::CloseViewer)));
+    row![opaque(who), Space::new().width(Fill), opaque(buttons)]
+        .align_y(Center)
+        .padding([12, 16])
+        .into()
 }
 
 pub(super) fn view<'a>(app: &'a App, v: &'a Viewer) -> El<'a> {
@@ -296,8 +315,9 @@ pub(super) fn view<'a>(app: &'a App, v: &'a Viewer) -> El<'a> {
     ]
     .height(Fill)
     .padding([0, 12]);
+    let copied = app.copy_note.map(|n| format!(" · {n}")).unwrap_or_default();
     let caption = container(
-        text(format!("{} · {index} of {total}", media.name))
+        text(format!("{} · {index} of {total}{copied}", media.name))
             .size(13)
             .color(CHANNEL),
     )

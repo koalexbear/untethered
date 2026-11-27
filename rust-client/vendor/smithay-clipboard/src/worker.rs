@@ -30,6 +30,8 @@ pub enum Command {
     ComposerOffer(Sender<Result<Option<crate::PasteOffer>>>),
     /// Store data to a clipboard.
     Store(String),
+    /// Offer a PNG on the clipboard; replies whether it could.
+    StorePng(Vec<u8>, Sender<bool>),
     /// Store data to a primary selection.
     StorePrimary(String),
     /// Load data from a clipboard.
@@ -70,6 +72,9 @@ fn worker_impl(
                     },
                     Command::Store(contents) => {
                         state.store_selection(SelectionTarget::Clipboard, contents);
+                    },
+                    Command::StorePng(png, reply) => {
+                        let _ = reply.send(state.store_png(png).is_some());
                     },
                     Command::Load if state.data_device_manager_state.is_some() => {
                         if let Err(err) = state.load_selection(SelectionTarget::Clipboard) {

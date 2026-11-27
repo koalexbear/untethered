@@ -60,6 +60,8 @@ pub struct State {
 
     data_sources: Vec<CopyPasteSource>,
     data_selection_content: Rc<[u8]>,
+    /// The clipboard holds a PNG (Untethered's Copy Image), not text.
+    data_selection_png: bool,
 }
 
 impl State {
@@ -92,6 +94,7 @@ impl State {
             registry_state: RegistryState::new(globals),
             primary_selection_content: Rc::from([]),
             data_selection_content: Rc::from([]),
+            data_selection_png: false,
             queue_handle: queue_handle.clone(),
             primary_selection_manager_state,
             primary_sources: Vec::new(),
@@ -123,6 +126,7 @@ impl State {
             SelectionTarget::Clipboard => {
                 let mgr = self.data_device_manager_state.as_ref()?;
                 self.data_selection_content = contents;
+                self.data_selection_png = false;
                 let source =
                     mgr.create_copy_paste_source(&self.queue_handle, ALLOWED_MIME_TYPES.iter());
                 source.set_selection(seat.data_device.as_ref().unwrap(), seat.latest_serial);
@@ -251,9 +255,26 @@ impl State {
         Ok(())
     }
 
+    /// Offer a PNG on the clipboard, as Untethered's Copy Image does.
+    pub fn store_png(&mut self, png: Vec<u8>) -> Option<()> {
+        let latest = self.latest_seat.as_ref()?;
+        let seat = self.seats.get_mut(latest)?;
+        if !seat.has_focus {
+            return None;
+        }
+        let mgr = self.data_device_manager_state.as_ref()?;
+        self.data_selection_content = Rc::from(png);
+        self.data_selection_png = true;
+        let source = mgr.create_copy_paste_source(&self.queue_handle, ["image/png"]);
+        source.set_selection(seat.data_device.as_ref()?, seat.latest_serial);
+        self.data_sources.push(source);
+        Some(())
+    }
+
     fn send_request(&mut self, ty: SelectionTarget, write_pipe: WritePipe, mime: String) {
-        // We can only send strings, so don't do anything with the mime-type.
-        if MimeType::find_allowed(&[mime]).is_none() {
+        // A PNG goes only as one; text goes as any text type we offered.
+        let png = matches!(ty, SelectionTarget::Clipboard) && self.data_selection_png;
+        if png && mime != "image/png" || !png && MimeType::find_allowed(&[mime]).is_none() {
             return;
         }
 

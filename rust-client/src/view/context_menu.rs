@@ -213,7 +213,7 @@ fn glyph(entry: Entry) -> Option<Icon> {
         Entry::AddReaction => Some(Icon::Smile),
         Entry::Reply => Some(Icon::Reply),
         Entry::Edit => Some(Icon::Pencil),
-        Entry::CopyText => Some(Icon::Copy),
+        Entry::CopyText | Entry::CopyImage => Some(Icon::Copy),
         Entry::Mention => Some(Icon::At),
         #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
         Entry::Notifications => Some(Icon::Bell),

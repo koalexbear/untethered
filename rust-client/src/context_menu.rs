@@ -134,6 +134,8 @@ pub enum Entry {
     Reply,
     Edit,
     CopyText,
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    CopyImage,
     MarkUnread,
     CopyMessageLink,
     Delete,
@@ -163,6 +165,7 @@ impl Entry {
             Self::Reply => "Reply",
             Self::Edit => "Edit Message",
             Self::CopyText => "Copy Text",
+            Self::CopyImage => "Copy Image",
             Self::MarkUnread => "Mark Unread",
             Self::CopyMessageLink => "Copy Message Link",
             Self::Report => "Report Message",
@@ -203,6 +206,7 @@ impl Entry {
             Self::Reply
             | Self::Edit
             | Self::CopyText
+            | Self::CopyImage
             | Self::MarkUnread
             | Self::CopyMessageLink
             | Self::Kick
@@ -333,6 +337,18 @@ impl App {
             items.push(item(
                 Entry::CopyText,
                 Some(act(Event::CopyText(id.clone()))),
+            ));
+        }
+        // The picture itself, as on Discord (copy_image.rs).
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(media) = p
+            .media
+            .as_ref()
+            .filter(|m| m.kind == crate::media::Kind::Image)
+        {
+            items.push(item(
+                Entry::CopyImage,
+                (self.connected && !self.copying_image()).then(|| Msg::CopyImage(media.clone())),
             ));
         }
         // Receipts never move back in Matrix, so this marks the room unread

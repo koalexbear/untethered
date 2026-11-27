@@ -14,6 +14,7 @@ mod invites;
 mod joining;
 mod link_preview;
 mod switcher;
+mod zoom;
 pub(crate) use link_preview::image_source as link_preview_image;
 mod mentions;
 mod popover;
