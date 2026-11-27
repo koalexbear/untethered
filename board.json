@@ -253,6 +253,7 @@
    "paths": [
     "README.md",
     "ROADMAP.md",
+    "experiments/rtc-audio/README.md",
     "rust-client/docs/calls-parity-plan.md",
     "rust-client/src/desktop_call.rs",
     "rust-client/src/desktop_call/*.rs",
@@ -267,7 +268,7 @@
    ],
    "status": "working",
    "title": "Simulcast, per-tile quality, pause hidden video",
-   "updated": "2026-11-27T20:18:33Z",
+   "updated": "2026-11-27T20:31:12Z",
    "worktree": ".claude/worktrees/v2-simulcast-9158cf"
   }
  },
