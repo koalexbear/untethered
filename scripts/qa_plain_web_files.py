@@ -26,10 +26,12 @@ def browser_roundtrip(tmp,hs,browser,fixture,element,room,alice,bob,hdr,uploads,
         if not ys:raise AssertionError(("Attach button not painted",words()))
         bottom=[y for y in ys if y>ys[-1]-30]
         y=(bottom[0]+bottom[-1])//2
-        with page.expect_file_chooser(timeout=8000) as picker:page.mouse.click(356,y,delay=85)
+        # The + opens Discord's menu above it; Upload a File opens the picker.
+        page.mouse.click(356,y,delay=85)
+        upload=point("Upload a File in the + menu",lambda ws:next(((x,uy) for w,x,uy in ws
+                     if w=="upload" and uy<y),None))
+        with page.expect_file_chooser(timeout=8000) as picker:page.mouse.click(*upload,delay=85)
         picker.value.set_files([str(p) for p in paths])
-        # Off the button: its "Attach files" tooltip covers the start of the
-        # size-limit notice.
         page.mouse.move(900,300)
     def skipped(ws):
         line={t for t,x,y in ws if x>CHAT_X and y>440}

@@ -187,6 +187,7 @@ fn message(event: &TimelineEvent, row: i64, me: &str, sources: &Sources) -> Opti
         receipts: Vec::new(),
         media: None,
         from: None,
+        poll: None,
     };
     match parsed {
         Some(AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomMessage(m))) => {

@@ -18,6 +18,7 @@ mod joining;
 mod link_preview;
 #[cfg(target_os = "linux")]
 mod players;
+mod polls;
 mod switcher;
 mod zoom;
 pub(crate) use link_preview::image_source as link_preview_image;
@@ -1291,6 +1292,8 @@ impl App {
             .or_else(|| self.block_dialog())
             .or_else(|| self.new_message_dialog())
             .or_else(|| self.forward_dialog())
+            .or_else(|| self.poll_dialog())
+            .or_else(|| self.end_poll_dialog())
             .unwrap_or_else(none);
         let viewer = self
             .viewer
@@ -2864,6 +2867,8 @@ impl App {
                     .spacing(4)
                     .align_y(Center),
                 );
+            } else if let Some(poll) = &p.poll {
+                message = message.push(self.poll_card(p, poll));
             } else if let Some(doc) = p.rich.as_deref().filter(|_| caption) {
                 message = message.push(rich::view(
                     self,
@@ -3409,13 +3414,16 @@ impl App {
                 ..Default::default()
             })
         });
-        let attach = with_tip(
+        // Discord's +: a menu with Upload a File and Create Poll (polls.rs),
+        // over the composer.
+        let open = self.composer_menu;
+        let attach = popover::popover(
             button(container(icon(Icon::Plus, 16., FIELD)).center(24))
                 .padding(0)
-                .on_press(Msg::PickFiles)
-                .style(|_, s| button::Style {
+                .on_press(Msg::ComposerMenu(!open))
+                .style(move |_, s| button::Style {
                     background: Some(
-                        if s == button::Status::Hovered {
+                        if open || s == button::Status::Hovered {
                             BODY
                         } else {
                             ICON
@@ -3425,8 +3433,9 @@ impl App {
                     border: Border::default().rounded(12),
                     ..Default::default()
                 }),
-            "Attach files",
-            tooltip::Position::Top,
+            self.composer_menu(),
+            popover::Place::Below,
+            Msg::ComposerMenu(false),
         );
         // Discord's emoji button: the emoji picker, inserting at the cursor.
         let emoji = icon_button(

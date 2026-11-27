@@ -95,6 +95,8 @@ pub struct Post {
     pub event_id: Option<String>,
     pub reply: Option<String>,
     pub media: Option<crate::media::Media>,
+    /// A poll's question, answers and votes (polls.rs).
+    pub poll: Option<crate::polls::Poll>,
     pub sender: String,
     /// Plain text: what search, reply quotes, copying and notifications use.
     pub body: String,
@@ -341,6 +343,7 @@ impl Room {
             event_id,
             reply,
             media,
+            poll: None,
             sender: string(&e["sender"]),
             body,
             formatted,

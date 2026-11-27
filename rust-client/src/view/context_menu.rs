@@ -107,6 +107,21 @@ impl App {
         ))
     }
 
+    /// Asks before ending a poll, as Element does: its votes are final.
+    pub(super) fn end_poll_dialog(&self) -> Option<El<'_>> {
+        let (room, event) = self.context_menu.ending.as_ref()?;
+        Some(
+            self.confirm_destructive(
+                "End Poll".into(),
+                "End this poll now? Everyone sees the final results.".into(),
+                "Nobody can vote once it has ended.",
+                "End Poll",
+                self.can_end_poll(room, event)
+                    .then_some(Menu::ConfirmEndPoll),
+            ),
+        )
+    }
+
     pub(super) fn leave_dialog(&self) -> Option<El<'_>> {
         let room = self.context_menu.leaving.as_ref()?;
         let r = self.live.list.get(room)?;
@@ -140,7 +155,7 @@ impl App {
         ))
     }
 
-    fn confirm_destructive(
+    pub(super) fn confirm_destructive(
         &self,
         title: String,
         question: String,
@@ -214,6 +229,7 @@ fn glyph(entry: Entry) -> Option<Icon> {
         Entry::Reply => Some(Icon::Reply),
         Entry::Forward => Some(Icon::Forward),
         Entry::Edit => Some(Icon::Pencil),
+        Entry::EndPoll => Some(Icon::Poll),
         Entry::CopyText | Entry::CopyImage => Some(Icon::Copy),
         Entry::Mention => Some(Icon::At),
         #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
