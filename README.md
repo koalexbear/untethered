@@ -102,6 +102,15 @@ opens it. To use a link someone gave you, click **+** at the bottom of the
 server rail and paste it under **Have an invite already?**, then **Join a
 Server**.
 
+**Direct messages and blocking:** in Direct Messages, the **+** beside the
+heading opens **New Message**. Type a name to search your homeserver's user
+directory, or a full Matrix ID like `@alex:example.org`, and pick one person
+for a DM or up to nine for a group DM. Both are encrypted, and other Matrix
+apps list them as DMs. To block someone, right-click their name or open their
+profile and choose **Block**: their messages, invites and calls stay away,
+here and in other Matrix apps, and they aren't told. Unblock them under
+**User Settings → Privacy → Blocked people**.
+
 **Right-click menus:** Right-click a message for everything its toolbar does
 plus **Copy Text**, **Copy Message Link** (a matrix.to link) and **Mark
 Unread** (Matrix receipts can't move back, so this marks the room unread).

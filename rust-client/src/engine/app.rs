@@ -331,6 +331,7 @@ impl App {
             Event::ProfileDirect { id, result } => self.profile_direct(id, result),
             Event::Rooms(list) => {
                 let left = self.live.apply_engine(list);
+                self.hide_blocked_invites();
                 self.keep_link_preview_switches();
                 for left in left {
                     self.reply_drafts.remove(&left);
@@ -348,6 +349,7 @@ impl App {
                 self.open_created();
                 self.open_profile_dm();
                 self.open_joined_invite();
+                self.open_started_dm();
                 // An invite withdrawn or answered elsewhere closes its card.
                 if let Some(id) = &self.invite_open
                     && self.invite(id).is_none()
@@ -357,7 +359,11 @@ impl App {
             }
             Event::LinkPreview { url, preview } => self.link_previews.arrived(url, preview),
             Event::RoomPreview { target, result } => self.room_previewed(target, result),
-            Event::Timeline(t) => {
+            Event::People { term, result } => self.people_found(term, result),
+            Event::Blocked(users) => self.blocked_changed(users),
+            Event::Timeline(mut t) => {
+                // Blocked people's messages stay hidden (dms.rs).
+                t.messages.retain(|m| !self.blocked.contains(&m.sender));
                 if let Some(r) = self.live.list.get_mut(&t.room) {
                     r.apply_engine(t.messages, t.start_reached);
                     r.read.set_latest(t.latest_event);
@@ -611,6 +617,7 @@ impl App {
             }
             (Request::LeaveRoom(room), result) => self.left_room(&room, result.is_ok()),
             (Request::AcceptInvite(room), result) => self.invite_answered(room, true, result.is_ok()),
+            (Request::Block(user, block), result) => self.block_answered(user, block, result.is_ok()),
             (Request::JoinRoom(target), result) => self.room_joined(target, result.is_ok()),
             (Request::DeclineInvite(room), result) => {
                 self.invite_answered(room, false, result.is_ok())
@@ -729,6 +736,7 @@ impl App {
             (Request::Setup(Step::Create), Ok(room)) => self.setup_created(room),
             (Request::Setup(Step::Link), Ok(event)) => self.setup_linked(&event),
             (Request::Setup(step), Err(_)) => self.setup_error(step),
+            (Request::StartDm, result) => self.dm_started(result),
             _ => {}
         }
     }

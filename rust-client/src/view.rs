@@ -6,6 +6,7 @@ mod call_controls;
 mod call_stage;
 mod community;
 mod context_menu;
+mod dms;
 mod emoji_picker;
 mod hover;
 mod icons;
@@ -1229,6 +1230,8 @@ impl App {
         let dialog = self
             .delete_dialog()
             .or_else(|| self.leave_dialog())
+            .or_else(|| self.block_dialog())
+            .or_else(|| self.new_message_dialog())
             .unwrap_or_else(none);
         let viewer = self
             .viewer
@@ -1508,7 +1511,14 @@ impl App {
         }
         people
     }
-    fn category<'a>(&self, key: &str, title: &'a str, create: Option<Msg>) -> El<'a> {
+    /// A category's heading, with a **+** that does `create` (and says
+    /// what in its tooltip).
+    fn category<'a>(
+        &self,
+        key: &str,
+        title: &'a str,
+        create: Option<(Msg, &'static str)>,
+    ) -> El<'a> {
         let open = !self.collapsed.contains(key);
         let head = button(
             row![
@@ -1531,10 +1541,10 @@ impl App {
         .on_press(Msg::Collapse(key.into()))
         .style(plain(CHANNEL, BODY));
         let mut line = row![head].align_y(Center);
-        if let Some(msg) = create {
+        if let Some((msg, tip)) = create {
             line = line.push(icon_button(
                 Icon::Plus,
-                "Create Channel",
+                tip,
                 false,
                 Some(msg),
                 tooltip::Position::Top,
@@ -1594,17 +1604,22 @@ impl App {
             ("voice", "VOICE CHANNELS", voice),
             ("direct", "DIRECT MESSAGES", direct),
         ];
+        // Direct Messages always has its heading, whose + starts a DM.
+        let direct_home = self.section == Section::Direct;
+        let new_message = (self.logged_in && self.verified && self.new_message.is_none())
+            .then_some((Msg::Dm(crate::dms::Input::Open), "Create DM"));
         for (kind, title, rooms) in groups {
-            if rooms.is_empty() {
+            if rooms.is_empty() && !(kind == "direct" && direct_home) {
                 continue;
             }
             let key = format!("{section}/{kind}");
             let open = !self.collapsed.contains(&key);
-            list = list.push(self.category(
-                &key,
-                title,
-                (kind != "direct").then(|| create.clone()).flatten(),
-            ));
+            let plus = if kind == "direct" {
+                new_message.clone()
+            } else {
+                create.clone().map(|msg| (msg, "Create Channel"))
+            };
+            list = list.push(self.category(&key, title, plus));
             for (id, r) in rooms {
                 // A collapsed category still shows unread and selected channels.
                 if !open && !r.unread && !(self.mentions.is_none() && id == &self.selected) {
@@ -3090,7 +3105,13 @@ impl App {
         } else if restricted {
             "Read-only for your account".into()
         } else {
-            format!("Message {}{}", if r.dm { "@" } else { "#" }, r.name)
+            // A group DM is named for its people, with no one to @.
+            let sign = match (r.dm, &r.dm_peer) {
+                (true, Some(_)) => "@",
+                (true, None) => "",
+                (false, _) => "#",
+            };
+            format!("Message {sign}{}", r.name)
         };
         let editor = text_editor(&self.editor)
             .id("composer")
@@ -3796,7 +3817,10 @@ impl App {
             .into(),
         );
         let typing = self.typing_setting(&setting);
-        page = page.push(group("PRIVACY", vec![receipts, typing]));
+        page = page.push(group(
+            "PRIVACY",
+            vec![receipts, typing, self.blocked_list()],
+        ));
         #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
         {
             let dnd = self.alerts.dnd;

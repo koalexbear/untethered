@@ -274,6 +274,7 @@ impl App {
             || !self.verified
             || self.closing
             || notice.sender == self.matrix_id
+            || self.blocked.contains(&notice.sender)
             || self.alerts.recent.iter().any(|old| *old == notice.event_id)
         {
             return;

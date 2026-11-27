@@ -96,6 +96,11 @@ impl App {
             wanted.extend(i.avatar.as_deref());
             wanted.extend(i.inviter_avatar.as_deref());
         }
+        // New message lists the people found (dms.rs).
+        if let Some(form) = &self.new_message {
+            wanted.extend(form.found.iter().filter_map(|p| p.avatar.as_deref()));
+            wanted.extend(form.picked.iter().filter_map(|p| p.avatar.as_deref()));
+        }
         // A linked room's preview shows its picture (joining.rs).
         if let Some(crate::joining::PreviewState::Ready(p)) =
             self.room_preview.as_ref().map(|p| &p.state)

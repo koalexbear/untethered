@@ -50,16 +50,22 @@ pub struct State {
     /// The room waiting for Leave to be confirmed.
     pub leaving: Option<String>,
     pub deleting: Option<(String, String)>,
+    /// The person waiting for Block to be confirmed (dms.rs).
+    pub blocking: Option<String>,
 }
 impl State {
     /// Escape closes the menu or the leave dialog before anything beneath.
     pub fn is_open(&self) -> bool {
-        self.open.is_some() || self.leaving.is_some() || self.deleting.is_some()
+        self.open.is_some()
+            || self.leaving.is_some()
+            || self.deleting.is_some()
+            || self.blocking.is_some()
     }
     pub fn dismiss(&mut self) {
         self.open = None;
         self.leaving = None;
         self.deleting = None;
+        self.blocking = None;
     }
 }
 
@@ -111,6 +117,10 @@ pub enum Event {
         event: String,
     },
     ConfirmDelete,
+    /// Ask before blocking someone; unblocking doesn't ask.
+    Block(String),
+    ConfirmBlock,
+    Unblock(String),
     /// Mark a room read whose timeline isn't open, so its newest event is
     /// unknown here: the engine finds it among what sync delivered.
     MarkLatestRead(String),
@@ -133,6 +143,8 @@ pub enum Entry {
     Message,
     Kick,
     Ban,
+    Block,
+    Unblock,
     CopyUserId,
     MarkRead,
     #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
@@ -161,6 +173,8 @@ impl Entry {
             // Both open the member card, where a reason goes with the action.
             Self::Kick => "Kick…",
             Self::Ban => "Ban…",
+            Self::Block => "Block…",
+            Self::Unblock => "Unblock",
             Self::CopyUserId => "Copy User ID",
             Self::MarkRead => "Mark as Read",
             #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
@@ -196,6 +210,7 @@ impl Entry {
             #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
             Self::Notifications => 1,
             Self::ShowLinkPreviews | Self::HideLinkPreviews => 1,
+            Self::Block | Self::Unblock => 2,
             Self::Report | Self::CopyUserId | Self::CopyLink => 2,
             Self::Delete | Self::LeaveChannel | Self::LeaveConversation => 3,
         }
@@ -208,6 +223,7 @@ impl Entry {
                 | Self::Delete
                 | Self::Kick
                 | Self::Ban
+                | Self::Block
                 | Self::LeaveChannel
                 | Self::LeaveConversation
         )
@@ -421,6 +437,17 @@ impl App {
                     ));
                 }
             }
+        }
+        if !me {
+            let block = if self.is_blocked(user) {
+                (Entry::Unblock, Event::Unblock(user.to_owned()))
+            } else {
+                (Entry::Block, Event::Block(user.to_owned()))
+            };
+            items.push(item(
+                block.0,
+                (ready && !self.blocking(user)).then(|| act(block.1)),
+            ));
         }
         items.push(item(
             Entry::CopyUserId,
@@ -665,6 +692,22 @@ impl App {
                     );
                 }
             }
+            Event::Block(user) => {
+                if user != self.matrix_id && !self.is_blocked(&user) {
+                    self.context_menu.open = None;
+                    // The card would cover the dialog.
+                    self.sdk_ui.profile.dismiss_card();
+                    self.context_menu.blocking = Some(user);
+                }
+            }
+            Event::ConfirmBlock => {
+                if let Some(user) = self.context_menu.blocking.take()
+                    && self.verified
+                {
+                    self.set_blocked(user, true);
+                }
+            }
+            Event::Unblock(user) => self.set_blocked(user, false),
             Event::ConfirmLeave => {
                 if let Some(room) = self.context_menu.leaving.take()
                     && self.verified
@@ -902,12 +945,13 @@ mod tests {
         let moderator = app(50);
         assert_eq!(
             entries(&moderator.user_items(ROOM, "@low:h")),
-            [Profile, Mention, Kick, Ban, CopyUserId]
+            [Profile, Mention, Kick, Ban, Block, CopyUserId]
         );
-        // Not over someone with more power, nor over yourself.
+        // Not over someone with more power, nor over yourself, whom you
+        // can't block either.
         assert_eq!(
             entries(&moderator.user_items(ROOM, "@high:h")),
-            [Profile, Mention, CopyUserId]
+            [Profile, Mention, Block, CopyUserId]
         );
         assert_eq!(
             entries(&moderator.user_items(ROOM, ME)),
@@ -916,7 +960,7 @@ mod tests {
         let member = app(0);
         assert_eq!(
             entries(&member.user_items(ROOM, "@low:h")),
-            [Profile, Mention, CopyUserId]
+            [Profile, Mention, Block, CopyUserId]
         );
         // Once the member list says they've left, there's no one to kick.
         let mut a = app(50);
@@ -932,7 +976,7 @@ mod tests {
         );
         assert_eq!(
             entries(&a.user_items(ROOM, "@low:h")),
-            [Profile, Mention, Ban, CopyUserId]
+            [Profile, Mention, Ban, Block, CopyUserId]
         );
     }
 

@@ -17,6 +17,7 @@ pub mod browser;
 #[cfg(target_os = "linux")]
 mod calls;
 mod compose;
+mod dms;
 mod invites;
 mod joining;
 #[cfg(not(target_arch = "wasm32"))]
@@ -229,6 +230,22 @@ pub enum Command {
         room: String,
         typing: bool,
     },
+    /// People in the user directory, answered with `Event::People` (dms.rs).
+    SearchPeople {
+        term: String,
+    },
+    /// A DM with one person, or a group DM with several, answered with
+    /// `Event::Created` and the room's ID.
+    StartDm {
+        id: i64,
+        users: Vec<String>,
+    },
+    /// Block or unblock someone (`m.ignored_user_list`).
+    Block {
+        id: i64,
+        user: String,
+        block: bool,
+    },
     /// What the homeserver says about a room by ID or address, answered
     /// with `Event::RoomPreview` (joining.rs).
     PreviewRoom {
@@ -418,6 +435,13 @@ pub enum Event {
         target: String,
         result: Result<RoomPreview, Failure>,
     },
+    /// The user directory's answer to a search for `term`.
+    People {
+        term: String,
+        result: Result<Vec<Person>, Failure>,
+    },
+    /// Who this account blocks, at startup and whenever it changes.
+    Blocked(Vec<String>),
     /// A link's preview, or None when the homeserver has none.
     LinkPreview {
         url: String,
@@ -615,6 +639,15 @@ pub struct RoomList {
     /// Rooms, spaces and DMs this account is invited to (invites.rs).
     #[serde(default)]
     pub invites: Vec<Invite>,
+}
+
+/// Someone found in the user directory (dms.rs).
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Person {
+    pub id: String,
+    pub name: Option<String>,
+    /// Their profile picture (mxc URI).
+    pub avatar: Option<String>,
 }
 
 /// A room reached by a link or address, before joining (joining.rs).
@@ -1349,6 +1382,27 @@ impl Engine {
             Command::MarkRoomRead { id, room, public } => {
                 self.job(id, move |client, _, _| async move {
                     rooms::mark_latest_read(&client, &room, public).await
+                })
+                .await
+            }
+            Command::SearchPeople { term } => {
+                if let Some(live) = &self.live {
+                    let (client, events) = (live.client.clone(), self.events.clone());
+                    rt::spawn(async move {
+                        let result = dms::search(&client, &term).await;
+                        let _ = events.send(Event::People { term, result }).await;
+                    });
+                }
+            }
+            Command::StartDm { id, users } => {
+                self.created(id, move |client| async move {
+                    dms::start(&client, &users).await
+                })
+                .await
+            }
+            Command::Block { id, user, block } => {
+                self.job(id, move |client, _, _| async move {
+                    dms::block(&client, &user, block).await
                 })
                 .await
             }
