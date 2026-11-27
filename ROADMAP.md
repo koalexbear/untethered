@@ -48,58 +48,88 @@ Ordered by what a community moving from Discord misses most, then by effort.
 Each step names the check that says it's done; add it to the QA scripts
 (`scripts/qa_ui.py` and friends) as it lands.
 
+### Matrix support
+
+The **Matrix** column says where each step stands in the protocol: **Spec**
+(any up-to-date homeserver), an accepted or unstable **MSC** (a Matrix spec
+proposal; read both its unstable and stable names), or **Client**, with
+nothing for other clients to read. Where Discord has something Matrix
+doesn't:
+
+1. **Prefer** the spec, then accepted MSCs, then MSCs Element already ships,
+   so other clients understand what we send.
+2. **Store it by who needs to see it:** this device only, in local
+   settings; all your devices, in account data under our own name
+   (`io.github.koalexbear.untethered.*`); everyone in a room, in our own
+   state events, which power levels decide who may change. Account data
+   isn't end-to-end encrypted: nothing from an encrypted room goes there
+   unencrypted.
+3. **Never break other clients:** what we add reads sensibly in Element
+   (fallback text, ordinary events), and the UI says when something is
+   Untethered-only.
+4. **Never fake enforcement:** the server enforces power levels and
+   nothing else. Slowmode, timeouts, invite links that expire or run out,
+   stage speakers, forum channels and scheduled events need a bot, a server
+   feature or an MSC; until then they're left out, or offered with what
+   Matrix can enforce (lowering a power level, removing an address).
+5. **Ask the server** what it offers (versions, capabilities, presence,
+   link previews, call servers) and hide what it doesn't, rather than show
+   a button that fails.
+6. **Write it up:** a format we invent gets an MSC under our own unstable
+   name, so other clients can adopt it.
+
 ### Phase 1 — messages that feel like Discord
 
-| Step | Deliverable | Done when |
-|---|---|---|
-| **M1. Rich text** · done | Render received `formatted_body` (and Markdown from clients that only send `body`): bold, italic, strikethrough, inline code, code blocks with a copy button, quotes, lists, links, headings, and spoilers (`data-mx-spoiler`, `\|\|text\|\|`) that reveal on click. Sanitise as Element does. | A message from Element with each construct looks the same in Untethered, and a spoiler stays hidden until clicked. |
-| **M2. Composer autocomplete** · done | `@` members, `#` rooms and `:` emoji shortcodes with a popup above the composer (arrow keys, Tab/Enter), sending proper `m.mentions` and pills; an emoji button that reuses the reaction picker. | Mentioning someone by typing `@mi` + Tab highlights them in Element and in their mentions inbox. |
-| **M3. Typing indicators** · done | Send typing notices while composing (with a privacy toggle) and show "Mira is typing…" / "Several people are typing…" under the composer. | Typing in Element shows the indicator within a second and it clears when they stop or send. |
-| **M4. Right-click menus** · done | Context menus for messages (Reply, Edit, Delete, Copy text, Copy link, Mark unread, Pin, Report), users (Profile, Message, Mention, Kick/Ban by permission) and channels (Mark read, Notifications, Copy link, Leave). | Every action in the hover toolbar is also reachable by right-click and keyboard (Shift+F10 / menu key). |
-| **M5. Profiles** · done | Click an avatar or name for a profile card (picture, name, user ID, power level, Message button); edit your own display name and picture in User Settings. | Changing your picture here updates it in Element and in this client's member list. |
-| **M6. Delete and drafts** · in progress | Delete (redact) your own messages and, with permission, others'; drafts and staged-file captions survive a restart; a "N new messages since 14:02" bar at the top with Mark as read. | A redaction from either client removes the message in both; a draft typed before quitting is still there after restarting. |
-| **M7. Link previews** | URL embeds through the homeserver's `preview_url`, off by default in encrypted rooms, with a per-room switch; image links show inline. | A link to a page with Open Graph tags shows its title, description and image; turning previews off stops the request. |
-| **M8. Forward** | Forward a message, attachments included, to another room or DM from its toolbar and right-click menu. Encrypted attachments are sent again with the same file and key, not uploaded again. | A message and an image forwarded from an encrypted room show in Element's DM as ordinary messages from you, and no new upload happens. |
-| **M9. Polls** | Show, vote in and end polls (MSC3381, as Element does), with live results; create one from the composer's **+**. | A poll started in Element shows here; a vote here moves Element's count; ending it shows the same final tally in both. |
-| **M10. Voice messages** | Record and send a voice message (MSC3245) from the composer, with a waveform; playing received ones is P2. | A voice message recorded here plays in Element with its waveform and length. |
-| **M11. Custom emoji and stickers** | Image packs (MSC2545) for a space and for your account, in the emoji picker, autocomplete and reactions, with a sticker picker. Element shows only the fallback text; Cinny and FluffyChat show the images. | An emoji pack added to a space appears in its rooms' picker; a custom emoji sent here renders in Cinny, and Element shows its `:shortcode:`. |
-| **M12. Names** | Per-server nicknames (Matrix's per-room display names) and an Admin or Moderator badge, or a name colour, from the sender's power level, standing in for Discord's role colours. | A nickname set in one space shows only there, also in Element; a moderator's badge shows wherever their name does. |
-| **M13. Composer details** | Up arrow in an empty composer edits your last message; Escape marks the channel read; a message of only emoji shows larger; code blocks get syntax highlighting; `/me`, `/shrug` and `/spoiler`; spell check if Iced's editor allows it. | Each works as on Discord, and `/me` arrives in Element as an emote. |
-| **M14. Selection across messages** | Drag a selection from one message into the next, and copy their text in order. Today a selection stays within one paragraph. | Dragging across three messages and pressing Ctrl+C pastes their three texts. |
+| Step | Matrix | Deliverable | Done when |
+|---|---|---|---|
+| **M1. Rich text** · done | Spec (`formatted_body`) | Render received `formatted_body` (and Markdown from clients that only send `body`): bold, italic, strikethrough, inline code, code blocks with a copy button, quotes, lists, links, headings, and spoilers (`data-mx-spoiler`, `\|\|text\|\|`) that reveal on click. Sanitise as Element does. | A message from Element with each construct looks the same in Untethered, and a spoiler stays hidden until clicked. |
+| **M2. Composer autocomplete** · done | Spec (`m.mentions`) | `@` members, `#` rooms and `:` emoji shortcodes with a popup above the composer (arrow keys, Tab/Enter), sending proper `m.mentions` and pills; an emoji button that reuses the reaction picker. | Mentioning someone by typing `@mi` + Tab highlights them in Element and in their mentions inbox. |
+| **M3. Typing indicators** · done | Spec | Send typing notices while composing (with a privacy toggle) and show "Mira is typing…" / "Several people are typing…" under the composer. | Typing in Element shows the indicator within a second and it clears when they stop or send. |
+| **M4. Right-click menus** · done | Client | Context menus for messages (Reply, Edit, Delete, Copy text, Copy link, Mark unread, Pin, Report), users (Profile, Message, Mention, Kick/Ban by permission) and channels (Mark read, Notifications, Copy link, Leave). | Every action in the hover toolbar is also reachable by right-click and keyboard (Shift+F10 / menu key). |
+| **M5. Profiles** · done | Spec (profiles; extra fields since v1.16) | Click an avatar or name for a profile card (picture, name, user ID, power level, Message button); edit your own display name and picture in User Settings. | Changing your picture here updates it in Element and in this client's member list. |
+| **M6. Delete and drafts** · in progress | Spec (redactions); drafts per device | Delete (redact) your own messages and, with permission, others'; drafts and staged-file captions survive a restart; a "N new messages since 14:02" bar at the top with Mark as read. | A redaction from either client removes the message in both; a draft typed before quitting is still there after restarting. |
+| **M7. Link previews** | Spec (the server's `preview_url`); opt-in where encrypted | URL embeds through the homeserver's `preview_url`, off by default in encrypted rooms, with a per-room switch; image links show inline. | A link to a page with Open Graph tags shows its title, description and image; turning previews off stops the request. |
+| **M8. Forward** | Spec (content sent again) | Forward a message, attachments included, to another room or DM from its toolbar and right-click menu. Encrypted attachments are sent again with the same file and key, not uploaded again. | A message and an image forwarded from an encrypted room show in Element's DM as ordinary messages from you, and no new upload happens. |
+| **M9. Polls** | Accepted MSC3381 (stable `m.poll.*`) | Show, vote in and end polls (MSC3381, as Element does), with live results; create one from the composer's **+**. | A poll started in Element shows here; a vote here moves Element's count; ending it shows the same final tally in both. |
+| **M10. Voice messages** | Unstable MSC3245, as Element sends it | Record and send a voice message (MSC3245) from the composer, with a waveform; playing received ones is P2. | A voice message recorded here plays in Element with its waveform and length. |
+| **M11. Custom emoji and stickers** | Spec v1.19 (MSC2545 image packs) | Image packs (MSC2545) for a space and for your account, in the emoji picker, autocomplete and reactions, with a sticker picker. Cinny, FluffyChat, Nheko and SchildiChat show them; check Element before relying on it, and send the `:shortcode:` as fallback text. | An emoji pack added to a space appears in its rooms' picker; a custom emoji sent here renders in Cinny, and a client without image packs shows its `:shortcode:`. |
+| **M12. Names** | Spec (per-room names); badges and colours client-side | Per-server nicknames (Matrix's per-room display names) and an Admin or Moderator badge, or a name colour, from the sender's power level, standing in for Discord's role colours. | A nickname set in one space shows only there, also in Element; a moderator's badge shows wherever their name does. |
+| **M13. Composer details** | Spec (`m.emote`); the rest client-side | Up arrow in an empty composer edits your last message; Escape marks the channel read; a message of only emoji shows larger; code blocks get syntax highlighting; `/me`, `/shrug` and `/spoiler`; spell check if Iced's editor allows it. | Each works as on Discord, and `/me` arrives in Element as an emote. |
+| **M14. Selection across messages** | Client | Drag a selection from one message into the next, and copy their text in order. Today a selection stays within one paragraph. | Dragging across three messages and pressing Ctrl+C pastes their three texts. |
 
 ### Phase 2 — getting people in
 
-| Step | Deliverable | Done when |
-|---|---|---|
-| **J1. Invites** | Invites to spaces, rooms and DMs, shown with who sent them, in the server rail and DM list with **Accept** and **Decline**. Today the room list shows joined rooms only, so invites never appear. | An invite from Element to a space, a room and a DM each shows here within a sync; **Accept** joins and opens it, **Decline** removes it in both clients. |
-| **J2. Join by link** | `matrix.to` links and `#room:server` addresses open in the app: rooms you're in open, others show a preview (name, topic, members) with **Join**. **Join a server** in the server rail's **+** takes a link or address. | A link to a room you're not in shows its preview and joins on a click; pasting `#room:server` into **Join a server** does the same; nothing opens a browser. |
-| **J3. DMs and blocking** | **New message** with user-directory search for a DM or a group DM, and blocking people (`m.ignored_user_list`): their messages, invites and calls stay away. | A DM and a group DM started here are encrypted rooms Element lists as DMs; blocking someone hides them here and in Element. |
-| **J4. Explore** | The homeserver's public rooms and spaces, searchable, with a preview before joining. | A public space found here joins and shows its channels. |
-| **J5. Sign-in everywhere** | OIDC through the Matrix Authentication Service, which matrix.org and other homeservers are moving to, single sign-on in the browser too (desktop-only now), and creating an account where the homeserver allows it. | Signing in to a homeserver that uses MAS works on the desktop and in Chromium, and a new account can be created and verified. |
+| Step | Matrix | Deliverable | Done when |
+|---|---|---|---|
+| **J1. Invites** | Spec | Invites to spaces, rooms and DMs, shown with who sent them, in the server rail and DM list with **Accept** and **Decline**. Today the room list shows joined rooms only, so invites never appear. | An invite from Element to a space, a room and a DM each shows here within a sync; **Accept** joins and opens it, **Decline** removes it in both clients. |
+| **J2. Join by link** | Spec (`matrix.to`, `matrix:` links); previews as the server allows | `matrix.to` links and `#room:server` addresses open in the app: rooms you're in open, others show a preview (name, topic, members) with **Join**. **Join a server** in the server rail's **+** takes a link or address. | A link to a room you're not in shows its preview and joins on a click; pasting `#room:server` into **Join a server** does the same; nothing opens a browser. |
+| **J3. DMs and blocking** | Spec (`m.direct`, user directory, `m.ignored_user_list`) | **New message** with user-directory search for a DM or a group DM, and blocking people (`m.ignored_user_list`): their messages, invites and calls stay away. | A DM and a group DM started here are encrypted rooms Element lists as DMs; blocking someone hides them here and in Element. |
+| **J4. Explore** | Spec (public room directory) | The homeserver's public rooms and spaces, searchable, with a preview before joining. | A public space found here joins and shows its channels. |
+| **J5. Sign-in everywhere** | Spec v1.15 (OAuth 2.0; matrix.org runs MAS) | OIDC through the Matrix Authentication Service, which matrix.org and other homeservers are moving to, single sign-on in the browser too (desktop-only now), and creating an account where the homeserver allows it. | Signing in to a homeserver that uses MAS works on the desktop and in Chromium, and a new account can be created and verified. |
 
 ### Phase 3 — navigation and the desktop
 
-| Step | Deliverable | Done when |
-|---|---|---|
-| **N1. Quick switcher** | Ctrl+K: fuzzy search over rooms, DMs and spaces, unread first. | Ctrl+K, three letters and Enter opens a room without the mouse. |
-| **N2. Remember where you were** | Last room per space and scroll position per room, restored on switch and restart. | Leave a room mid-history, visit two others, come back to the same message. |
-| **N3. Pins and threads** | Pinned messages panel (`m.room.pinned_events`); Matrix threads in a side panel with a thread list per channel. | A thread started in Element shows its replies in the panel; pinning here shows in Element. |
-| **N4. Presence** | Online/idle/offline dots and custom status where the homeserver enables presence; hide them cleanly where it doesn't. | Going idle in Element turns the dot amber here within a minute. |
-| **N5. Channel order** | Drag to reorder channels and categories, writing `m.space.child` `order`. | The order made here appears in Element's space view. |
-| **N6. System tray** · done | A tray icon (StatusNotifierItem on KDE and GNOME, for example with `ksni`; the notification area on Windows) with an unread and mention badge. Closing the window keeps Untethered running in the tray, as Discord does (a setting, on by default), so messages, notifications, ringing and calls carry on. The tray menu offers Open, Mute, Deafen, Do Not Disturb and Quit; optionally start at login (XDG autostart, the Windows Run key) minimised to the tray. Not applicable on the web. | Close the window during a call: audio continues, the tray shows the call and a mention badge, Mute in the tray menu mutes, an incoming DM call still rings, and Quit leaves the call and exits cleanly. |
-| **N7. Search across a space** | Search a space or all rooms with Discord's filters (`from:`, `in:`, `has:file`/`image`/`link`, `before:`, `after:`): the homeserver's search for unencrypted rooms, so it finds history this device never loaded, and a local full-text index for encrypted ones. Results say which rooms were searched and how far back. | A week-old file found with `from:` and `has:file` in an unencrypted channel never opened on this device, and in an encrypted one once indexed. |
-| **N8. Server rail order and folders** | Drag servers to reorder them and group them into folders, kept in account data. | The order and a folder made here are the same after a restart and on a second device. |
-| **N9. Sounds and shortcuts** | Sounds for messages, mentions, voice join and leave, mute and deafen, each with a switch; Discord's shortcuts: next unread channel (Alt+Shift+↓), mark a server read (Shift+Escape), and Ctrl+/ for the list. | Each sound plays and can be turned off; Alt+Shift+↓ opens the next unread channel. |
+| Step | Matrix | Deliverable | Done when |
+|---|---|---|---|
+| **N1. Quick switcher** | Client | Ctrl+K: fuzzy search over rooms, DMs and spaces, unread first. | Ctrl+K, three letters and Enter opens a room without the mouse. |
+| **N2. Remember where you were** | Client | Last room per space and scroll position per room, restored on switch and restart. | Leave a room mid-history, visit two others, come back to the same message. |
+| **N3. Pins and threads** | Spec (pinned events; threads since v1.4) | Pinned messages panel (`m.room.pinned_events`); Matrix threads in a side panel with a thread list per channel. | A thread started in Element shows its replies in the panel; pinning here shows in Element. |
+| **N4. Presence** | Spec, often off on large servers | Online/idle/offline dots and custom status where the homeserver enables presence; hide them cleanly where it doesn't. | Going idle in Element turns the dot amber here within a minute. |
+| **N5. Channel order** | Spec (`m.space.child` `order`) | Drag to reorder channels and categories, writing `m.space.child` `order`. | The order made here appears in Element's space view. |
+| **N6. System tray** · done | Client | A tray icon (StatusNotifierItem on KDE and GNOME, for example with `ksni`; the notification area on Windows) with an unread and mention badge. Closing the window keeps Untethered running in the tray, as Discord does (a setting, on by default), so messages, notifications, ringing and calls carry on. The tray menu offers Open, Mute, Deafen, Do Not Disturb and Quit; optionally start at login (XDG autostart, the Windows Run key) minimised to the tray. Not applicable on the web. | Close the window during a call: audio continues, the tray shows the call and a mention badge, Mute in the tray menu mutes, an incoming DM call still rings, and Quit leaves the call and exits cleanly. |
+| **N7. Search across a space** | Spec (`/search`, unencrypted rooms); a local index for encrypted | Search a space or all rooms with Discord's filters (`from:`, `in:`, `has:file`/`image`/`link`, `before:`, `after:`): the homeserver's search for unencrypted rooms, so it finds history this device never loaded, and a local full-text index for encrypted ones. Results say which rooms were searched and how far back. | A week-old file found with `from:` and `has:file` in an unencrypted channel never opened on this device, and in an encrypted one once indexed. |
+| **N8. Server rail order and folders** | Order: unstable MSC3230, as Element; folders: own account data | Drag servers to reorder them, saved as Element does (`org.matrix.msc3230.space_order` in each space's account data) so both clients agree, and group them into folders, which only Untethered shows (its own account data). | The order and a folder made here are the same after a restart and on a second device. |
+| **N9. Sounds and shortcuts** | Client | Sounds for messages, mentions, voice join and leave, mute and deafen, each with a switch; Discord's shortcuts: next unread channel (Alt+Shift+↓), mark a server read (Shift+Escape), and Ctrl+/ for the list. | Each sound plays and can be turned off; Alt+Shift+↓ opens the next unread channel. |
 
 ### Phase 4 — media follow-ups
 
-| Step | Deliverable | Done when |
-|---|---|---|
-| **P1. Animated images** | Play GIF and animated WebP in the timeline and viewer (pause when off screen). | A GIF sent from Element animates here and stops using CPU when scrolled away. |
-| **P2. Inline players** | Play videos inline in the timeline as Discord does, plus an audio player for voice notes and `m.audio`. | A short clip plays without opening the viewer; an audio file shows a waveform-less player with seek. |
-| **P3. Viewer polish** | Zoom and pan, a thumbnail strip, copy image, preloading the neighbouring images, and a gallery layout for several attachments in one message. | Ten screenshots step without a loading pause; scroll-zoom keeps the point under the cursor. |
-| **P4. Video everywhere** | Video playback on Windows (Media Foundation or bundled GStreamer) and in the browser (an HTML `<video>` element over the canvas). | The same MP4 plays on Linux, Windows and Chromium. |
-| **P5. Sending video** | Thumbnail, dimensions and duration for videos you send, so other clients show a poster. | A clip sent from here shows its poster frame in Element. |
+| Step | Matrix | Deliverable | Done when |
+|---|---|---|---|
+| **P1. Animated images** | Client | Play GIF and animated WebP in the timeline and viewer (pause when off screen). | A GIF sent from Element animates here and stops using CPU when scrolled away. |
+| **P2. Inline players** | Client (MSC3245 waveforms) | Play videos inline in the timeline as Discord does, plus an audio player for voice notes and `m.audio`. | A short clip plays without opening the viewer; an audio file shows a waveform-less player with seek. |
+| **P3. Viewer polish** | Client | Zoom and pan, a thumbnail strip, copy image, preloading the neighbouring images, and a gallery layout for several attachments in one message. | Ten screenshots step without a loading pause; scroll-zoom keeps the point under the cursor. |
+| **P4. Video everywhere** | Client | Video playback on Windows (Media Foundation or bundled GStreamer) and in the browser (an HTML `<video>` element over the canvas). | The same MP4 plays on Linux, Windows and Chromium. |
+| **P5. Sending video** | Spec (`info`, thumbnails) | Thumbnail, dimensions and duration for videos you send, so other clients show a poster. | A clip sent from here shows its poster frame in Element. |
 
 ### Phase 5 — calls
 
@@ -111,22 +141,22 @@ card, and stage polish.
 
 ### Phase 6 — community management
 
-| Step | Deliverable | Done when |
-|---|---|---|
-| **C1. Server settings** | A settings page for a space: name, icon, banner, topic, and its channels' names, topics and order. | Changing a space's name, icon and topic here shows in Element. |
-| **C2. Roles and channel permissions** | Role presets on power levels (Admin, Moderator, Member, and named custom levels) and per-channel overrides, such as an announcement channel only moderators post in. | A second account meets every configured limit, as in the existing permission tests. |
-| **C3. Moderation history and join links** | A moderation log (kicks, bans, permission, name and topic changes, with who and when), the bans list, and the space's join links and pending invites, which a moderator can revoke. | A kick and a ban done in Element appear in the log here with their reasons. |
+| Step | Matrix | Deliverable | Done when |
+|---|---|---|---|
+| **C1. Server settings** | Spec (name, picture, topic); banner: own state event | A settings page for a space: name, icon, banner, topic, and its channels' names, topics and order. | Changing a space's name, icon and topic here shows in Element. |
+| **C2. Roles and channel permissions** | Spec (power levels); role names and colours: own state event | Role presets on power levels (Admin, Moderator, Member, and named custom levels) and per-channel overrides, such as an announcement channel only moderators post in. | A second account meets every configured limit, as in the existing permission tests. |
+| **C3. Moderation history and join links** | Client (from room history); expiring links need a bot | A moderation log (kicks, bans, permission, name and topic changes, with who and when), the bans list, and the space's join links and pending invites, which a moderator can revoke. | A kick and a ban done in Element appear in the log here with their reasons. |
 
 ### Phase 7 — settings, account and release
 
-| Step | Deliverable | Done when |
-|---|---|---|
-| **S1. Settings pages** | Appearance (theme, font scale, compact mode), Notifications, Keybinds, Privacy (read receipts, typing, link previews), Voice & Video (U2). | Every setting persists across restarts and devices where Matrix has an account-data equivalent. |
-| **S2. Account** | Logout everywhere, session list with verification state, key backup health, recovery reset. | A new device can be verified and an old one signed out from here. |
-| **S3. Release** | Accessibility names and keyboard paths, scaling, signed Windows builds with a runtime test, Flatpak, upgrade tests. | A new user installs, signs in, recovers history, shares a file, calls someone and upgrades without the terminal. |
-| **S4. macOS** | A macOS build with its tray (menu bar), notifications, global shortcuts and calls. | A signed macOS build signs in, recovers history, shares a file and calls someone. |
-| **S5. Updates and push** | Windows builds that update themselves, and web push so a closed browser tab still notifies where the homeserver has a push gateway. | An update installs without the terminal; a mention reaches a closed tab. |
-| **S6. Performance budgets** | A fixture account with a few hundred rooms, and memory and startup budgets the QA scripts check on every change, alongside the scrolling and media fixtures. | A change that pushes memory or startup past its budget fails the check. |
+| Step | Matrix | Deliverable | Done when |
+|---|---|---|---|
+| **S1. Settings pages** | Client; account data where it syncs | Appearance (theme, font scale, compact mode), Notifications, Keybinds, Privacy (read receipts, typing, link previews), Voice & Video (U2). | Every setting persists across restarts and devices where Matrix has an account-data equivalent. |
+| **S2. Account** | Spec (devices, cross-signing, key backup) | Logout everywhere, session list with verification state, key backup health, recovery reset. | A new device can be verified and an old one signed out from here. |
+| **S3. Release** | Client | Accessibility names and keyboard paths, scaling, signed Windows builds with a runtime test, Flatpak, upgrade tests. | A new user installs, signs in, recovers history, shares a file, calls someone and upgrades without the terminal. |
+| **S4. macOS** | Client | A macOS build with its tray (menu bar), notifications, global shortcuts and calls. | A signed macOS build signs in, recovers history, shares a file and calls someone. |
+| **S5. Updates and push** | Spec (push gateways, e.g. Sygnal WebPush) | Windows builds that update themselves, and web push so a closed browser tab still notifies where the homeserver has a push gateway. | An update installs without the terminal; a mention reaches a closed tab. |
+| **S6. Performance budgets** | Client | A fixture account with a few hundred rooms, and memory and startup budgets the QA scripts check on every change, alongside the scrolling and media fixtures. | A change that pushes memory or startup past its budget fails the check. |
 
 ### Known gaps
 
