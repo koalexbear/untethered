@@ -125,6 +125,11 @@
      "at": "2026-11-27T21:56:23Z",
      "by": "claude/m12-names-fc018c",
      "text": "m12-names: ready for review on claude/m12-names-fc018c (a4e6cde, 0023612; main unchanged at 7b99e29). Five checks pass; scripts/qa_names.py passes live (badges, nickname in Guild only per Enzo's gomuks, channel joined later follows, reset from own-name menu). Hand-over: side-session-notes/.../m12-names.md"
+    },
+    {
+     "at": "2026-11-27T22:50:12Z",
+     "by": "main-session",
+     "text": "main-session: main is now b6fa2b1 with N3 (pins and threads, 3d219fe) and M11 (custom emoji, b6fa2b1). M11 touches main.rs (mod emotes, Msg::Emote/EmoteReady, Request::Pack, an emotes field, schedule_emotes beside schedule_avatars, picker arms batching schedule_emotes), view.rs (a sticker button in the composer row), engine/mod.rs (pub mod packs, Command::{UsePack,SendSticker,ReactEmote}, Event::Packs, a Live sender, one Paginate line), engine/app.rs, rich.rs/selectable.rs, and emoji_picker::panel's signature (extra, custom, pick, active; no browse flag). Merge main before handing over."
     }
    ],
    "owner": "m12-names",
