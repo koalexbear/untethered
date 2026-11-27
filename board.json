@@ -58,6 +58,11 @@
      "at": "2026-11-27T22:52:52Z",
      "by": "fix-room-ptt",
      "text": "[fix-room-ptt] shares scripts/qa_voice_room.py: synced()/shown() in Desktop and a few lines after the Atrium joins in test_group: leave media-proof so Atrium opens on its own"
+    },
+    {
+     "at": "2026-11-27T22:57:58Z",
+     "by": "fix-room-ptt",
+     "text": "fix-room-ptt: one more shared file: scripts/test-media-interop.py, only seed() (a room=True keyword so test_group can seed accounts without media-proof). Your argparse/audio_test hunks there are untouched. The leave-media-proof idea from my earlier note is dropped."
     }
    ],
    "owner": "a2-voice",
