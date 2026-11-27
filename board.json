@@ -1,33 +1,5 @@
 {
  "claims": {
-  "J1": {
-   "branch": "j1-invites",
-   "claimed": "2026-11-27T12:03:29Z",
-   "notes": [],
-   "owner": "main-session",
-   "paths": [
-    "README.md",
-    "rust-client/src/avatars.rs",
-    "rust-client/src/engine/app.rs",
-    "rust-client/src/engine/invites.rs",
-    "rust-client/src/engine/mod.rs",
-    "rust-client/src/engine/profile.rs",
-    "rust-client/src/engine/rooms.rs",
-    "rust-client/src/invites.rs",
-    "rust-client/src/main.rs",
-    "rust-client/src/rooms.rs",
-    "rust-client/src/rooms/engine.rs",
-    "rust-client/src/typing.rs",
-    "rust-client/src/upgrades.rs",
-    "rust-client/src/view.rs",
-    "rust-client/src/view/invites.rs",
-    "scripts/qa_invites.py"
-   ],
-   "status": "review",
-   "title": "Invites with Accept and Decline",
-   "updated": "2026-11-27T12:15:44Z",
-   "worktree": "."
-  },
   "M6": {
    "branch": "codex/m6-delete-drafts",
    "claimed": "2026-11-27T10:07:23Z",
@@ -239,6 +211,15 @@
    "owner": "main-session",
    "result": "merged as a3de2bf",
    "title": "Link previews"
+  },
+  {
+   "branch": "j1-invites",
+   "claimed": "2026-11-27T12:03:29Z",
+   "finished": "2026-11-27T12:20:10Z",
+   "id": "J1",
+   "owner": "main-session",
+   "result": "merged as 09754bb",
+   "title": "Invites with Accept and Decline"
   }
  ]
 }
