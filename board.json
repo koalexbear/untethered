@@ -55,19 +55,6 @@
    "title": "Pinned messages and Matrix threads",
    "updated": "2026-11-27T15:03:37Z",
    "worktree": "../../../../../tmp/untethered-n3"
-  },
-  "P4": {
-   "branch": "phase4-media",
-   "claimed": "2026-11-27T15:58:51Z",
-   "notes": [],
-   "owner": "main-session",
-   "paths": [
-    "rust-client/src/player.rs rust-client/src/media.rs rust-client/src/preview.rs rust-client/src/inline.rs rust-client/src/avatars.rs rust-client/src/view.rs rust-client/src/view/viewer.rs rust-client/src/viewer.rs rust-client/src/engine/media.rs rust-client/src/main.rs rust-client/src/web_files.rs ROADMAP.md README.md scripts/qa_phase4.py"
-   ],
-   "status": "review",
-   "title": "Video in the browser (Windows playback stays open)",
-   "updated": "2026-11-27T16:22:49Z",
-   "worktree": "."
   }
  },
  "done": [
@@ -340,6 +327,15 @@
    "owner": "main-session",
    "result": "merged as 0c7f452",
    "title": "Sending video"
+  },
+  {
+   "branch": "phase4-media",
+   "claimed": "2026-11-27T15:58:51Z",
+   "finished": "2026-11-27T17:27:11Z",
+   "id": "P4",
+   "owner": "main-session",
+   "result": "released: browser half merged as 0c7f452; Windows video playback is still open",
+   "title": "Video in the browser (Windows playback stays open)"
   }
  ]
 }
