@@ -860,6 +860,158 @@ async fn matrix_sdk_login_restore_and_encrypted_round_trip() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
+#[ignore = "run UNTETHERED_QA_ONLY=delete-drafts scripts/qa_matrix_sdk.py with disposable Synapse"]
+async fn matrix_sdk_delete_and_drafts() {
+    use crate::context_menu::Event as Menu;
+    let fixture: Value =
+        serde_json::from_slice(&std::fs::read(env::var("UNTETHERED_QA_FIXTURE").unwrap()).unwrap())
+            .unwrap();
+    let base = PathBuf::from(env::var_os("UNTETHERED_QA_PROFILES").unwrap());
+    let server = fixture["server"].as_str().unwrap();
+    let room = fixture["room"].as_str().unwrap();
+    let owner_dir = base.join("delete-owner");
+    let (mut owner, owner_events, owner_engine) = sign_in(
+        &owner_dir,
+        server,
+        fixture["username"].as_str().unwrap(),
+        fixture["password"].as_str().unwrap(),
+    )
+    .await;
+    owner.recovery = rooms::string(&fixture["key"]);
+    let _ = owner.update(Msg::Verify);
+    let (mut peer, peer_events, peer_engine) = sign_in(
+        &base.join("delete-peer"),
+        server,
+        fixture["peer"].as_str().unwrap(),
+        fixture["peer_password"].as_str().unwrap(),
+    )
+    .await;
+    peer.recovery = rooms::string(&fixture["peer_key"]);
+    let _ = peer.update(Msg::Verify);
+    wait2(
+        &mut owner,
+        &owner_events,
+        &mut peer,
+        &peer_events,
+        "both verified",
+        |a, b| {
+            a.verified
+                && b.verified
+                && a.live.list.contains_key(room)
+                && b.live.list.contains_key(room)
+        },
+    )
+    .await;
+    let _ = owner.update(Msg::Open(room.into()));
+    let _ = peer.update(Msg::Open(room.into()));
+
+    let body = "Message to remove from both clients";
+    peer.editor = text_editor::Content::with_text(body);
+    let _ = peer.update(Msg::Send);
+    wait2(
+        &mut owner,
+        &owner_events,
+        &mut peer,
+        &peer_events,
+        "sent message on both clients",
+        |a, b| has(a, room, body) && has(b, room, body),
+    )
+    .await;
+    let event = owner.live.list[room]
+        .posts()
+        .find(|p| p.text() == body)
+        .and_then(|p| p.event_id.clone())
+        .unwrap();
+    assert!(peer.can_delete(room, &event));
+    assert!(owner.can_delete(room, &event));
+    let _ = owner.update(Msg::ContextMenu(Menu::Delete {
+        room: room.into(),
+        event: event.clone(),
+    }));
+    assert!(owner.context_menu.deleting.is_some());
+    let _ = owner.update(Msg::ContextMenu(Menu::ConfirmDelete));
+    wait2(
+        &mut owner,
+        &owner_events,
+        &mut peer,
+        &peer_events,
+        "redaction on both clients",
+        |a, b| {
+            [a, b].into_iter().all(|app| {
+                app.live.list[room]
+                    .by_id(&event)
+                    .is_none_or(|post| !post.reactable && post.text() == "Message removed")
+            })
+        },
+    )
+    .await;
+
+    let own = "Remove my own message";
+    owner.editor = text_editor::Content::with_text(own);
+    let _ = owner.update(Msg::Send);
+    wait2(
+        &mut owner,
+        &owner_events,
+        &mut peer,
+        &peer_events,
+        "own message on both clients",
+        |a, b| has(a, room, own) && has(b, room, own),
+    )
+    .await;
+    let own_event = owner.live.list[room]
+        .posts()
+        .find(|p| p.text() == own)
+        .and_then(|p| p.event_id.clone())
+        .unwrap();
+    assert!(!peer.can_delete(room, &own_event));
+    let _ = owner.update(Msg::ContextMenu(Menu::Delete {
+        room: room.into(),
+        event: own_event.clone(),
+    }));
+    let _ = owner.update(Msg::ContextMenu(Menu::ConfirmDelete));
+    wait2(
+        &mut owner,
+        &owner_events,
+        &mut peer,
+        &peer_events,
+        "own redaction on both clients",
+        |a, b| {
+            [a, b].into_iter().all(|app| {
+                app.live.list[room]
+                    .by_id(&own_event)
+                    .is_none_or(|post| !post.reactable && post.text() == "Message removed")
+            })
+        },
+    )
+    .await;
+
+    let attachment = base.join("captioned.txt");
+    std::fs::write(&attachment, b"Test attachment").unwrap();
+    let file = crate::media::LocalFile::from_path(attachment).unwrap();
+    let _ = owner.update(Msg::Files(room.into(), vec![file]));
+    assert_eq!(owner.outbox.rooms[room].len(), 1);
+    let draft = "Caption retained across restart";
+    let _ = owner.update(Msg::Draft(text_editor::Action::Edit(
+        text_editor::Edit::Paste(Arc::new(draft.to_owned())),
+    )));
+    owner.persist_drafts();
+    drop(owner_events);
+    stop(owner, owner_engine).await;
+    let (mut restored, restored_events, restored_engine) = session_at(&owner_dir);
+    wait(
+        &mut restored,
+        &restored_events,
+        "restored account and room",
+        |a| a.verified && a.live.list.contains_key(room),
+    )
+    .await;
+    let _ = restored.update(Msg::Open(room.into()));
+    assert_eq!(restored.editor.text(), draft);
+    stop(restored, restored_engine).await;
+    stop(peer, peer_engine).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 6)]
 #[ignore = "run UNTETHERED_QA_ONLY=profiles scripts/qa_matrix_sdk.py with disposable Synapse"]
 async fn matrix_sdk_profile_interop() {
     use super::profile::Action as ProfileAction;

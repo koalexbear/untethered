@@ -236,17 +236,22 @@ impl App {
         {
             self.reply_drafts.remove(room);
         }
+        let mut draft_removed = false;
         if !b.caption.is_empty() {
             if room == self.selected && self.editor.text() == b.caption {
                 self.editor = text_editor::Content::new();
             }
             if self.drafts.get(room) == Some(&b.caption) {
                 self.drafts.remove(room);
+                draft_removed = true;
             }
             b.caption.clear();
         }
         self.outbox.remove(room, id);
         b.ids.pop_front();
+        if draft_removed {
+            self.drafts_changed();
+        }
         self.advance_file();
     }
     pub fn fail_file(&mut self, room: &str, id: u64, why: &str) {

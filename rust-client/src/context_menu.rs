@@ -49,15 +49,17 @@ pub struct State {
     serial: u64,
     /// The room waiting for Leave to be confirmed.
     pub leaving: Option<String>,
+    pub deleting: Option<(String, String)>,
 }
 impl State {
     /// Escape closes the menu or the leave dialog before anything beneath.
     pub fn is_open(&self) -> bool {
-        self.open.is_some() || self.leaving.is_some()
+        self.open.is_some() || self.leaving.is_some() || self.deleting.is_some()
     }
     pub fn dismiss(&mut self) {
         self.open = None;
         self.leaving = None;
+        self.deleting = None;
     }
 }
 
@@ -104,6 +106,11 @@ pub enum Event {
     /// Ask before leaving a room.
     Leave(String),
     ConfirmLeave,
+    Delete {
+        room: String,
+        event: String,
+    },
+    ConfirmDelete,
     /// Mark a room read whose timeline isn't open, so its newest event is
     /// unknown here: the engine finds it among what sync delivered.
     MarkLatestRead(String),
@@ -119,7 +126,7 @@ pub enum Entry {
     CopyText,
     MarkUnread,
     CopyMessageLink,
-    // M6 adds Delete Message here once the engine can redact.
+    Delete,
     Report,
     Profile,
     Mention,
@@ -144,6 +151,7 @@ impl Entry {
             Self::MarkUnread => "Mark Unread",
             Self::CopyMessageLink => "Copy Message Link",
             Self::Report => "Report Message",
+            Self::Delete => "Delete Message…",
             Self::Profile => "Profile",
             Self::Mention => "Mention",
             Self::Message => "Message",
@@ -183,14 +191,19 @@ impl Entry {
             #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
             Self::Notifications => 1,
             Self::Report | Self::CopyUserId | Self::CopyLink => 2,
-            Self::LeaveChannel | Self::LeaveConversation => 3,
+            Self::Delete | Self::LeaveChannel | Self::LeaveConversation => 3,
         }
     }
     /// Red, as Discord marks what affects someone else or can't be undone.
     pub fn danger(self) -> bool {
         matches!(
             self,
-            Self::Report | Self::Kick | Self::Ban | Self::LeaveChannel | Self::LeaveConversation
+            Self::Report
+                | Self::Delete
+                | Self::Kick
+                | Self::Ban
+                | Self::LeaveChannel
+                | Self::LeaveConversation
         )
     }
 }
@@ -321,7 +334,34 @@ impl App {
                     .then(|| Msg::Report(room.to_owned(), id.clone())),
             ));
         }
+        if self.verified && self.may_delete(room, p) {
+            items.push(item(
+                Entry::Delete,
+                (ready && !self.deleting_message(room, id)).then(|| {
+                    act(Event::Delete {
+                        room: room.to_owned(),
+                        event: id.clone(),
+                    })
+                }),
+            ));
+        }
         items
+    }
+
+    fn may_delete(&self, room: &str, post: &Post) -> bool {
+        post.from.is_none()
+            && post.reactable
+            && self
+                .live
+                .list
+                .get(room)
+                .is_some_and(|r| r.posting.can_redact_message(&self.matrix_id, &post.sender))
+    }
+
+    fn deleting_message(&self, room: &str, event: &str) -> bool {
+        self.pending
+            .values()
+            .any(|p| matches!(p, Request::Redact(r, e) if r == room && e == event))
     }
 
     /// What a person's menu offers, as `room` shows them.
@@ -504,6 +544,7 @@ impl App {
                 if !self.account
                     && self.viewer.is_none()
                     && self.context_menu.leaving.is_none()
+                    && self.context_menu.deleting.is_none()
                     && !self.menu_items(&target).is_empty()
                 {
                     self.server_menu = false;
@@ -593,6 +634,23 @@ impl App {
                     );
                 }
             }
+            Event::Delete { room, event } => {
+                if self.can_delete(&room, &event) {
+                    self.context_menu.dismiss();
+                    self.context_menu.deleting = Some((room, event));
+                }
+            }
+            Event::ConfirmDelete => {
+                if let Some((room, event)) = self.context_menu.deleting.take()
+                    && self.can_delete(&room, &event)
+                {
+                    let request = Request::Redact(room.clone(), event.clone());
+                    self.command(
+                        |id| crate::engine::Command::Redact { id, room, event },
+                        request,
+                    );
+                }
+            }
             Event::ConfirmLeave => {
                 if let Some(room) = self.context_menu.leaving.take()
                     && self.verified
@@ -609,6 +667,17 @@ impl App {
         Task::none()
     }
 
+    pub(super) fn can_delete(&self, room: &str, event: &str) -> bool {
+        self.logged_in
+            && self.verified
+            && self.connected
+            && room == self.selected
+            && self
+                .visible_post(event)
+                .is_some_and(|post| self.may_delete(room, post))
+            && !self.deleting_message(room, event)
+    }
+
     /// Close a menu whose message, person or room has gone (a removed
     /// message, a left room): nothing would draw it, yet toolbars stay hidden.
     pub fn prune_context_menu(&mut self) {
@@ -616,6 +685,11 @@ impl App {
             && self.menu_items(&open.target).is_empty()
         {
             self.context_menu.open = None;
+        }
+        if let Some((room, event)) = &self.context_menu.deleting
+            && !self.can_delete(room, event)
+        {
+            self.context_menu.deleting = None;
         }
         if let Some(room) = &self.context_menu.leaving
             && !self.live.list.contains_key(room)
@@ -656,7 +730,9 @@ impl App {
         if !self.live.list.contains_key(room) || room != self.selected || !self.can_stage() {
             return Task::none();
         }
-        self.mention(user)
+        let task = self.mention(user);
+        self.record_current_draft();
+        task
     }
 
     /// The homeserver answered a leave request.
@@ -731,7 +807,7 @@ mod tests {
     }
 
     #[test]
-    fn own_messages_can_be_edited_and_others_reported() {
+    fn own_messages_can_be_edited_or_deleted_and_others_reported() {
         let a = app(0);
         use Entry::*;
         assert_eq!(
@@ -742,7 +818,8 @@ mod tests {
                 Edit,
                 CopyText,
                 MarkUnread,
-                CopyMessageLink
+                CopyMessageLink,
+                Delete
             ]
         );
         assert_eq!(
@@ -756,6 +833,7 @@ mod tests {
                 Report
             ]
         );
+        assert!(post(&app(50), "$m1").contains(&Delete));
     }
 
     #[test]

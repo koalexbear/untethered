@@ -1222,7 +1222,10 @@ impl App {
             }
             _ => none(),
         };
-        let dialog = self.leave_dialog().unwrap_or_else(none);
+        let dialog = self
+            .delete_dialog()
+            .or_else(|| self.leave_dialog())
+            .unwrap_or_else(none);
         let viewer = self
             .viewer
             .as_ref()
@@ -2971,6 +2974,39 @@ impl App {
         };
         let feed: El = stack![feed, jump].into();
         let mut viewport = Column::new();
+        let unread_banner = if original.is_none() && r.unread {
+            r.read.unread_summary(r)
+        } else {
+            None
+        };
+        if let Some((count, since)) = unread_banner {
+            let noun = if count == 1 { "message" } else { "messages" };
+            let caption = since.map_or_else(
+                || format!("{count} new {noun}"),
+                |time| format!("{count} new {noun} since {time}"),
+            );
+            let mark = crate::context_menu::Event::MarkLatestRead(self.selected.clone());
+            viewport = viewport.push(
+                container(
+                    row![
+                        text(caption).size(14).color(Color::WHITE).width(Fill),
+                        button(text("Mark as Read").size(13).font(BOLD))
+                            .style(plain(Color::WHITE, color!(0xdee0fc)))
+                            .on_press_maybe(
+                                (self.verified
+                                    && self.connected
+                                    && !self.writing_read(&self.selected))
+                                .then_some(Msg::ContextMenu(mark))
+                            ),
+                    ]
+                    .align_y(Center)
+                    .spacing(8),
+                )
+                .padding([4, 16])
+                .width(Fill)
+                .style(|_| surface(color!(0x4752c4), 0.)),
+            );
+        }
         if let Some(c) = original {
             let jump = |label: &'static str, msg: Msg| {
                 button(text(label).size(14).font(BOLD))
@@ -3362,7 +3398,7 @@ impl App {
             .spacing(4)
             .align_y(Center)
             .height(24);
-        if self.logged_in && self.verified {
+        if self.logged_in && self.verified && unread_banner.is_none() {
             let id = r.read.target().map(str::to_owned);
             let available = self.connected && !self.writing_read(&self.selected) && id.is_some();
             footer = footer.push(
