@@ -42,6 +42,8 @@ pub struct Room {
     pub unread: bool,
     pub read: crate::reading::State,
     pub encrypted: bool,
+    /// This account shows link previews here (link_previews.rs).
+    pub link_previews: bool,
     pub has_metadata: bool,
     pub end: bool,
     pub members: BTreeMap<String, String>,

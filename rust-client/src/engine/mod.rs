@@ -23,6 +23,7 @@ mod keyring;
 mod live_test;
 mod media;
 mod messaging;
+mod previews;
 pub mod profile;
 #[cfg(debug_assertions)]
 pub mod qa;
@@ -225,6 +226,16 @@ pub enum Command {
     CloseTimeline {
         room: String,
     },
+    /// A link's preview, answered with `Event::LinkPreview` (previews.rs).
+    LinkPreview {
+        url: String,
+    },
+    /// Turn a room's link previews on or off.
+    SetLinkPreviews {
+        id: i64,
+        room: String,
+        on: bool,
+    },
     /// Whether to send typing notices, synced as account data.
     ShareTyping {
         id: i64,
@@ -377,6 +388,11 @@ pub enum Event {
     },
     /// The account's "Send typing indicators" preference.
     TypingSharing(bool),
+    /// A link's preview, or None when the homeserver has none.
+    LinkPreview {
+        url: String,
+        preview: Option<LinkPreview>,
+    },
     /// How much of an upload (`backend::Command::Upload`) has been sent.
     UploadProgress {
         id: i64,
@@ -611,6 +627,21 @@ pub struct RoomSummary {
     /// The room this one replaced (`m.room.create`'s `predecessor`).
     #[serde(default)]
     pub predecessor: Option<String>,
+    /// This account shows link previews in the room (previews.rs).
+    #[serde(default)]
+    pub link_previews: bool,
+}
+
+/// A link's preview as the homeserver gives it (previews.rs).
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct LinkPreview {
+    pub url: String,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub site: Option<String>,
+    /// The homeserver's copy of the page's image (mxc URI).
+    pub image: Option<String>,
+    pub image_size: Option<(u32, u32)>,
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -1283,6 +1314,21 @@ impl Engine {
                 if let Some(live) = &self.live {
                     live.timelines.close(&room).await;
                 }
+            }
+            Command::LinkPreview { url } => {
+                if let Some(live) = &self.live {
+                    let (client, events) = (live.client.clone(), self.events.clone());
+                    rt::spawn(async move {
+                        let preview = previews::fetch(&client, &url).await;
+                        let _ = events.send(Event::LinkPreview { url, preview }).await;
+                    });
+                }
+            }
+            Command::SetLinkPreviews { id, room, on } => {
+                self.job(id, move |client, _, _| async move {
+                    previews::set(&client, &room, on).await
+                })
+                .await
             }
             Command::ShareTyping { id, send } => {
                 self.job(id, move |client, _, _| async move {

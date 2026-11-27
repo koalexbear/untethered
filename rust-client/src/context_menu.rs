@@ -130,6 +130,9 @@ pub enum Entry {
     MarkRead,
     #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
     Notifications,
+    /// The room's link preview switch (link_previews.rs), as it would turn.
+    ShowLinkPreviews,
+    HideLinkPreviews,
     CopyLink,
     LeaveChannel,
     LeaveConversation,
@@ -154,6 +157,8 @@ impl Entry {
             Self::MarkRead => "Mark as Read",
             #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
             Self::Notifications => "Notification Settings",
+            Self::ShowLinkPreviews => "Show Link Previews",
+            Self::HideLinkPreviews => "Hide Link Previews",
             Self::CopyLink => "Copy Link",
             Self::LeaveChannel => "Leave Channel",
             Self::LeaveConversation => "Leave Conversation",
@@ -182,6 +187,7 @@ impl Entry {
             | Self::Ban => 1,
             #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
             Self::Notifications => 1,
+            Self::ShowLinkPreviews | Self::HideLinkPreviews => 1,
             Self::Report | Self::CopyUserId | Self::CopyLink => 2,
             Self::LeaveChannel | Self::LeaveConversation => 3,
         }
@@ -417,6 +423,14 @@ impl App {
         items.push(item(
             Entry::Notifications,
             self.verified.then(|| act(Event::Alerts(room.to_owned()))),
+        ));
+        items.push(item(
+            if r.link_previews {
+                Entry::HideLinkPreviews
+            } else {
+                Entry::ShowLinkPreviews
+            },
+            ready.then(|| Msg::LinkPreviews(room.to_owned(), !r.link_previews)),
         ));
         items.push(item(
             Entry::CopyLink,

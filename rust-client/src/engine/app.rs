@@ -330,7 +330,9 @@ impl App {
             Event::ProfileSaved { id, result } => self.profile_saved(id, result),
             Event::ProfileDirect { id, result } => self.profile_direct(id, result),
             Event::Rooms(list) => {
-                for left in self.live.apply_engine(list) {
+                let left = self.live.apply_engine(list);
+                self.keep_link_preview_switches();
+                for left in left {
                     self.reply_drafts.remove(&left);
                     self.drafts.remove(&left);
                     self.loaded.remove(&left);
@@ -344,6 +346,7 @@ impl App {
                 self.open_created();
                 self.open_profile_dm();
             }
+            Event::LinkPreview { url, preview } => self.link_previews.arrived(url, preview),
             Event::Timeline(t) => {
                 if let Some(r) = self.live.list.get_mut(&t.room) {
                     r.apply_engine(t.messages, t.start_reached);
@@ -603,6 +606,7 @@ impl App {
                 self.status =
                     "Could not save your read receipt preference. Try again.".into();
             }
+            (Request::LinkPreviews(room, on), Err(_)) => self.link_previews_failed(&room, on),
             (Request::ShareTyping(send, revision), result) => {
                 self.typing_saved(send, revision, result.is_ok())
             }
