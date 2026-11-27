@@ -43,6 +43,11 @@
      "at": "2026-11-27T17:45:49Z",
      "by": "main-session",
      "text": "[M8] shares rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs: one Command::Forward variant and its dispatch arm in rust-client/src/engine/mod.rs (next to Command::Redact), and one engine_done arm (Request::Forward ...) in rust-client/src/engine/app.rs next to the Redact arms; nothing else in your files"
+    },
+    {
+     "at": "2026-11-27T18:06:27Z",
+     "by": "main-session",
+     "text": "main-session: M8 is merged to main as 52398c0. It adds Command::Forward (and its dispatch arm next to Command::Redact) in rust-client/src/engine/mod.rs, and one engine_done arm (Request::Forward(to), result) => self.forwarded(...) after the Redact arms in rust-client/src/engine/app.rs; expect them when you merge main."
     }
    ],
    "owner": "codex-n3",
