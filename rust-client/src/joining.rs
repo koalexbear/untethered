@@ -103,18 +103,28 @@ impl App {
     }
 
     fn show_preview(&mut self, link: RoomLink) {
-        self.close_mentions();
-        self.account = false;
-        self.invite_open = None;
         if let Some(sdk) = &self.sdk {
             let _ = sdk.try_send(Command::PreviewRoom {
                 target: link.target.clone(),
                 via: link.via.clone(),
             });
         }
+        self.show(link, PreviewState::Loading);
+    }
+
+    /// Preview a room Explore or a space's hierarchy lists, with the
+    /// details they gave (explore.rs).
+    pub fn preview_listed(&mut self, link: RoomLink, preview: RoomPreview) {
+        self.show(link, PreviewState::Ready(preview));
+    }
+
+    fn show(&mut self, link: RoomLink, state: PreviewState) {
+        self.close_mentions();
+        self.account = false;
+        self.invite_open = None;
         self.room_preview = Some(Preview {
             link,
-            state: PreviewState::Loading,
+            state,
             refused: false,
         });
     }
@@ -186,6 +196,8 @@ impl App {
         let Some(link) = self.room_preview.take().map(|p| p.link) else {
             return;
         };
+        // Joined from Explore: the room or space opens instead.
+        self.explore.page = None;
         if target.starts_with('!') {
             // It opens once the room list has it (invites.rs).
             self.joined_invite = Some(target);

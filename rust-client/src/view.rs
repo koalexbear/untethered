@@ -9,6 +9,7 @@ mod community;
 mod context_menu;
 mod dms;
 mod emoji_picker;
+mod explore;
 mod forward;
 mod gallery;
 mod hover;
@@ -1663,12 +1664,20 @@ impl App {
             ("voice", "VOICE CHANNELS", voice),
             ("direct", "DIRECT MESSAGES", direct),
         ];
+        // A space's channels this account hasn't joined, after its own
+        // (explore.rs).
+        let (unjoined_text, unjoined_voice) = self.unjoined_channels();
         // Direct Messages always has its heading, whose + starts a DM.
         let direct_home = self.section == Section::Direct;
         let new_message = (self.logged_in && self.verified && self.new_message.is_none())
             .then_some((Msg::Dm(crate::dms::Input::Open), "Create DM"));
         for (kind, title, rooms) in groups {
-            if rooms.is_empty() && !(kind == "direct" && direct_home) {
+            let unjoined = match kind {
+                "text" => unjoined_text.as_slice(),
+                "voice" => unjoined_voice.as_slice(),
+                _ => &[],
+            };
+            if rooms.is_empty() && unjoined.is_empty() && !(kind == "direct" && direct_home) {
                 continue;
             }
             let key = format!("{section}/{kind}");
@@ -1689,6 +1698,9 @@ impl App {
                 if r.voice {
                     list = list.push(self.voice_people(id, r));
                 }
+            }
+            if open {
+                list = list.extend(unjoined.iter().map(|r| self.unjoined_row(r)));
             }
         }
         list
@@ -1796,12 +1808,13 @@ impl App {
             return self.account_view();
         }
         let store = self.rooms();
+        let exploring = self.explore.page.is_some();
         let mut icons = column![
             rail_button(
                 "U".into(),
                 None,
                 "Direct Messages",
-                self.section == Section::Direct && self.invite_open.is_none(),
+                self.section == Section::Direct && self.invite_open.is_none() && !exploring,
                 Msg::Section(Section::Direct),
                 self.rail_mark(&Section::Direct),
             ),
@@ -1809,7 +1822,7 @@ impl App {
                 "#".into(),
                 None,
                 "All Rooms",
-                self.section == Section::All && self.invite_open.is_none(),
+                self.section == Section::All && self.invite_open.is_none() && !exploring,
                 Msg::Section(Section::All),
                 self.rail_mark(&Section::All),
             ),
@@ -1840,8 +1853,9 @@ impl App {
                     initials,
                     self.avatars.get(r.avatar.as_deref()),
                     &r.name,
-                    // An open invite's card is what's shown, not the section.
-                    self.section == s && self.invite_open.is_none(),
+                    // An open invite's card, or Explore, is what's shown,
+                    // not the section.
+                    self.section == s && self.invite_open.is_none() && !exploring,
                     Msg::Section(s),
                     mark,
                 ));
@@ -1873,6 +1887,34 @@ impl App {
                     },
                 ),
             );
+            // Explore, under +, as Discord's Explore Discoverable Servers
+            // (explore.rs).
+            let explore = button(icons::hover_icon(
+                Icon::Compass,
+                24.,
+                48.,
+                if exploring { Color::WHITE } else { GREEN },
+                Color::WHITE,
+            ))
+            .padding(0)
+            .on_press_maybe(
+                (self.connected && self.sdk.is_some())
+                    .then_some(Msg::Explore(crate::explore::Input::Open)),
+            )
+            .style(move |_, s| {
+                let lit = exploring || s == button::Status::Hovered;
+                button::Style {
+                    background: Some(if lit { GREEN } else { CHAT }.into()),
+                    border: Border::default().rounded(if lit { 16 } else { 24 }),
+                    ..Default::default()
+                }
+            });
+            let marker = container(pill(if exploring { 40. } else { 0. })).center_y(48);
+            icons = icons.push(with_tip(
+                row![marker, explore].spacing(8).align_y(Center),
+                "Explore Discoverable Spaces",
+                tooltip::Position::Right,
+            ));
         }
         let rail = container(
             scrollable(icons)
@@ -1885,6 +1927,17 @@ impl App {
         .width(72)
         .height(Fill)
         .style(|_| surface(RAIL, 0.));
+        // Explore takes the sidebar and the main area, with a result's
+        // preview over its page (explore.rs).
+        if let Some(page) = &self.explore.page {
+            let main = match &self.room_preview {
+                Some(preview) => self.preview_card(preview),
+                None => self.explore_page(page),
+            };
+            return row![rail, self.explore_side(page), main]
+                .height(Fill)
+                .into();
+        }
         let section_name = match &self.section {
             Section::All => "All Rooms",
             Section::Direct => "Direct Messages",

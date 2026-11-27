@@ -127,6 +127,8 @@ impl App {
             wanted.extend(form.found.iter().filter_map(|p| p.avatar.as_deref()));
             wanted.extend(form.picked.iter().filter_map(|p| p.avatar.as_deref()));
         }
+        // Explore's results show theirs (explore.rs).
+        wanted.extend(self.explore_avatars());
         // A linked room's preview shows its picture (joining.rs).
         if let Some(crate::joining::PreviewState::Ready(p)) =
             self.room_preview.as_ref().map(|p| &p.state)

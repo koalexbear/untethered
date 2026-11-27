@@ -42,7 +42,17 @@ impl App {
         let target = preview.link.target.as_str();
         let joining = self.joining(preview.join_target());
         let ready = self.connected && self.verified && !joining;
-        let close = choice("Close", Some(Msg::ClosePreview), CLOSE, CLOSE_HOVER);
+        // Over Explore, closing goes back to its results (explore.rs).
+        let close = choice(
+            if self.explore.page.is_some() {
+                "Back"
+            } else {
+                "Close"
+            },
+            Some(Msg::ClosePreview),
+            CLOSE,
+            CLOSE_HOVER,
+        );
         let join_label = if joining { "Joining…" } else { "Join" };
         let card = match &preview.state {
             PreviewState::Loading => column![
