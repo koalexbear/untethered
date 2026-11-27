@@ -2,7 +2,9 @@
 
 Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 
-Nothing claimed.
+| ID | Title | Agent | Branch | Status | Updated | Paths |
+|---|---|---|---|---|---|---|
+| J2 | Join by link | main-session | `j2-join-links` | working | 2026-11-27T12:46:06Z | `README.md`, `rust-client/src/community.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/joining.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/joining.rs`, `rust-client/src/main.rs`, `rust-client/src/replies.rs`, `rust-client/src/view.rs`, `rust-client/src/view/community.rs`, `rust-client/src/view/joining.rs`, `scripts/qa_join_links.py` |
 
 ## Done
 
