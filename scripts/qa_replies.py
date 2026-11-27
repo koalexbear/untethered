@@ -22,7 +22,7 @@ def screen_words(raw):
     return [(w.lower().strip(".,:|()"),x,y) for w,x,y in read(im)]
 
 
-def test_replies(tmp,hs,root,backend,seed,http,port,*,rich=False,reactions=False,room_search=False,alerts=False,permissions=False,ban=False,kick=False,report=False,client_web=None,mentions=False,peer_hs=None,spaces=False,setup=False,composer=False):
+def test_replies(tmp,hs,root,backend,seed,http,port,*,rich=False,reactions=False,room_search=False,alerts=False,permissions=False,ban=False,kick=False,report=False,client_web=None,mentions=False,peer_hs=None,spaces=False,setup=False,composer=False,typing=False):
     paths=[]
     def observe(method,path):
         if room_search or method=="GET" and "/context/" in path or setup and method=="POST" and path.endswith("/createRoom"):paths.append(unquote(path))
@@ -52,8 +52,9 @@ def test_replies(tmp,hs,root,backend,seed,http,port,*,rich=False,reactions=False
             http("POST",api+"/invite",headers=hdr,json={"user_id":uid})
         member_api=(peer_hs or hs)+"/_matrix/client/v3/rooms/"+quote(room,safe="")
         if not report:http("POST",member_api+"/join",headers=bh,json={})
-        if composer:
-            # The native client types @mi + Tab for Element's account.
+        if composer or typing:
+            # The native client types @mi + Tab for Element's account, and
+            # shows "Mira is typing…".
             http("PUT",(peer_hs or hs)+"/_matrix/client/v3/profile/"+quote(uid,safe="")+"/displayname",
                  headers=bh,json={"displayname":"Mira"})
         web=stack.enter_context(element_server(peer_hs or hs,server_name=uid.split(":",1)[1]));pw=stack.enter_context(sync_playwright())
@@ -94,6 +95,12 @@ def test_replies(tmp,hs,root,backend,seed,http,port,*,rich=False,reactions=False
                     client.wait_for_function("document.title.includes('Untethered') && !document.title.includes('Preview') && !document.title.includes('Account')",timeout=45000)
                 check_setup(hs,http,hdr,bh,page,locate,lambda pos:client.mouse.click(*pos,delay=60),
                             lambda s:client.keyboard.type(s,delay=5),restart,paths,ui)
+                return
+            if typing:
+                from qa_typing import browser_input,check_typing
+                check_typing(page,room,"@"+native["username"]+":test.invalid",hs,hdr,http,
+                             click=lambda pos:client.mouse.click(*pos),**browser_input(client,ui),
+                             words=words,ui=ui,capture=lambda:Image.open(io.BytesIO(client.screenshot())).convert("RGB"))
                 return
             if mentions:
                 from qa_mentions_inbox import check_inbox
@@ -158,6 +165,11 @@ def test_replies(tmp,hs,root,backend,seed,http,port,*,rich=False,reactions=False
                 desktop.focus(desktop.other)
             check_spaces(hs,page,me,hdr,http,room,words,space_click,foreground,
                 background,restart,native_sender(tmp,hs,page,hdr,http),desktop,"Untethered",ui=ui)
+            return
+        if typing:
+            from qa_typing import check_typing,xdotool_input
+            check_typing(page,room,"@"+native["username"]+":test.invalid",hs,hdr,http,click=click,
+                         **xdotool_input(x,ui),words=words,ui=ui,capture=capture)
             return
         if composer:
             from qa_composer_mentions import check_composer

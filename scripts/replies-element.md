@@ -64,3 +64,39 @@ Element highlights the original tile. Finally a native reply to an Element
 message types `*literal* @mi` + **Tab**: the body and `formatted_body` keep the
 asterisks literal around the pill. Set `COMPOSER_QA_SHOTS=<dir>` to keep
 screenshots of the popups.
+
+## Typing indicators
+
+Run the same command with `--typing` (ROADMAP M3), or `--typing web` for
+the browser build (after `scripts/rust-web.sh --release`; Chromium drives it
+instead of xdotool). Element's account is renamed **Mira**. The fixture reads
+the line under Untethered's composer and asks Element's client whether the
+Untethered user is typing
+(`RoomMember.typing`), timing each change from the key press that caused it
+to the first screenshot or check that sees it:
+
+| Step | Required observation |
+|---|---|
+| Element types one character | **Mira is typing…** under Untethered's composer within 1.5 s (allowing for the screenshot and OCR). The Untethered user never appears in it. |
+| Element empties its composer, then types and sends | The line goes back to the room's note each time. |
+| A third account, **Jo**, joins and types through the API while Element types | **Mira and Jo are typing…**: Jo's name comes from the membership, as Jo hasn't posted. When Jo stops, **Mira is typing…** again. |
+| Untethered's composer gets one character | Element sees the Untethered user typing. It still does after a 3 s pause, and stops 4 to 9 s after the last key (the client stops after 5 idle seconds). |
+| The draft is emptied (Ctrl+A, Backspace), or sent | Element sees the typing stop. |
+| **User Settings → Privacy → Send typing indicators** off | The account data `com.untethered.typing_notices.v1` becomes `{"send": false}` and the switch shows off; 7 s of typing a draft shows nothing in Element. |
+| The account data set back to `{"send": true}` (as another device would) | Typing shows in Element again. |
+
+`TYPING_QA_SHOTS=<dir>` saves the client's window when a step times out;
+`TYPING_QA_TRACE=1` prints both clients' view at every poll of the
+two-typer step. In the browser run, headless Chromium draws WebGL on SwiftShader, where the
+client's SVG icons don't appear and the typing line's first glyph is
+sometimes garbled; that run also accepts a name without its first letter
+("ira" for Mira).
+
+Recorded result, 2026-11-27, Element Web 1.12.35, native debug build and
+the release browser build, at load averages of 60 to 235: every step passed
+in both. Element's typing showed under the composer 0.15 to 0.64 s after its
+first key (most of that is the screenshot and OCR; the browser's line was
+there on the first screenshot) and cleared within 0.55 s after Element
+emptied its composer or sent. Element saw Untethered's typing within 0.07 s
+of the first key, the idle stop came 5.4 s after the last key, and emptying
+or sending the draft stopped it within 0.11 s.

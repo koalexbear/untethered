@@ -154,6 +154,7 @@ def main():
     args.add_argument("--room-kick",action="store_true",help="Kick a member from a public room; verify denied posting, invitation-free rejoin and encrypted delivery")
     args.add_argument("--message-report",nargs="?",const="native",choices=("native","web"),help="Report a selected encrypted message as a regular member and inspect the Synapse admin queue")
     args.add_argument("--composer-mentions",action="store_true",help="Type @, # and : autocomplete in the native composer, editor and a reply; verify pills, m.mentions and highlights in Element")
+    args.add_argument("--typing",nargs="?",const="native",choices=("native","web"),help="Typing indicators both ways with Element: show and clear times, idle stop, two typers, and the privacy switch")
     args.add_argument("--mentions-inbox",nargs="?",const="native",choices=("native","web"),help="Verify cross-room direct mentions after a device restart and open exact events beyond loaded history")
     args.add_argument("--linux-upgrade",nargs=2,type=Path,metavar=("OLD_PKG","NEW_PKG"),help="Upgrade an installed Arch package in a disposable root and verify Matrix device and decryption continuity")
     args.add_argument("--federated-ban",action="store_true",help="Test the member ban flow through a second Synapse homeserver in a private loopback namespace")
@@ -215,8 +216,8 @@ def main():
             federated_ban(Path(d),ROOT,BACKEND,seed,http,free_port,service)
         return
     dist = ROOT/"rust-client/web/dist"
-    chat_test=args.composer_mentions or args.replies or args.rich_text or args.reactions or args.room_search or args.room_alerts or args.room_permissions or args.room_ban or args.room_kick or args.message_report or args.mentions_inbox or args.space_alerts=="native" or args.community_setup
-    web_chat="web" in (args.message_report,args.mentions_inbox,args.community_setup)
+    chat_test=args.composer_mentions or args.typing or args.replies or args.rich_text or args.reactions or args.room_search or args.room_alerts or args.room_permissions or args.room_ban or args.room_kick or args.message_report or args.mentions_inbox or args.space_alerts=="native" or args.community_setup
+    web_chat="web" in (args.message_report,args.mentions_inbox,args.community_setup,args.typing)
     if web_chat or args.file_limits=="web" or not any((args.file_limits,args.native_paste,args.portal_drop,args.kwin_element,args.rtc_membership,args.rtc_audio,chat_test,args.linux_upgrade,args.context_menus)):
         assert (dist/"engine-worker.js").is_file(), "Run scripts/rust-web.sh first"
     os.umask(0o077)
@@ -279,9 +280,9 @@ federation_domain_whitelist: []
                 if web_chat:
                     wp=free_port()
                     with service([sys.executable,"-m","http.server",str(wp),"--bind","127.0.0.1","--directory",str(dist)],tmp):
-                        test_replies(tmp,hs,ROOT,BACKEND,seed,http,gateway_port,report=args.message_report,mentions=args.mentions_inbox,setup=args.community_setup,client_web=f"http://127.0.0.1:{wp}")
+                        test_replies(tmp,hs,ROOT,BACKEND,seed,http,gateway_port,report=args.message_report,mentions=args.mentions_inbox,setup=args.community_setup,typing=args.typing,client_web=f"http://127.0.0.1:{wp}")
                     return
-                test_replies(tmp,hs,ROOT,BACKEND,seed,http,gateway_port,rich=args.rich_text,reactions=args.reactions,room_search=args.room_search,alerts=args.room_alerts,permissions=args.room_permissions,ban=args.room_ban,kick=args.room_kick,report=args.message_report,mentions=args.mentions_inbox,spaces=args.space_alerts=="native",setup=args.community_setup,composer=args.composer_mentions)
+                test_replies(tmp,hs,ROOT,BACKEND,seed,http,gateway_port,rich=args.rich_text,reactions=args.reactions,room_search=args.room_search,alerts=args.room_alerts,permissions=args.room_permissions,ban=args.room_ban,kick=args.room_kick,report=args.message_report,mentions=args.mentions_inbox,spaces=args.space_alerts=="native",setup=args.community_setup,composer=args.composer_mentions,typing=args.typing)
                 return
             if args.rtc_audio:
                 audio_test(tmp,hs,server_name,rtc_service,ROOT,BACKEND,seed,http,service,desktop=args.desktop_dm or args.incoming_dm,incoming=args.incoming_dm,controls=args.call_controls,devices=args.call_devices,reconnect=args.call_reconnect,turn=args.call_turn,group=args.voice_room,share=args.window_share,camera=args.room_camera,ptt=args.room_ptt and (args.ptt_global or "window"),layout=args.room_layout,room_reconnect=args.room_reconnect,multi_ring=args.multi_device_ring,dnd_ring=args.dnd_ring,muted_peer=args.muted_peer,native_dm=args.native_dm,unsupported_dm=args.unsupported_dm,dm_video=args.dm_video,element_video=args.element_video,switch_camera=args.switch_camera,tray=args.tray)
