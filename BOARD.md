@@ -5,11 +5,11 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
 | N3 | Pinned messages and Matrix threads | codex-n3 | `codex/n3-pins-threads` | working | 2026-11-27T15:03:37Z | `rust-client/src/engine/account_ui.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/live_test.rs`, `rust-client/src/engine/messaging.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/pins.rs`, `rust-client/src/engine/threads.rs`, `scripts/qa_matrix_sdk.py` |
-| N4 | Presence and custom status | n4-presence | `claude/n4-presence-13e26f` | review | 2026-11-27T20:59:02Z | `README.md`, `ROADMAP.md`, `rust-client/src/account.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/presence.rs`, `rust-client/src/main.rs`, `rust-client/src/presence.rs`, `rust-client/src/tray.rs`, `rust-client/src/view.rs`, `rust-client/src/view/presence.rs`, `rust-client/src/view/profile.rs`, `rust-client/src/view/room_people.rs`, `scripts/qa_presence.py` |
 | V2 | Simulcast, per-tile quality, pause hidden video | v2-simulcast | `claude/v2-simulcast-9158cf` | review | 2026-11-27T20:50:38Z | `README.md`, `ROADMAP.md`, `experiments/rtc-audio/README.md`, `rust-client/docs/calls-parity-plan.md`, `rust-client/src/desktop_call.rs`, `rust-client/src/desktop_call/*.rs`, `rust-client/src/main.rs`, `rust-client/src/tray.rs`, `rust-client/src/view/call_controls.rs`, `rust-client/src/view/call_stage.rs`, `scripts/qa_room_camera.py`, `scripts/qa_room_layout.py`, `scripts/qa_voice_room.py`, `scripts/qa_window_share.py` |
 
 ## Done
 
+- 2026-11-27 **N4** Presence and custom status (n4-presence): merged as 2e2da02
 - 2026-11-27 **N9** Sounds and shortcuts (n9-sounds): merged as 1a44b88
 - 2026-11-27 **J4** Explore public rooms and spaces (j4-explore): merged as 45a60c3
 - 2026-11-27 **M9** Polls (MSC3381): show, vote, end, create (main-session): merged as 76cfdc8
@@ -39,4 +39,3 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 - 2026-11-27 **M5** Member profile cards and own profile editing (codex-m5): merged as f398e1f (PR #5)
 - 2026-11-27 **ux-polish** Jump bar button, steady history loading, floating reaction picker, voice channel click joins (main-session): merged as 2ce0c06
 - 2026-11-27 **fix-media-previews** Image previews always load; the viewer keeps the scroll position (main-session): merged as eeaaa4d
-- 2026-11-27 **room-upgrades** Upgraded rooms as one chat (room-upgrades): merged as fedb2d4
