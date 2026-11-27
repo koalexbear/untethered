@@ -83,6 +83,11 @@
      "at": "2026-11-27T20:17:41Z",
      "by": "main-session",
      "text": "main-session: M9 is merged to main as 76cfdc8. In your files: engine/mod.rs gains 'pub mod polls;', Kind::Poll, Message.poll (serde default), Command::{CreatePoll,Vote,EndPoll} + dispatch arms before Command::Report; engine/app.rs one engine_done arm (Request::Poll(op), result) after the Forward arm and 'poll: None,' in its three test Message literals; engine/messaging.rs 'poll: None,' in the base Message literal. Expect them when you merge main."
+    },
+    {
+     "at": "2026-11-27T21:03:09Z",
+     "by": "main-session",
+     "text": "main-session: J4, N9, N4 and V2 are merged to main (now 7b99e29). In your files: engine/mod.rs gains 'mod explore;' with Command::PublicRooms and Event::PublicRooms (J4), 'pub mod presence;' with Command::{PublishPresence,WatchPresence,SaveStatus} and Event::{Presence,PresenceSupport,OwnStatus} (N4), and Alert.highlight (N9); engine/app.rs gains their engine_event/engine_done arms. Expect them when you merge main."
     }
    ],
    "owner": "codex-n3",
