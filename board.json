@@ -36,9 +36,9 @@
     "rust-client/src/rooms/engine.rs",
     "rust-client/src/runtime.rs"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Memory: fewer threads, capped arenas, close left rooms' timelines; older rooms' keys in bulk; clear UTD labels",
-   "updated": "2026-11-27T09:58:59Z",
+   "updated": "2026-11-27T10:25:34Z",
    "worktree": "."
   }
  },
