@@ -78,9 +78,9 @@
     "rust-client/src/view/upgrades.rs",
     "scripts/qa_room_upgrades.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Upgraded rooms as one chat",
-   "updated": "2026-11-27T00:09:51Z",
+   "updated": "2026-11-27T00:22:58Z",
    "worktree": ".claude/worktrees/room-upgrades"
   }
  },
