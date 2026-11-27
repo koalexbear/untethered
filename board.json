@@ -1,5 +1,31 @@
 {
  "claims": {
+  "A2": {
+   "branch": "claude/a2-voice-a94df8",
+   "claimed": "2026-11-27T21:28:20Z",
+   "notes": [],
+   "owner": "a2-voice",
+   "paths": [
+    "README.md",
+    "ROADMAP.md",
+    "experiments/rtc-audio/run_element.sh",
+    "rust-client/docs/calls-parity-plan.md",
+    "rust-client/src/call_settings.rs",
+    "rust-client/src/desktop_call.rs",
+    "rust-client/src/desktop_call/audio.rs",
+    "rust-client/src/desktop_call/channel.rs",
+    "rust-client/src/desktop_call/voice.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/view.rs",
+    "rust-client/src/view/voice_settings.rs",
+    "scripts/qa_voice_processing.py",
+    "scripts/qa_voice_room.py"
+   ],
+   "status": "working",
+   "title": "Voice processing and input sensitivity",
+   "updated": "2026-11-27T21:28:20Z",
+   "worktree": ".claude/worktrees/a2-voice-a94df8"
+  },
   "N3": {
    "branch": "codex/n3-pins-threads",
    "claimed": "2026-11-27T14:09:26Z",
