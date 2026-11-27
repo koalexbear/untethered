@@ -6,7 +6,7 @@
 //!
 //! A space joined here would show no channels: the room list holds joined
 //! rooms only. So a space's channels this account hasn't joined come from
-//! its hierarchy and show in its channel list, dimmed, and open the same
+//! its hierarchy and show in its channel list, their icons dimmed, and open the same
 //! preview, rather than joining every room at once as Discord does
 //! (homeservers limit how fast an account joins rooms).
 use crate::{
@@ -128,6 +128,8 @@ impl App {
                 self.room_preview = None;
                 self.invite_open = None;
                 self.account = false;
+                self.server_menu = false;
+                self.context_menu.dismiss();
                 self.explore.page = page;
                 if self.explore.page.is_none() {
                     self.explore.page = Some(Page::default());

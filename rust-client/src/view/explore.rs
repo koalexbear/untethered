@@ -1,7 +1,7 @@
 //! Explore (explore.rs), shaped like Discord's Explore Discoverable
 //! Servers: a Discover sidebar with the kinds to list, a banner with the
 //! search box, and the directory's spaces and rooms as cards. A card opens
-//! the J2 preview over it (view/joining.rs). Also the dimmed rows for a
+//! the J2 preview over it (view/joining.rs). Also the rows, icons dimmed, for a
 //! space's channels this account hasn't joined.
 use super::{
     App, BLURPLE, BODY, BOLD, CHANNEL, CHAT, El, HOVER, Icon, LINE, MUTED, Msg, RAIL, SIDE, TEXT,
@@ -140,7 +140,9 @@ impl App {
         let heading = match (&page.shown, page.total) {
             (None, _) => None,
             _ if page.rooms.is_empty() => None,
-            (_, Some(total)) if total as usize > page.rooms.len() => {
+            // The homeserver's estimate counts its whole directory, so
+            // it only says how many more pages may hold.
+            (_, Some(total)) if page.next.is_some() && total as usize > page.rooms.len() => {
                 Some(format!("{} of about {total}", page.rooms.len()))
             }
             _ => Some(match page.rooms.len() {
@@ -302,14 +304,11 @@ impl App {
                 },
                 ..Default::default()
             });
-        with_tip(
-            card,
-            if joined { "Open" } else { "Preview and join" },
-            tooltip::Position::Top,
-        )
+        card.into()
     }
 
-    /// A channel in the open space this account hasn't joined: dimmed, and
+    /// A channel in the open space this account hasn't joined: its icon dimmed
+    /// (its name stays as readable as a joined channel's), and
     /// a click previews it with Join.
     pub(super) fn unjoined_row<'a>(&self, r: &'a PublicRoom) -> El<'a> {
         let entry = row![
@@ -332,7 +331,7 @@ impl App {
             .style(|theme, s| button::Style {
                 background: (s == button::Status::Hovered).then(|| HOVER.into()),
                 border: Border::default().rounded(4),
-                ..plain(color!(0x6d6f78), MUTED)(theme, s)
+                ..plain(CHANNEL, BODY)(theme, s)
             });
         row![
             Space::new().width(8),

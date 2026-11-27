@@ -1898,7 +1898,7 @@ impl App {
             ))
             .padding(0)
             .on_press_maybe(
-                (self.connected && self.sdk.is_some())
+                self.connected
                     .then_some(Msg::Explore(crate::explore::Input::Open)),
             )
             .style(move |_, s| {
@@ -1910,11 +1910,14 @@ impl App {
                 }
             });
             let marker = container(pill(if exploring { 40. } else { 0. })).center_y(48);
-            icons = icons.push(with_tip(
-                row![marker, explore].spacing(8).align_y(Center),
-                "Explore Discoverable Spaces",
-                tooltip::Position::Right,
-            ));
+            // The directory needs the matrix-sdk engine.
+            if self.sdk.is_some() {
+                icons = icons.push(with_tip(
+                    row![marker, explore].spacing(8).align_y(Center),
+                    "Explore Discoverable Spaces",
+                    tooltip::Position::Right,
+                ));
+            }
         }
         let rail = container(
             scrollable(icons)
@@ -2609,15 +2612,22 @@ impl App {
         } else if let Some(r) = room {
             self.conversation(r)
         } else {
-            container(
-                column![
-                    text("No rooms here yet").font(BOLD).size(24),
-                    text("Choose another space or open All rooms.").color(MUTED)
-                ]
-                .spacing(6),
-            )
-            .center(Fill)
-            .into()
+            // A space just joined lists channels to join (explore.rs).
+            let (to_join, voice_to_join) = self.unjoined_channels();
+            let (title, hint) = if to_join.is_empty() && voice_to_join.is_empty() {
+                (
+                    "No rooms here yet",
+                    "Choose another space or open All rooms.",
+                )
+            } else {
+                (
+                    "Pick a channel to join",
+                    "Its channels are in the list: click one for its preview, then Join.",
+                )
+            };
+            container(column![text(title).font(BOLD).size(24), text(hint).color(MUTED)].spacing(6))
+                .center(Fill)
+                .into()
         };
         let mut middle = Row::new().push(body).height(Fill);
         if self.people && self.logged_in && room.is_some() {
