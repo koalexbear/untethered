@@ -92,49 +92,6 @@
    "updated": "2026-11-27T22:26:13Z",
    "worktree": "."
   },
-  "M11": {
-   "branch": "m11-emoji",
-   "claimed": "2026-11-27T21:43:12Z",
-   "notes": [
-    {
-     "at": "2026-11-27T21:52:16Z",
-     "by": "codex-n3",
-     "text": "N3 integration adds discussion dispatch in engine/app.rs and engine/mod.rs, App and panel hooks in main.rs and view.rs, and four toolbar glyphs in view/icons.rs. The roadmap update follows N3 landing."
-    }
-   ],
-   "owner": "main-session",
-   "paths": [
-    "README.md",
-    "ROADMAP.md",
-    "rust-client/src/autocomplete.rs",
-    "rust-client/src/emotes.rs",
-    "rust-client/src/engine/app.rs",
-    "rust-client/src/engine/compose.rs",
-    "rust-client/src/engine/media.rs",
-    "rust-client/src/engine/mod.rs",
-    "rust-client/src/engine/packs.rs",
-    "rust-client/src/engine/timeline.rs",
-    "rust-client/src/main.rs",
-    "rust-client/src/media.rs",
-    "rust-client/src/pills.rs",
-    "rust-client/src/preview.rs",
-    "rust-client/src/reactions.rs",
-    "rust-client/src/rich.rs",
-    "rust-client/src/view.rs",
-    "rust-client/src/view/autocomplete.rs",
-    "rust-client/src/view/emoji_picker.rs",
-    "rust-client/src/view/emotes.rs",
-    "rust-client/src/view/icons.rs",
-    "rust-client/src/view/reaction_bar.rs",
-    "rust-client/src/view/rich.rs",
-    "rust-client/src/view/selectable.rs",
-    "scripts/qa_emotes.py"
-   ],
-   "status": "review",
-   "title": "Custom emoji and stickers (image packs)",
-   "updated": "2026-11-27T21:57:55Z",
-   "worktree": "."
-  },
   "M12": {
    "branch": "claude/m12-names-fc018c",
    "claimed": "2026-11-27T21:28:57Z",
@@ -599,6 +556,15 @@
    "owner": "codex-n3",
    "result": "merged as 3d219fe7b1b10c69e84aa7c77720d7fcbac1bec5",
    "title": "Pinned messages and Matrix threads"
+  },
+  {
+   "branch": "m11-emoji",
+   "claimed": "2026-11-27T21:43:12Z",
+   "finished": "2026-11-27T22:50:08Z",
+   "id": "M11",
+   "owner": "main-session",
+   "result": "merged as b6fa2b1",
+   "title": "Custom emoji and stickers (image packs)"
   }
  ]
 }
