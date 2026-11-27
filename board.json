@@ -6,19 +6,22 @@
    "notes": [],
    "owner": "main-session",
    "paths": [
+    "README.md",
     "rust-client/src/engine/media.rs",
     "rust-client/src/engine/mod.rs",
     "rust-client/src/inline.rs",
     "rust-client/src/main.rs",
     "rust-client/src/media.rs",
     "rust-client/src/view.rs",
+    "rust-client/src/view/rich.rs",
+    "rust-client/src/view/selectable.rs",
     "rust-client/src/view/upgrades.rs",
     "rust-client/src/view/viewer.rs",
     "scripts/qa_media_previews.py"
    ],
    "status": "working",
    "title": "Image previews always load; the viewer keeps the scroll position",
-   "updated": "2026-11-27T08:25:17Z",
+   "updated": "2026-11-27T08:36:29Z",
    "worktree": "."
   }
  },
