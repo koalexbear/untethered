@@ -105,18 +105,20 @@ impl Sound {
         }
     }
     /// The notes, as (Hz, start ms, length ms). Each sound has notes of its
-    /// own (or the same ones in the other order), away from the ringtone's
-    /// 440/620 Hz, so the live fixture can tell them apart.
+    /// own (or the same ones in the other order), all above 1.2 kHz: clear
+    /// of the ringtone's 440/620 Hz and the call fixtures' test tones
+    /// (410-1030 Hz), so those measure what they did and the sounds fixture
+    /// can tell the sounds apart.
     fn notes(self) -> &'static [(f32, u32, u32)] {
         match self {
-            Self::Message => &[(1175., 0, 90), (1568., 70, 170)],
-            Self::Mention => &[(1397., 0, 80), (1865., 70, 80), (2349., 140, 210)],
-            Self::Join => &[(587., 0, 110), (784., 100, 230)],
-            Self::Leave => &[(698., 0, 110), (523., 100, 250)],
-            Self::Mute => &[(880., 0, 70), (659., 60, 130)],
-            Self::Unmute => &[(659., 0, 70), (880., 60, 130)],
-            Self::Deafen => &[(554., 0, 90), (415., 80, 190)],
-            Self::Undeafen => &[(415., 0, 90), (554., 80, 190)],
+            Self::Message => &[(1568., 0, 90), (2093., 70, 170)],
+            Self::Mention => &[(1760., 0, 80), (2349., 70, 80), (2794., 140, 210)],
+            Self::Join => &[(1319., 0, 110), (1976., 100, 230)],
+            Self::Leave => &[(1865., 0, 110), (1245., 100, 250)],
+            Self::Mute => &[(1661., 0, 70), (1397., 60, 130)],
+            Self::Unmute => &[(1397., 0, 70), (1661., 60, 130)],
+            Self::Deafen => &[(2217., 0, 90), (1480., 80, 190)],
+            Self::Undeafen => &[(1480., 0, 90), (2217., 80, 190)],
         }
     }
     /// Mono 16-bit samples at [`RATE`]: soft sine notes that fade out.

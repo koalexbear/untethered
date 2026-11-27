@@ -3951,13 +3951,13 @@ impl App {
                 )],
             ));
         }
-        #[cfg(target_os = "linux")]
-        {
-            page = page.push(group("SOUNDS", self.sound_settings(&setting)));
-        }
         #[cfg(not(target_arch = "wasm32"))]
         {
             page = page.push(group("SYSTEM TRAY", self.tray_settings(&setting)));
+        }
+        #[cfg(target_os = "linux")]
+        {
+            page = page.push(group("SOUNDS", self.sound_settings(&setting)));
         }
         page = page.push(self.sdk_account_settings());
         if !self.status.is_empty() {
