@@ -172,7 +172,8 @@ impl App {
                 "Transfer failed. Retry or remove the attachment.",
             ),
             Request::Mentions => self.mentions_failed(),
-            Request::Search(room, kind) => self.fail_search(&room, kind),
+            Request::Search => self.search_found(Err(Failure::Unavailable)),
+            Request::IndexSearch => self.search_indexed(false),
             Request::Setup(step) => self.setup_error(step),
             Request::Report => self.report_result(false),
             _ => {
@@ -464,20 +465,11 @@ impl App {
                     self.directory.observe(&user, member);
                 }
             }
-            Event::SearchResults { id, result } => match (self.pending.remove(&id), result) {
-                (Some(Request::Search(room, _)), Ok((found, next))) => {
-                    self.search_found(room, found, next)
+            Event::RoomsFound { id, result } => {
+                if matches!(self.pending.remove(&id), Some(Request::Search)) {
+                    self.search_found(result);
                 }
-                (Some(Request::Search(room, kind)), Err(_)) => self.fail_search(&room, kind),
-                _ => {}
-            },
-            Event::SearchCoverage { id, result } => match (self.pending.remove(&id), result) {
-                (Some(Request::Search(room, _)), Ok((messages, oldest))) => {
-                    self.search_counted(room, messages, oldest)
-                }
-                (Some(Request::Search(room, kind)), Err(_)) => self.fail_search(&room, kind),
-                _ => {}
-            },
+            }
             Event::Mentions { id, result } => match (self.pending.remove(&id), result) {
                 (Some(Request::Mentions), Ok(found)) => self.mentions_found(found),
                 (Some(Request::Mentions), Err(_)) => self.mentions_failed(),
@@ -623,6 +615,7 @@ impl App {
             (Request::LeaveRoom(room), result) => self.left_room(&room, result.is_ok()),
             (Request::AcceptInvite(room), result) => self.invite_answered(room, true, result.is_ok()),
             (Request::Block(user, block), result) => self.block_answered(user, block, result.is_ok()),
+            (Request::IndexSearch, result) => self.search_indexed(result.is_ok()),
             (Request::JoinRoom(target), result) => self.room_joined(target, result.is_ok()),
             (Request::DeclineInvite(room), result) => {
                 self.invite_answered(room, false, result.is_ok())

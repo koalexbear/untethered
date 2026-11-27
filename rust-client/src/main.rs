@@ -277,9 +277,13 @@ enum Msg {
     OpenSearch,
     SearchReady(String, search::Bookmark),
     SearchInput(String),
-    RunSearch(bool),
-    SearchCoverage,
-    SearchHit(String),
+    RunSearch,
+    /// Search this channel, this server or all rooms (search.rs).
+    SearchScope(search::Scope),
+    /// Load older encrypted history onto this device, then search again.
+    IndexSearch,
+    /// A hit: its room and event.
+    SearchHit(String, String),
     SearchResults,
     ReturnToReading,
     More,
@@ -389,7 +393,8 @@ enum Request {
     Redact(String, String),
     Reaction(reactions::Toggle),
     Report,
-    Search(String, search::Page),
+    Search,
+    IndexSearch,
     Mentions,
     ReadState(String, Option<String>),
     ShareReads(bool, u64),
@@ -1791,23 +1796,10 @@ impl App {
                     s.input = input;
                 }
             }
-            Msg::RunSearch(more) => self.submit_search(more),
-            Msg::SearchCoverage => {
-                self.start_coverage();
-                return operation::focus("room-search-input");
-            }
-            Msg::SearchHit(id) => {
-                if self
-                    .search
-                    .as_ref()
-                    .is_some_and(|s| s.room == self.selected && s.hits.iter().any(|h| h.id == id))
-                {
-                    self.jump(id);
-                    if self.original.is_some() {
-                        return self.anchor_history();
-                    }
-                }
-            }
+            Msg::RunSearch => self.submit_search(),
+            Msg::SearchScope(scope) => self.search_scope(scope),
+            Msg::IndexSearch => self.index_search(),
+            Msg::SearchHit(room, id) => return self.open_hit(room, id),
             Msg::SearchResults => self.close_original(),
             Msg::ReturnToReading => return self.return_to_reading(),
             Msg::ReactionPicker(id) => return self.toggle_reaction_picker(id, false),

@@ -311,7 +311,7 @@ async fn search_and_mentions(
     assert!(app.search.is_some(), "search opened");
     async fn find(app: &mut App, rx: &Receiver<Event>, term: &str) -> Vec<(String, String)> {
         app.search.as_mut().unwrap().input = term.into();
-        app.submit_search(false);
+        app.submit_search();
         wait(app, rx, "search", |a| {
             a.search.as_ref().is_some_and(|s| !s.busy)
         })
@@ -354,27 +354,16 @@ async fn search_and_mentions(
         find(app, rx, old_word).await.is_empty(),
         "replaced text is not found"
     );
-    app.start_coverage();
-    wait(app, rx, "coverage", |a| {
-        a.search
-            .as_ref()
-            .and_then(|s| s.coverage.as_ref())
-            .is_some_and(|c| c.done)
-    })
-    .await;
-    let counted = app
-        .search
-        .as_ref()
-        .unwrap()
-        .coverage
-        .as_ref()
-        .unwrap()
-        .messages;
-    assert!(counted >= 55, "{counted} stored messages");
-    app.clear_search();
-    println!(
-        "matrix-sdk: search found stored history and edited text ({counted} messages searchable)"
+    // The encrypted room was searched on this device, back to its start.
+    let reach = app.search.as_ref().unwrap().reach.clone();
+    assert!(
+        reach
+            .iter()
+            .any(|r| r.room == room && !r.server && r.oldest.is_some()),
+        "searched on this device: {reach:?}"
     );
+    app.clear_search();
+    println!("matrix-sdk: search found stored history and edited text, on this device");
 
     app.open_mentions();
     wait(app, rx, "mentions inbox", |a| {
@@ -1662,7 +1651,7 @@ async fn matrix_sdk_room_upgrades() {
     // Search covers the older rooms, now that their history is stored.
     let _ = app.search_ready(newest.clone(), crate::search::Bookmark::default());
     app.search.as_mut().unwrap().input = "before 4".into();
-    app.submit_search(false);
+    app.submit_search();
     wait(&mut app, &rx, "search", |a| {
         a.search.as_ref().is_some_and(|s| !s.busy)
     })
