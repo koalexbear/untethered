@@ -40,6 +40,11 @@
      "at": "2026-11-27T08:38:23Z",
      "by": "codex-m5",
      "text": "[M5] shares rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: Profile-only hooks in view.rs and engine/mod.rs, outside media changes; main.rs only if necessary for profile lifecycle, leaving media behavior alone."
+    },
+    {
+     "at": "2026-11-27T08:55:23Z",
+     "by": "main-session",
+     "text": "Ready on fix-media-previews: previews always load, viewer keeps scroll, drop keeps composer focus, selectable message text. Checks clean; scripts/qa_media_previews.py passes live."
     }
    ],
    "owner": "main-session",
@@ -59,7 +64,7 @@
    ],
    "status": "review",
    "title": "Image previews always load; the viewer keeps the scroll position",
-   "updated": "2026-11-27T08:55:21Z",
+   "updated": "2026-11-27T08:55:23Z",
    "worktree": "."
   }
  },
