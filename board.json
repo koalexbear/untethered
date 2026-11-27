@@ -1,5 +1,32 @@
 {
  "claims": {
+  "M5": {
+   "branch": "codex/m5-profiles",
+   "claimed": "2026-11-27T08:38:23Z",
+   "notes": [],
+   "owner": "codex-m5",
+   "paths": [
+    "rust-client/src/account.rs",
+    "rust-client/src/context_menu.rs",
+    "rust-client/src/engine/account_ui.rs",
+    "rust-client/src/engine/app.rs",
+    "rust-client/src/engine/mod.rs",
+    "rust-client/src/engine/profile.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/permissions.rs",
+    "rust-client/src/rooms.rs",
+    "rust-client/src/rooms/engine.rs",
+    "rust-client/src/view.rs",
+    "rust-client/src/view/profile.rs",
+    "rust-client/src/view/room_people.rs",
+    "rust-client/src/web_files.rs",
+    "rust-client/web/files.js"
+   ],
+   "status": "working",
+   "title": "Member profile cards and own profile editing",
+   "updated": "2026-11-27T08:38:23Z",
+   "worktree": "../../../../../tmp/untethered-m5-profiles"
+  },
   "fix-media-previews": {
    "branch": "fix-media-previews",
    "claimed": "2026-11-27T08:15:28Z",
@@ -8,6 +35,11 @@
      "at": "2026-11-27T08:38:22Z",
      "by": "codex-m5",
      "text": "M5 Profiles will keep logic in dedicated profile modules. In view.rs I will add sender avatar/name click and profile overlay/settings hooks outside the media viewer; in engine/mod.rs I will add typed profile/DM commands and handlers separate from media dispatch. I will reuse Msg::Sdk to avoid main.rs if possible."
+    },
+    {
+     "at": "2026-11-27T08:38:23Z",
+     "by": "codex-m5",
+     "text": "[M5] shares rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: Profile-only hooks in view.rs and engine/mod.rs, outside media changes; main.rs only if necessary for profile lifecycle, leaving media behavior alone."
     }
    ],
    "owner": "main-session",
