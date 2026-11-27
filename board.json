@@ -1,5 +1,33 @@
 {
  "claims": {
+  "M8": {
+   "branch": "m8-forward",
+   "claimed": "2026-11-27T17:45:49Z",
+   "notes": [],
+   "owner": "main-session",
+   "paths": [
+    "README.md",
+    "ROADMAP.md",
+    "rust-client/src/context_menu.rs",
+    "rust-client/src/engine/app.rs",
+    "rust-client/src/engine/mod.rs",
+    "rust-client/src/engine/timeline.rs",
+    "rust-client/src/forward.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/rooms.rs",
+    "rust-client/src/rooms/engine.rs",
+    "rust-client/src/view.rs",
+    "rust-client/src/view/context_menu.rs",
+    "rust-client/src/view/forward.rs",
+    "rust-client/src/view/hover.rs",
+    "rust-client/src/view/icons.rs",
+    "scripts/qa_forward.py"
+   ],
+   "status": "working",
+   "title": "Forward messages",
+   "updated": "2026-11-27T17:45:49Z",
+   "worktree": "."
+  },
   "N3": {
    "branch": "codex/n3-pins-threads",
    "claimed": "2026-11-27T14:09:26Z",
@@ -38,6 +66,11 @@
      "at": "2026-11-27T17:26:57Z",
      "by": "main",
      "text": "main-session: Phase 4 is merged to main as 0c7f452. It adds one wasm-only arm in rust-client/src/engine/app.rs engine_done, (Request::PlayVideo, result) => self.web_video_ready(...), next to the CopyImage arm; expect it when you merge main."
+    },
+    {
+     "at": "2026-11-27T17:45:49Z",
+     "by": "main-session",
+     "text": "[M8] shares rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs: one Command::Forward variant and its dispatch arm in rust-client/src/engine/mod.rs (next to Command::Redact), and one engine_done arm (Request::Forward ...) in rust-client/src/engine/app.rs next to the Redact arms; nothing else in your files"
     }
    ],
    "owner": "codex-n3",

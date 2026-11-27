@@ -4,6 +4,7 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
+| M8 | Forward messages | main-session | `m8-forward` | working | 2026-11-27T17:45:49Z | `README.md`, `ROADMAP.md`, `rust-client/src/context_menu.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/timeline.rs`, `rust-client/src/forward.rs`, `rust-client/src/main.rs`, `rust-client/src/rooms.rs`, `rust-client/src/rooms/engine.rs`, `rust-client/src/view.rs`, `rust-client/src/view/context_menu.rs`, `rust-client/src/view/forward.rs`, `rust-client/src/view/hover.rs`, `rust-client/src/view/icons.rs`, `scripts/qa_forward.py` |
 | N3 | Pinned messages and Matrix threads | codex-n3 | `codex/n3-pins-threads` | working | 2026-11-27T15:03:37Z | `rust-client/src/engine/account_ui.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/live_test.rs`, `rust-client/src/engine/messaging.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/pins.rs`, `rust-client/src/engine/threads.rs`, `scripts/qa_matrix_sdk.py` |
 
 ## Done
