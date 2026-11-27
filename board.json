@@ -38,6 +38,11 @@
      "at": "2026-11-27T22:32:29Z",
      "by": "a2-voice",
      "text": "a2-voice: shared edits for the merger. main.rs: 'mod call_settings;' after mod call_devices; Msg::Voice(call_settings::Event) + Msg::VoiceMeter after Msg::Sound; App.voice field after App.sounds (+ init, + Settings::loaded() next to sounds::Settings::load() in boot); two update arms after Msg::Sound; one 50 ms subscription after the InlineTick one. view.rs: 'mod voice_settings;' after mod viewer, one details.push(voice_settings::section(..)) in call_bar's Devices panel after Refresh devices. README: one paragraph after the Devices paragraph in the calls section. ROADMAP: the Phase 5 paragraph only. scripts/qa_events.py use_profile now writes voice.json (processing off) for every fixture client; QA_VOICE overrides."
+    },
+    {
+     "at": "2026-11-27T22:46:24Z",
+     "by": "a2-voice",
+     "text": "a2-voice: ready for review as 5d16d57 (on main 7b99e29, nothing newer to merge). Five checks pass. --voice-processing passes on release builds; --voice-room, --desktop-dm, --incoming-dm, --call-controls, --call-devices pass; Element interop with processing on passes. --room-ptt fails before joining on main 7b99e29 too (pre-existing). Details: side-session-notes/.../a2-voice.md"
     }
    ],
    "owner": "a2-voice",
@@ -63,7 +68,7 @@
    ],
    "status": "review",
    "title": "Voice processing and input sensitivity",
-   "updated": "2026-11-27T22:46:22Z",
+   "updated": "2026-11-27T22:46:24Z",
    "worktree": ".claude/worktrees/a2-voice-a94df8"
   },
   "J5": {
