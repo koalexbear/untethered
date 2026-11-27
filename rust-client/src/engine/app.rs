@@ -851,6 +851,114 @@ mod tests {
         );
     }
 
+    fn message(row: i64) -> Message {
+        Message {
+            row,
+            event_id: Some(format!("${row}")),
+            sender: "@you:example".into(),
+            sender_name: None,
+            sender_avatar: None,
+            time: row,
+            body: format!("message {row}"),
+            formatted: None,
+            kind: crate::engine::Kind::Text,
+            encrypted: false,
+            delivery: crate::engine::Delivery::Sent,
+            edited: false,
+            reply_to: None,
+            reactions: Vec::new(),
+            text: true,
+            editable: false,
+            mentions: None,
+            edit_id: None,
+            edit_time: None,
+            receipts: Vec::new(),
+            media: None,
+            from: None,
+        }
+    }
+
+    /// Leaving a room closes its timeline and keeps its newest posts; coming
+    /// back opens it again. Back at the newest message with a long history
+    /// loaded, the open room starts over the same way (paging.rs).
+    #[test]
+    fn a_room_left_lets_its_history_go_and_loads_it_again_on_return() {
+        let (mut app, rx) = app();
+        app.engine_event(signed_in(true));
+        let room = |id: &str| RoomSummary {
+            id: id.into(),
+            name: id.into(),
+            ..Default::default()
+        };
+        app.engine_event(Event::Rooms(RoomList {
+            rooms: vec![room("!a:example"), room("!b:example")],
+            children: Default::default(),
+        }));
+        let _ = app.update(Msg::Open("!a:example".into()));
+        let drain = |rx: &async_channel::Receiver<Command>| -> Vec<Command> {
+            std::iter::from_fn(|| rx.try_recv().ok()).collect()
+        };
+        drain(&rx);
+        app.pending.clear();
+        app.engine_event(Event::Timeline(TimelineSnapshot {
+            room: "!a:example".into(),
+            messages: (1..=500).map(message).collect(),
+            start_reached: false,
+            latest_event: None,
+            seams: Vec::new(),
+        }));
+        // Scrolled up, nothing goes.
+        app.scrolled_away = true;
+        let _ = app.bound_history();
+        assert_eq!(app.live.list["!a:example"].posts().len(), 500);
+        assert!(drain(&rx).is_empty());
+        // Back at the newest: the room starts over from its newest posts,
+        // opening its timeline again after a pause.
+        app.scrolled_away = false;
+        let _ = app.bound_history();
+        let commands = drain(&rx);
+        assert!(matches!(&commands[..], [Command::CloseTimeline { room }] if room == "!a:example"));
+        let a = &app.live.list["!a:example"];
+        assert_eq!(a.posts().len(), 60);
+        assert_eq!(a.posts().last().unwrap().body, "message 500");
+        assert!(!a.end);
+        let _ = app.bound_history();
+        assert!(drain(&rx).is_empty(), "nothing before the pause is over");
+        let _ = app.update(Msg::ReopenTimeline("!a:example".into()));
+        assert!(
+            matches!(&drain(&rx)[..], [Command::Paginate { room, .. }] if room == "!a:example")
+        );
+        app.pending.clear();
+        // Opening with everything again doesn't start it over again.
+        app.engine_event(Event::Timeline(TimelineSnapshot {
+            room: "!a:example".into(),
+            messages: (1..=500).map(message).collect(),
+            start_reached: false,
+            latest_event: None,
+            seams: Vec::new(),
+        }));
+        let _ = app.bound_history();
+        assert!(
+            drain(&rx).is_empty(),
+            "no second start-over without scrolling away"
+        );
+        // Leaving closes it; returning opens it again.
+        let _ = app.update(Msg::Open("!b:example".into()));
+        assert!(
+            drain(&rx)
+                .iter()
+                .any(|c| matches!(c, Command::CloseTimeline { room } if room == "!a:example"))
+        );
+        app.pending.clear();
+        let _ = app.update(Msg::Open("!a:example".into()));
+        assert!(
+            drain(&rx)
+                .iter()
+                .any(|c| matches!(c, Command::Paginate { room, .. } if room == "!a:example"))
+        );
+        assert!(!app.released.contains("!a:example"));
+    }
+
     /// A restored session's account data comes from the engine's store before
     /// the first account state, which waits on the homeserver.
     #[cfg(any(target_os = "linux", target_arch = "wasm32"))]

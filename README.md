@@ -24,6 +24,19 @@ passphrase lives in the OS keyring when one answers) and syncs with Simplified
 Sliding Sync, which the homeserver must support. There's no separate service
 to start.
 
+**Encrypted history:** messages older than this device decrypt with keys
+from your key backup. The first time a room (or an older room it was
+upgraded from) shows messages waiting for keys, Untethered asks the backup
+for all of that room's keys at once. A message that can't be decrypted says
+why when the reason is known: sent before you joined, withheld by the
+sender, key backup off, or this device not verified. Otherwise it shows
+**Waiting for encryption keys…** until its key arrives.
+
+**Memory:** a room you leave lets go of the history you scrolled through,
+keeping its newest messages, and loads it again from this device's cache
+when you come back; the open room does the same once you return to its
+newest messages after reading far back.
+
 **Coming from a gomuks build:** earlier builds ran
 [gomuks](https://github.com/gomuks/gomuks) as the Matrix engine. The first
 start shows why you need to sign in again: it's a new device, and your
@@ -212,8 +225,10 @@ changes to **Joined** when they accept. Membership controls use your room role
 and the selected account’s full Matrix ID.
 
 **Room search:** Click the **Search** box in the room header, enter a word or phrase,
-and press Enter. Results come from this device’s stored history and use the
-current text of edited messages. **Check coverage** shows the number of
+and press Enter. Results come from this device’s stored history, including
+the older rooms of an upgraded room, and use the current text of edited
+messages: what you haven't scrolled back to, or can't decrypt yet, isn't
+found. **Check coverage** shows the number of
 readable messages cached for this room and the oldest date it found. Open
 a result to see it in context. **Back to results** keeps your query;
 **Return to timeline** takes you back to where you were reading.
