@@ -182,9 +182,9 @@
     "rust-client/src/view/room_people.rs",
     "scripts/qa_presence.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Presence and custom status",
-   "updated": "2026-11-27T20:53:38Z",
+   "updated": "2026-11-27T20:59:00Z",
    "worktree": ".claude/worktrees/n4-presence-13e26f"
   },
   "N9": {
