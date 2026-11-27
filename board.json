@@ -246,6 +246,7 @@
     "rust-client/src/desktop_call.rs",
     "rust-client/src/desktop_call/*.rs",
     "rust-client/src/main.rs",
+    "rust-client/src/tray.rs",
     "rust-client/src/view/call_controls.rs",
     "rust-client/src/view/call_stage.rs",
     "scripts/qa_room_camera.py",
@@ -255,7 +256,7 @@
    ],
    "status": "working",
    "title": "Simulcast, per-tile quality, pause hidden video",
-   "updated": "2026-11-27T20:12:06Z",
+   "updated": "2026-11-27T20:18:33Z",
    "worktree": ".claude/worktrees/v2-simulcast-9158cf"
   }
  },
