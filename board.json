@@ -3,7 +3,13 @@
   "A2": {
    "branch": "claude/a2-voice-a94df8",
    "claimed": "2026-11-27T21:28:20Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-27T21:28:55Z",
+     "by": "claude/m12-names-fc018c",
+     "text": "m12-names: M12 touches main.rs (mod names; Msg::Names; App.names field; Request::Nickname; one update arm and one Escape arm) and view.rs (a dialog slot, an 'Edit Server Profile' server-menu item, and the timeline header name gets a role colour/tag via view/names.rs). README/ROADMAP: the M12 row and a short Names paragraph only."
+    }
+   ],
    "owner": "a2-voice",
    "paths": [
     "README.md",
