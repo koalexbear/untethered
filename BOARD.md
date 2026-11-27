@@ -5,10 +5,10 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
 | N3 | Pinned messages and Matrix threads | codex-n3 | `codex/n3-pins-threads` | working | 2026-11-27T15:03:37Z | `rust-client/src/engine/account_ui.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/live_test.rs`, `rust-client/src/engine/messaging.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/pins.rs`, `rust-client/src/engine/threads.rs`, `scripts/qa_matrix_sdk.py` |
-| fix-call-video | Fix call video: share corruption at odd widths, low-fps own preview | fix-call-video | `claude/fix-call-video` | review | 2026-11-27T19:25:10Z | `rust-client/Cargo.lock`, `rust-client/Cargo.toml`, `rust-client/src/desktop_call.rs`, `rust-client/src/desktop_call/room_video.rs`, `rust-client/src/main.rs`, `rust-client/src/view/call_stage.rs`, `scripts/qa_kwin.py`, `scripts/qa_voice_room.py`, `scripts/qa_window_pattern.py`, `scripts/qa_window_share.py` |
 
 ## Done
 
+- 2026-11-27 **fix-call-video** Fix call video: share corruption at odd widths, low-fps own preview (fix-call-video): merged as 86aa2c6
 - 2026-11-27 **inline-video-overlay** Inline video: controls over the video, auto-hiding (main-session): merged as d2c2530
 - 2026-11-27 **M8** Forward messages (main-session): merged as 52398c0
 - 2026-11-27 **P4** Video in the browser (Windows playback stays open) (main-session): released: browser half merged as 0c7f452; Windows video playback is still open
@@ -38,4 +38,3 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 - 2026-11-27 **M3** Typing indicators (m3-typing): merged as a9422b5
 - 2026-11-26 **single-instance** Single instance: a second launch shows the running window (main-session): merged as 2d29437
 - 2026-11-26 **N6** System tray (n6-system-tray): merged as 4145624
-- 2026-11-26 **M1** Rich text in received messages (m1-rich-text): merged as 62d12ae

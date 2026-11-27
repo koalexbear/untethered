@@ -65,39 +65,6 @@
    "title": "Pinned messages and Matrix threads",
    "updated": "2026-11-27T15:03:37Z",
    "worktree": "../../../../../tmp/untethered-n3"
-  },
-  "fix-call-video": {
-   "branch": "claude/fix-call-video",
-   "claimed": "2026-11-27T18:24:02Z",
-   "notes": [
-    {
-     "at": "2026-11-27T18:33:19Z",
-     "by": "claude/fix-call-video",
-     "text": "Cause 1: share capture assumed packed I420 rows; GStreamer pads rows to 4 bytes, so widths not divisible by 8 shear and drift (colour errors/tearing at sender and receivers). Cause 2: own preview capped at 10 fps. Also: voice-room fixtures broke with 14e985b (click on channel joins); fixed in qa_voice_room.py. Fix + fixture runs in progress on claude/fix-call-video."
-    },
-    {
-     "at": "2026-11-27T19:25:13Z",
-     "by": "claude/fix-call-video",
-     "text": "Ready for review on claude/fix-call-video (5 commits, not merged). Fixed: odd-width share tearing (GStreamer row padding), 10 fps own preview, tile flicker (iced 0.14 async upload of >=2 MiB images; tiles now draw image::allocate'd frames). Fixtures: voice-room join after 14e985b, dock tooltip OCR, release UI via UNTETHERED_QA_UI_CLIENT. Passing: --window-share (debug+release), --room-camera, --voice-room. --room-ptt still needs the room open without joining."
-    }
-   ],
-   "owner": "fix-call-video",
-   "paths": [
-    "rust-client/Cargo.lock",
-    "rust-client/Cargo.toml",
-    "rust-client/src/desktop_call.rs",
-    "rust-client/src/desktop_call/room_video.rs",
-    "rust-client/src/main.rs",
-    "rust-client/src/view/call_stage.rs",
-    "scripts/qa_kwin.py",
-    "scripts/qa_voice_room.py",
-    "scripts/qa_window_pattern.py",
-    "scripts/qa_window_share.py"
-   ],
-   "status": "review",
-   "title": "Fix call video: share corruption at odd widths, low-fps own preview",
-   "updated": "2026-11-27T19:25:10Z",
-   "worktree": ".claude/worktrees/fix-call-video"
   }
  },
  "done": [
@@ -397,6 +364,15 @@
    "owner": "main-session",
    "result": "merged as d2c2530",
    "title": "Inline video: controls over the video, auto-hiding"
+  },
+  {
+   "branch": "claude/fix-call-video",
+   "claimed": "2026-11-27T18:24:02Z",
+   "finished": "2026-11-27T19:40:09Z",
+   "id": "fix-call-video",
+   "owner": "fix-call-video",
+   "result": "merged as 86aa2c6",
+   "title": "Fix call video: share corruption at odd widths, low-fps own preview"
   }
  ]
 }
