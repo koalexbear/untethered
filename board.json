@@ -18,6 +18,11 @@
      "at": "2026-11-27T21:30:27Z",
      "by": "n5-order",
      "text": "[N5] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: N5: engine/mod.rs 'mod arrange;' + Command::Arrange {id, changes} with one dispatch arm near the poll arms, and RoomSummary.children (space child edges with order/ts, serde default); engine/app.rs one engine_done arm (Request::Arrange); engine/rooms.rs children() also returns order+ts; rooms.rs/rooms/engine.rs sort_rooms orders a space's channels by m.space.child order and builds subspace categories; main.rs mod channel_order, Msg::Order, App.order field, Request::Arrange, one update arm + Escape arm; view.rs channel_list grows subspace categories and wraps rows in drag slots (view/channel_order.rs); README/ROADMAP N5 row and a short Channel order note"
+    },
+    {
+     "at": "2026-11-27T21:43:12Z",
+     "by": "main-session",
+     "text": "[M11] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: engine/mod.rs+app.rs: packs module, three Commands, Event::Packs, a Live sender, one Paginate line, two app.rs arms and emote pills in send/edit; main.rs: mod emotes, Msg::Emote/EmoteReady, Request::Pack, an App field, two update arms, an Escape branch, schedule_emotes beside schedule_avatars; view.rs: mod emotes and a sticker button in the composer row; icons.rs: Icon::Sticker; README/ROADMAP: M11 row and an Emoji paragraph"
     }
    ],
    "owner": "a2-voice",
@@ -42,6 +47,43 @@
    "updated": "2026-11-27T21:28:20Z",
    "worktree": ".claude/worktrees/a2-voice-a94df8"
   },
+  "M11": {
+   "branch": "m11-emoji",
+   "claimed": "2026-11-27T21:43:12Z",
+   "notes": [],
+   "owner": "main-session",
+   "paths": [
+    "README.md",
+    "ROADMAP.md",
+    "rust-client/src/autocomplete.rs",
+    "rust-client/src/emotes.rs",
+    "rust-client/src/engine/app.rs",
+    "rust-client/src/engine/compose.rs",
+    "rust-client/src/engine/media.rs",
+    "rust-client/src/engine/mod.rs",
+    "rust-client/src/engine/packs.rs",
+    "rust-client/src/engine/timeline.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/media.rs",
+    "rust-client/src/pills.rs",
+    "rust-client/src/preview.rs",
+    "rust-client/src/reactions.rs",
+    "rust-client/src/rich.rs",
+    "rust-client/src/view.rs",
+    "rust-client/src/view/autocomplete.rs",
+    "rust-client/src/view/emoji_picker.rs",
+    "rust-client/src/view/emotes.rs",
+    "rust-client/src/view/icons.rs",
+    "rust-client/src/view/reaction_bar.rs",
+    "rust-client/src/view/rich.rs",
+    "rust-client/src/view/selectable.rs",
+    "scripts/qa_emotes.py"
+   ],
+   "status": "working",
+   "title": "Custom emoji and stickers (image packs)",
+   "updated": "2026-11-27T21:43:12Z",
+   "worktree": "."
+  },
   "M12": {
    "branch": "claude/m12-names-fc018c",
    "claimed": "2026-11-27T21:28:57Z",
@@ -55,6 +97,11 @@
      "at": "2026-11-27T21:40:31Z",
      "by": "claude/m12-names-fc018c",
      "text": "m12-names: engine + App + views committed (a2ad...); unit tests pass, clippy clean; next: live fixture scripts/qa_names.py, README/ROADMAP."
+    },
+    {
+     "at": "2026-11-27T21:43:12Z",
+     "by": "main-session",
+     "text": "[M11] shares README.md, ROADMAP.md, rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: engine/mod.rs+app.rs: packs module, three Commands, Event::Packs, a Live sender, one Paginate line, two app.rs arms and emote pills in send/edit; main.rs: mod emotes, Msg::Emote/EmoteReady, Request::Pack, an App field, two update arms, an Escape branch, schedule_emotes beside schedule_avatars; view.rs: mod emotes and a sticker button in the composer row; icons.rs: Icon::Sticker; README/ROADMAP: M11 row and an Emoji paragraph"
     }
    ],
    "owner": "m12-names",
@@ -191,6 +238,11 @@
      "at": "2026-11-27T21:43:10Z",
      "by": "main-session",
      "text": "[M11] main-session shares rust-client/src/engine/mod.rs and engine/app.rs: 'pub mod packs;', Command::{UsePack,SendSticker,ReactEmote} with dispatch arms after Command::EndPoll, Event::Packs after Event::Presence, a 'packs: Sender<String>' field on Live with one spawn in go_live, and one line in the Paginate arm (live.packs.try_send(room)); app.rs: one engine_event arm (Event::Packs) before Event::Rooms, one engine_done arm (Request::Pack) after Request::Poll, and emote pills added to the pills in send() and the Edit request."
+    },
+    {
+     "at": "2026-11-27T21:43:12Z",
+     "by": "main-session",
+     "text": "[M11] shares rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs: engine/mod.rs+app.rs: packs module, three Commands, Event::Packs, a Live sender, one Paginate line, two app.rs arms and emote pills in send/edit; main.rs: mod emotes, Msg::Emote/EmoteReady, Request::Pack, an App field, two update arms, an Escape branch, schedule_emotes beside schedule_avatars; view.rs: mod emotes and a sticker button in the composer row; icons.rs: Icon::Sticker; README/ROADMAP: M11 row and an Emoji paragraph"
     }
    ],
    "owner": "codex-n3",
@@ -212,7 +264,13 @@
   "N5": {
    "branch": "claude/n5-order-211d5e",
    "claimed": "2026-11-27T21:30:27Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-27T21:43:12Z",
+     "by": "main-session",
+     "text": "[M11] shares README.md, ROADMAP.md, rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: engine/mod.rs+app.rs: packs module, three Commands, Event::Packs, a Live sender, one Paginate line, two app.rs arms and emote pills in send/edit; main.rs: mod emotes, Msg::Emote/EmoteReady, Request::Pack, an App field, two update arms, an Escape branch, schedule_emotes beside schedule_avatars; view.rs: mod emotes and a sticker button in the composer row; icons.rs: Icon::Sticker; README/ROADMAP: M11 row and an Emoji paragraph"
+    }
+   ],
    "owner": "n5-order",
    "paths": [
     "README.md",
