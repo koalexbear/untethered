@@ -65,6 +65,22 @@
    "title": "Pinned messages and Matrix threads",
    "updated": "2026-11-27T15:03:37Z",
    "worktree": "../../../../../tmp/untethered-n3"
+  },
+  "fix-call-video": {
+   "branch": "claude/fix-call-video",
+   "claimed": "2026-11-27T18:24:02Z",
+   "notes": [],
+   "owner": "fix-call-video",
+   "paths": [
+    "rust-client/src/desktop_call/room_video.rs",
+    "scripts/qa_voice_room.py",
+    "scripts/qa_window_pattern.py",
+    "scripts/qa_window_share.py"
+   ],
+   "status": "working",
+   "title": "Fix call video: share corruption at odd widths, low-fps own preview",
+   "updated": "2026-11-27T18:24:02Z",
+   "worktree": ".claude/worktrees/fix-call-video"
   }
  },
  "done": [
