@@ -5,6 +5,7 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
 | M6 | Message deletion and persistent drafts | codex-m6 | `codex/m6-delete-drafts` | review | 2026-11-27T10:42:45Z | `rust-client/src/account.rs`, `rust-client/src/context_menu.rs`, `rust-client/src/drafts.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/live_test.rs`, `rust-client/src/engine/messaging.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/main.rs`, `rust-client/src/permissions.rs`, `rust-client/src/reading.rs`, `rust-client/src/transfers.rs`, `rust-client/src/view.rs`, `rust-client/src/view/context_menu.rs`, `scripts/qa_matrix_sdk.py` |
+| roadmap-nitro | Roadmap: Nitro features, free where Matrix allows | main-session | `roadmap-nitro` | working | 2026-11-27T10:58:34Z | `ROADMAP.md` |
 
 ## Done
 

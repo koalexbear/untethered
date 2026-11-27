@@ -25,6 +25,19 @@
    "title": "Message deletion and persistent drafts",
    "updated": "2026-11-27T10:42:45Z",
    "worktree": "../../../../../tmp/untethered-m6"
+  },
+  "roadmap-nitro": {
+   "branch": "roadmap-nitro",
+   "claimed": "2026-11-27T10:58:34Z",
+   "notes": [],
+   "owner": "main-session",
+   "paths": [
+    "ROADMAP.md"
+   ],
+   "status": "working",
+   "title": "Roadmap: Nitro features, free where Matrix allows",
+   "updated": "2026-11-27T10:58:34Z",
+   "worktree": "."
   }
  },
  "done": [
