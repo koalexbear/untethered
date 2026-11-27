@@ -64,9 +64,9 @@
     "scripts/qa_link_previews.py",
     "scripts/qa_media_previews.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Link previews",
-   "updated": "2026-11-27T11:26:20Z",
+   "updated": "2026-11-27T11:30:13Z",
    "worktree": "."
   }
  },
