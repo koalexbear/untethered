@@ -7,21 +7,25 @@
    "owner": "main-session",
    "paths": [
     "README.md",
+    "rust-client/src/avatars.rs",
     "rust-client/src/engine/app.rs",
     "rust-client/src/engine/invites.rs",
     "rust-client/src/engine/mod.rs",
+    "rust-client/src/engine/profile.rs",
     "rust-client/src/engine/rooms.rs",
     "rust-client/src/invites.rs",
     "rust-client/src/main.rs",
     "rust-client/src/rooms.rs",
     "rust-client/src/rooms/engine.rs",
+    "rust-client/src/typing.rs",
+    "rust-client/src/upgrades.rs",
     "rust-client/src/view.rs",
     "rust-client/src/view/invites.rs",
     "scripts/qa_invites.py"
    ],
    "status": "working",
    "title": "Invites with Accept and Decline",
-   "updated": "2026-11-27T12:03:29Z",
+   "updated": "2026-11-27T12:12:07Z",
    "worktree": "."
   },
   "M6": {
