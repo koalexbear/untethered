@@ -1,5 +1,33 @@
 {
  "claims": {
+  "M9": {
+   "branch": "m9-polls",
+   "claimed": "2026-11-27T19:49:49Z",
+   "notes": [],
+   "owner": "main-session",
+   "paths": [
+    "README.md",
+    "ROADMAP.md",
+    "rust-client/src/context_menu.rs",
+    "rust-client/src/engine/app.rs",
+    "rust-client/src/engine/mod.rs",
+    "rust-client/src/engine/polls.rs",
+    "rust-client/src/engine/timeline.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/polls.rs",
+    "rust-client/src/rooms.rs",
+    "rust-client/src/rooms/engine.rs",
+    "rust-client/src/view.rs",
+    "rust-client/src/view/icons.rs",
+    "rust-client/src/view/polls.rs",
+    "scripts/qa_plain_web_files.py",
+    "scripts/qa_polls.py"
+   ],
+   "status": "working",
+   "title": "Polls (MSC3381): show, vote, end, create",
+   "updated": "2026-11-27T19:49:49Z",
+   "worktree": "."
+  },
   "N3": {
    "branch": "codex/n3-pins-threads",
    "claimed": "2026-11-27T14:09:26Z",
@@ -53,6 +81,11 @@
      "at": "2026-11-27T19:49:46Z",
      "by": "main-session",
      "text": "[M9] main-session will share rust-client/src/engine/mod.rs and rust-client/src/engine/app.rs: a Kind::Poll variant and a 'poll: Option<polls::Poll>' field on Message (with #[serde(default)]), 'mod polls;', and three Command variants (CreatePoll, Vote, EndPoll) with their dispatch arms next to Command::Forward in mod.rs; one engine_done arm (Request::Poll(..), result) next to the Forward arm in app.rs. Nothing else in your files."
+    },
+    {
+     "at": "2026-11-27T19:49:49Z",
+     "by": "main-session",
+     "text": "[M9] shares rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs: engine/mod.rs: Kind::Poll, Message.poll (serde default), mod polls, and Command::{CreatePoll,Vote,EndPoll} with dispatch arms next to Command::Forward; engine/app.rs: one engine_done arm (Request::Poll(..), result) next to the Forward arm"
     }
    ],
    "owner": "codex-n3",
