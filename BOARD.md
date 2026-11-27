@@ -4,11 +4,11 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
-| M8 | Forward messages | main-session | `m8-forward` | review | 2026-11-27T18:01:17Z | `README.md`, `ROADMAP.md`, `rust-client/src/context_menu.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/timeline.rs`, `rust-client/src/forward.rs`, `rust-client/src/main.rs`, `rust-client/src/rooms.rs`, `rust-client/src/rooms/engine.rs`, `rust-client/src/switcher.rs`, `rust-client/src/view.rs`, `rust-client/src/view/context_menu.rs`, `rust-client/src/view/forward.rs`, `rust-client/src/view/hover.rs`, `rust-client/src/view/icons.rs`, `scripts/qa_forward.py` |
 | N3 | Pinned messages and Matrix threads | codex-n3 | `codex/n3-pins-threads` | working | 2026-11-27T15:03:37Z | `rust-client/src/engine/account_ui.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/live_test.rs`, `rust-client/src/engine/messaging.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/pins.rs`, `rust-client/src/engine/threads.rs`, `scripts/qa_matrix_sdk.py` |
 
 ## Done
 
+- 2026-11-27 **M8** Forward messages (main-session): merged as 52398c0
 - 2026-11-27 **P4** Video in the browser (Windows playback stays open) (main-session): released: browser half merged as 0c7f452; Windows video playback is still open
 - 2026-11-27 **P5** Sending video (main-session): merged as 0c7f452
 - 2026-11-27 **P2** Inline players (main-session): merged as 0c7f452
@@ -38,4 +38,3 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 - 2026-11-26 **N6** System tray (n6-system-tray): merged as 4145624
 - 2026-11-26 **M1** Rich text in received messages (m1-rich-text): merged as 62d12ae
 - 2026-11-26 **M4** Right-click menus (m4-context-menus): merged as a1e37d5 (right-click Mention now uses M2's App::mention)
-- 2026-11-26 **M2** Composer autocomplete (m2-autocomplete): merged as 1c707e1

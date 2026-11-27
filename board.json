@@ -1,40 +1,5 @@
 {
  "claims": {
-  "M8": {
-   "branch": "m8-forward",
-   "claimed": "2026-11-27T17:45:49Z",
-   "notes": [
-    {
-     "at": "2026-11-27T18:01:17Z",
-     "by": "main-session",
-     "text": "main-session: M8 committed on m8-forward; five checks and scripts/qa_forward.py pass. Waiting for the user to merge."
-    }
-   ],
-   "owner": "main-session",
-   "paths": [
-    "README.md",
-    "ROADMAP.md",
-    "rust-client/src/context_menu.rs",
-    "rust-client/src/engine/app.rs",
-    "rust-client/src/engine/mod.rs",
-    "rust-client/src/engine/timeline.rs",
-    "rust-client/src/forward.rs",
-    "rust-client/src/main.rs",
-    "rust-client/src/rooms.rs",
-    "rust-client/src/rooms/engine.rs",
-    "rust-client/src/switcher.rs",
-    "rust-client/src/view.rs",
-    "rust-client/src/view/context_menu.rs",
-    "rust-client/src/view/forward.rs",
-    "rust-client/src/view/hover.rs",
-    "rust-client/src/view/icons.rs",
-    "scripts/qa_forward.py"
-   ],
-   "status": "review",
-   "title": "Forward messages",
-   "updated": "2026-11-27T18:01:17Z",
-   "worktree": "."
-  },
   "N3": {
    "branch": "codex/n3-pins-threads",
    "claimed": "2026-11-27T14:09:26Z",
@@ -376,6 +341,15 @@
    "owner": "main-session",
    "result": "released: browser half merged as 0c7f452; Windows video playback is still open",
    "title": "Video in the browser (Windows playback stays open)"
+  },
+  {
+   "branch": "m8-forward",
+   "claimed": "2026-11-27T17:45:49Z",
+   "finished": "2026-11-27T18:06:25Z",
+   "id": "M8",
+   "owner": "main-session",
+   "result": "merged as 52398c0",
+   "title": "Forward messages"
   }
  ]
 }
