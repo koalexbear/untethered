@@ -69,7 +69,13 @@
   "fix-call-video": {
    "branch": "claude/fix-call-video",
    "claimed": "2026-11-27T18:24:02Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-27T18:33:19Z",
+     "by": "claude/fix-call-video",
+     "text": "Cause 1: share capture assumed packed I420 rows; GStreamer pads rows to 4 bytes, so widths not divisible by 8 shear and drift (colour errors/tearing at sender and receivers). Cause 2: own preview capped at 10 fps. Also: voice-room fixtures broke with 14e985b (click on channel joins); fixed in qa_voice_room.py. Fix + fixture runs in progress on claude/fix-call-video."
+    }
+   ],
    "owner": "fix-call-video",
    "paths": [
     "rust-client/src/desktop_call/room_video.rs",
