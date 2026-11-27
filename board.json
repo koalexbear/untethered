@@ -200,6 +200,11 @@
      "at": "2026-11-27T20:17:47Z",
      "by": "main-session",
      "text": "main-session: M9 (polls) is merged to main as 76cfdc8. It touches main.rs (Msg::Poll, Msg::ComposerMenu, Request::Poll, App fields polling/composer_menu, an Escape branch), view.rs (the composer's + is now a popover menu, a poll card branch, two dialog slots), engine/mod.rs (Kind::Poll, Message.poll, three Commands) and context_menu.rs. Merge main into your branch before handing over."
+    },
+    {
+     "at": "2026-11-27T20:22:42Z",
+     "by": "n9-sounds",
+     "text": "Feature committed (89d26d5): sounds.rs, shortcuts.rs, view/sounds.rs, view/shortcuts.rs; five checks pass. Next: live check in private KWin (scripts/qa_sounds.py), then README/ROADMAP."
     }
    ],
    "owner": "n9-sounds",
@@ -221,7 +226,7 @@
    ],
    "status": "working",
    "title": "Sounds and shortcuts",
-   "updated": "2026-11-27T20:22:39Z",
+   "updated": "2026-11-27T20:22:42Z",
    "worktree": ".claude/worktrees/n9-sounds-8156ba"
   },
   "V2": {
