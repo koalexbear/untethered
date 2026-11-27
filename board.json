@@ -57,9 +57,9 @@
     "rust-client/src/view/viewer.rs",
     "scripts/qa_media_previews.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Image previews always load; the viewer keeps the scroll position",
-   "updated": "2026-11-27T08:36:29Z",
+   "updated": "2026-11-27T08:55:21Z",
    "worktree": "."
   }
  },
