@@ -14,7 +14,7 @@
 //! The engine (`engine/presence.rs`) publishes what [`App::sync_presence`]
 //! asks for and reads the presence of the people the window shows: the
 //! profile card, the DM list and the member list.
-use crate::{App, Msg, Request, Section, engine::Command};
+use crate::{App, Msg, Request, engine::Command};
 use iced::{Subscription, Task, time::Instant, widget::operation};
 use serde_json::{Value, json};
 use std::{
@@ -226,15 +226,15 @@ impl State {
             (status != Status::Offline && !self.message.is_empty()).then(|| self.message.clone());
         Presence { status, message }
     }
-    /// Seen as idle after `now`? Input counted since the last check makes
-    /// it the last input.
-    fn idle_check(&mut self, inputs: u64, now: Instant) -> bool {
+    /// Seen as idle after `now`, `after` the last input? Input counted
+    /// since the last check makes it the last input.
+    fn idle_check(&mut self, inputs: u64, now: Instant, after: Duration) -> bool {
         if inputs != self.inputs || self.last_input.is_none() {
             self.inputs = inputs;
             self.last_input = Some(now);
         }
         self.last_input
-            .is_some_and(|last| now.saturating_duration_since(last) >= AWAY_AFTER)
+            .is_some_and(|last| now.saturating_duration_since(last) >= after)
     }
     /// The engine (re)started, perhaps for another account: what it knew
     /// is gone, and the saved status comes again.
@@ -244,6 +244,19 @@ impl State {
             ..Self::default()
         };
     }
+}
+
+/// How long Online waits for input before turning Idle: [`AWAY_AFTER`], or
+/// `UNTETHERED_QA_AWAY` seconds in the live fixture (scripts/qa_presence.py).
+fn away_after() -> Duration {
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Some(secs) = std::env::var("UNTETHERED_QA_AWAY")
+        .ok()
+        .and_then(|s| s.parse().ok())
+    {
+        return Duration::from_secs(secs);
+    }
+    AWAY_AFTER
 }
 
 fn count_input(event: iced::Event, _: iced::event::Status, _: iced::window::Id) -> Option<Msg> {
@@ -312,9 +325,11 @@ impl App {
     fn presence_change(&mut self, input: Input) -> Task<Msg> {
         match input {
             Input::Tick => {
-                let idle = self
-                    .presence
-                    .idle_check(INPUTS.load(Ordering::Relaxed), Instant::now());
+                let idle = self.presence.idle_check(
+                    INPUTS.load(Ordering::Relaxed),
+                    Instant::now(),
+                    away_after(),
+                );
                 if idle && self.goes_idle() {
                     self.presence.away = true;
                 }
@@ -327,6 +342,7 @@ impl App {
             Input::Choose(choice) => {
                 self.presence.menu = false;
                 self.presence.away = false;
+                self.presence.last_input = Some(Instant::now());
                 #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
                 if self.dnd() {
                     self.change_dnd(false);
@@ -441,7 +457,7 @@ impl App {
     }
 
     /// The people the window shows with a dot, most visible first: the
-    /// profile card, the member list, then the DM list. Never us.
+    /// profile card, the member list, then the sidebar's DMs. Never us.
     fn watch_list(&self) -> Vec<&str> {
         if !self.logged_in || !self.verified || !self.window_shown() {
             return Vec::new();
@@ -467,15 +483,12 @@ impl App {
                     .take(MEMBERS_SHOWN),
             );
         }
-        if self.section == Section::Direct {
-            let store = &self.live;
-            users.extend(
-                store
-                    .ordered_direct
-                    .iter()
-                    .filter_map(|id| store.list.get(id)?.dm_peer.as_deref()),
-            );
-        }
+        // DMs in the sidebar: Direct Messages, and under All Rooms or a space.
+        users.extend(
+            self.visible()
+                .filter(|(_, r)| r.dm)
+                .filter_map(|(_, r)| r.dm_peer.as_deref()),
+        );
         let mut seen = BTreeSet::new();
         users.retain(|u| *u != self.matrix_id && seen.insert(*u));
         users.truncate(MAX_WATCHED);
@@ -538,29 +551,35 @@ impl App {
             .is_some_and(|sdk| sdk.try_send(command).is_ok())
     }
 
-    /// While Online could turn Idle, a tick to notice it and a listener
-    /// counting input; once idle, the first input brings us back.
+    /// A listener counting input and, while Online could turn Idle, a tick
+    /// to notice it; once idle, the first input brings us back. Input counts
+    /// also while the tick pauses, so the click that picks Online again
+    /// starts its idle time afresh.
     pub fn presence_subscription(&self) -> Subscription<Msg> {
         if self.presence.support != Support::On || !self.logged_in {
             return Subscription::none();
         }
         if self.presence.away {
-            iced::event::listen_with(come_back)
-        } else if self.goes_idle() {
-            Subscription::batch([
-                iced::event::listen_with(count_input),
-                iced::time::every(Duration::from_secs(10)).map(|_| Msg::Presence(Input::Tick)),
-            ])
-        } else {
-            Subscription::none()
+            return iced::event::listen_with(come_back);
         }
+        Subscription::batch([
+            iced::event::listen_with(count_input),
+            if self.goes_idle() {
+                iced::time::every(Duration::from_secs(10)).map(|_| Msg::Presence(Input::Tick))
+            } else {
+                Subscription::none()
+            },
+        ])
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::{Account, Event, Recovery, RoomList, RoomSummary};
+    use crate::{
+        Section,
+        engine::{Account, Event, Recovery, RoomList, RoomSummary},
+    };
 
     fn signed_in() -> (App, async_channel::Receiver<Command>) {
         let (transfers, _) = async_channel::bounded(1);
@@ -832,12 +851,14 @@ mod tests {
     fn idle_comes_five_minutes_after_the_last_input() {
         let mut state = State::default();
         let start = Instant::now();
-        assert!(!state.idle_check(0, start));
-        assert!(!state.idle_check(0, start + AWAY_AFTER / 2));
+        let after = AWAY_AFTER;
+        assert!(!state.idle_check(0, start, after));
+        assert!(!state.idle_check(0, start + after / 2, after));
         // Input counted in between moves the last input to this check.
-        assert!(!state.idle_check(3, start + AWAY_AFTER - Duration::from_secs(1)));
-        assert!(!state.idle_check(3, start + AWAY_AFTER + Duration::from_secs(1)));
-        assert!(state.idle_check(3, start + AWAY_AFTER * 2));
+        let input = start + after - Duration::from_secs(1);
+        assert!(!state.idle_check(3, input, after));
+        assert!(!state.idle_check(3, start + after + Duration::from_secs(1), after));
+        assert!(state.idle_check(3, input + after, after));
     }
 
     #[test]

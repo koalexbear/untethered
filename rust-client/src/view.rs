@@ -1784,6 +1784,8 @@ impl App {
         )
         .width(Fill)
         .padding([2, 4])
+        // A long name or Matrix ID stops at the gear.
+        .clip(true)
         // The status menu, as on Discord; settings where there's no status
         // to pick.
         .on_press(
