@@ -3,7 +3,13 @@
   "M8": {
    "branch": "m8-forward",
    "claimed": "2026-11-27T17:45:49Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-27T18:01:17Z",
+     "by": "main-session",
+     "text": "main-session: M8 committed on m8-forward; five checks and scripts/qa_forward.py pass. Waiting for the user to merge."
+    }
+   ],
    "owner": "main-session",
    "paths": [
     "README.md",
@@ -26,7 +32,7 @@
    ],
    "status": "review",
    "title": "Forward messages",
-   "updated": "2026-11-27T18:01:15Z",
+   "updated": "2026-11-27T18:01:17Z",
    "worktree": "."
   },
   "N3": {
