@@ -54,11 +54,13 @@
    "paths": [
     "README.md",
     "ROADMAP.md",
+    "rust-client/src/engine/media.rs",
     "rust-client/src/inline.rs",
     "rust-client/src/main.rs",
     "rust-client/src/media.rs",
     "rust-client/src/preview.rs",
     "rust-client/src/view.rs",
+    "rust-client/src/view/gallery.rs",
     "rust-client/src/view/viewer.rs",
     "rust-client/src/view/zoom.rs",
     "rust-client/src/viewer.rs",
@@ -66,7 +68,7 @@
    ],
    "status": "working",
    "title": "Viewer polish: preloading, thumbnail strip, gallery, sharper zoom",
-   "updated": "2026-11-27T15:40:52Z",
+   "updated": "2026-11-27T15:52:26Z",
    "worktree": "."
   }
  },
