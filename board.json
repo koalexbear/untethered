@@ -14,32 +14,6 @@
    "title": "Message deletion and persistent drafts",
    "updated": "2026-11-27T10:07:23Z",
    "worktree": "../../../../../tmp/untethered-m6"
-  },
-  "memory-keys": {
-   "branch": "memory-keys",
-   "claimed": "2026-11-27T09:48:56Z",
-   "notes": [],
-   "owner": "main-session",
-   "paths": [
-    "README.md",
-    "docs/matrix-sdk-migration.md",
-    "rust-client/docs/matrix-sdk-migration.md",
-    "rust-client/src/backend/mod.rs",
-    "rust-client/src/engine/app.rs",
-    "rust-client/src/engine/messaging.rs",
-    "rust-client/src/engine/mod.rs",
-    "rust-client/src/engine/session.rs",
-    "rust-client/src/engine/timeline.rs",
-    "rust-client/src/main.rs",
-    "rust-client/src/paging.rs",
-    "rust-client/src/rooms.rs",
-    "rust-client/src/rooms/engine.rs",
-    "rust-client/src/runtime.rs"
-   ],
-   "status": "review",
-   "title": "Memory: fewer threads, capped arenas, close left rooms' timelines; older rooms' keys in bulk; clear UTD labels",
-   "updated": "2026-11-27T10:25:34Z",
-   "worktree": "."
   }
  },
  "done": [
@@ -141,6 +115,15 @@
    "owner": "codex-m5",
    "result": "merged as f398e1f (PR #5)",
    "title": "Member profile cards and own profile editing"
+  },
+  {
+   "branch": "memory-keys",
+   "claimed": "2026-11-27T09:48:56Z",
+   "finished": "2026-11-27T10:26:48Z",
+   "id": "memory-keys",
+   "owner": "main-session",
+   "result": "merged as fd54b81",
+   "title": "Memory: fewer threads, capped arenas, close left rooms' timelines; older rooms' keys in bulk; clear UTD labels"
   }
  ]
 }
