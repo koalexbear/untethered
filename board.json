@@ -41,66 +41,6 @@
    "updated": "2026-11-27T20:07:05Z",
    "worktree": ".claude/worktrees/j4-explore-c19f11"
   },
-  "M9": {
-   "branch": "m9-polls",
-   "claimed": "2026-11-27T19:49:49Z",
-   "notes": [
-    {
-     "at": "2026-11-27T20:07:05Z",
-     "by": "j4-explore",
-     "text": "[J4] shares README.md, ROADMAP.md, rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs, rust-client/src/view/icons.rs: [J4] small separate edits: engine/mod.rs: 'mod explore;', Command::PublicRooms {id, query} + its dispatch arm next to Command::PreviewRoom, Event::PublicRooms {id, result} and a PublicRoom struct beside RoomPreview; engine/app.rs: one engine_event arm (Event::PublicRooms) next to Event::People; main.rs: 'mod explore;', Msg::Explore(explore::Input), App field 'explore: Option<explore::Explore>', Request::Explore, one update arm and Escape closing it; view.rs: a compass rail button under the + and one main-area branch (explore page) next to room_preview; view/icons.rs: Icon::Compass; README/ROADMAP: J4 row and Getting in line."
-    },
-    {
-     "at": "2026-11-27T20:10:54Z",
-     "by": "n9-sounds",
-     "text": "[N9] shares README.md, ROADMAP.md, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: N9: main.rs gets 'mod sounds; mod shortcuts;', two Msg variants (Sound(..), Shortcut(..)) with one dispatch arm each, sounds/shortcut fields on App, one 'self.play_sounds()' line in update's tail next to sync_tray(), one shortcuts subscription line, and the Escape listener skips Shift+Escape (it becomes 'mark server read'). The Msg::Escape arm itself is untouched. view.rs: one line adding the SOUNDS section in User Settings and one stack layer for the Ctrl+/ shortcuts list. engine/mod.rs: Alert gains 'highlight: bool' (serde default), set in alerts.rs. README/ROADMAP: N9 row marked done and a Sounds/shortcuts paragraph."
-    },
-    {
-     "at": "2026-11-27T20:12:04Z",
-     "by": "claude/v2-simulcast-9158cf",
-     "text": "[V2] v2-simulcast will make small shared edits: rust-client/src/main.rs \u2014 one Msg variant (CallScroll) with its dispatch arm next to Msg::FocusVideo, and one line in the post-update hook list next to sync_tray (sync call video visibility); ROADMAP.md / README.md \u2014 the call video lines only (simulcast, per-tile quality, paused hidden video)."
-    },
-    {
-     "at": "2026-11-27T20:12:06Z",
-     "by": "v2-simulcast",
-     "text": "[V2] shares README.md, ROADMAP.md, rust-client/src/main.rs: main.rs: one Msg::CallScroll variant + dispatch arm next to FocusVideo, one post-update line next to sync_tray; ROADMAP/README: call video lines only"
-    },
-    {
-     "at": "2026-11-27T20:12:43Z",
-     "by": "n4-presence",
-     "text": "[N4] shares README.md, ROADMAP.md, rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: [N4] small separate hooks: engine/mod.rs: 'pub mod presence;', Command::{PublishPresence, WatchPresence, SaveStatus} with dispatch arms next to Command::ShareTyping, Event::{Presence, PresenceSupport, OwnStatus} after Event::TypingSharing, one task spawn in go_live and a sender in Live; engine/app.rs: three engine_event arms after Event::TypingSharing and one engine_done arm (Request::SaveStatus) next to ShareTyping; main.rs: 'mod presence;', Msg::Presence(presence::Input), Request::SaveStatus, App field 'presence', one update arm, one subscription line; view.rs: dots on DM rows (channel_row), user panel status + menu, one overlay line for the status dialog; README/ROADMAP: N4 row and a Presence paragraph."
-    }
-   ],
-   "owner": "main-session",
-   "paths": [
-    "README.md",
-    "ROADMAP.md",
-    "rust-client/src/context_menu.rs",
-    "rust-client/src/dms.rs",
-    "rust-client/src/engine/app.rs",
-    "rust-client/src/engine/messaging.rs",
-    "rust-client/src/engine/mod.rs",
-    "rust-client/src/engine/polls.rs",
-    "rust-client/src/engine/timeline.rs",
-    "rust-client/src/main.rs",
-    "rust-client/src/places.rs",
-    "rust-client/src/polls.rs",
-    "rust-client/src/rooms.rs",
-    "rust-client/src/rooms/engine.rs",
-    "rust-client/src/switcher.rs",
-    "rust-client/src/view.rs",
-    "rust-client/src/view/context_menu.rs",
-    "rust-client/src/view/icons.rs",
-    "rust-client/src/view/polls.rs",
-    "rust-client/src/viewer.rs",
-    "scripts/qa_plain_web_files.py",
-    "scripts/qa_polls.py"
-   ],
-   "status": "review",
-   "title": "Polls (MSC3381): show, vote, end, create",
-   "updated": "2026-11-27T20:16:42Z",
-   "worktree": "."
-  },
   "N3": {
    "branch": "codex/n3-pins-threads",
    "claimed": "2026-11-27T14:09:26Z",
@@ -596,6 +536,15 @@
    "owner": "fix-call-video",
    "result": "merged as 86aa2c6",
    "title": "Fix call video: share corruption at odd widths, low-fps own preview"
+  },
+  {
+   "branch": "m9-polls",
+   "claimed": "2026-11-27T19:49:49Z",
+   "finished": "2026-11-27T20:17:39Z",
+   "id": "M9",
+   "owner": "main-session",
+   "result": "merged as 76cfdc8",
+   "title": "Polls (MSC3381): show, vote, end, create"
   }
  ]
 }
