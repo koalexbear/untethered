@@ -5,10 +5,10 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
 | N3 | Pinned messages and Matrix threads | codex-n3 | `codex/n3-pins-threads` | working | 2026-11-27T15:03:37Z | `rust-client/src/engine/account_ui.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/live_test.rs`, `rust-client/src/engine/messaging.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/pins.rs`, `rust-client/src/engine/threads.rs`, `scripts/qa_matrix_sdk.py` |
-| N7 | Search across a space | main-session | `n7-space-search` | review | 2026-11-27T15:07:55Z | `README.md`, `ROADMAP.md`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/live_test.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/search.rs`, `rust-client/src/main.rs`, `rust-client/src/search`, `rust-client/src/search.rs`, `rust-client/src/view.rs`, `rust-client/src/view/room_search.rs`, `scripts/qa_space_search.py` |
 
 ## Done
 
+- 2026-11-27 **N7** Search across a space (main-session): merged as eeda711
 - 2026-11-27 **fix-unread-counts** Unread badges trust the client's counts (main-session): merged as 93e2e7d
 - 2026-11-27 **N2** Remember where you were (main-session): merged as 3777467
 - 2026-11-27 **N1** Quick switcher (main-session): merged as 5d1ff40

@@ -35,30 +35,6 @@
    "title": "Pinned messages and Matrix threads",
    "updated": "2026-11-27T15:03:37Z",
    "worktree": "../../../../../tmp/untethered-n3"
-  },
-  "N7": {
-   "branch": "n7-space-search",
-   "claimed": "2026-11-27T14:45:33Z",
-   "notes": [],
-   "owner": "main-session",
-   "paths": [
-    "README.md",
-    "ROADMAP.md",
-    "rust-client/src/engine/app.rs",
-    "rust-client/src/engine/live_test.rs",
-    "rust-client/src/engine/mod.rs",
-    "rust-client/src/engine/search.rs",
-    "rust-client/src/main.rs",
-    "rust-client/src/search",
-    "rust-client/src/search.rs",
-    "rust-client/src/view.rs",
-    "rust-client/src/view/room_search.rs",
-    "scripts/qa_space_search.py"
-   ],
-   "status": "review",
-   "title": "Search across a space",
-   "updated": "2026-11-27T15:07:55Z",
-   "worktree": "."
   }
  },
  "done": [
@@ -277,6 +253,15 @@
    "owner": "main-session",
    "result": "merged as 93e2e7d",
    "title": "Unread badges trust the client's counts"
+  },
+  {
+   "branch": "n7-space-search",
+   "claimed": "2026-11-27T14:45:33Z",
+   "finished": "2026-11-27T15:09:29Z",
+   "id": "N7",
+   "owner": "main-session",
+   "result": "merged as eeda711",
+   "title": "Search across a space"
   }
  ]
 }
