@@ -41,33 +41,6 @@
    "title": "Message deletion and persistent drafts",
    "updated": "2026-11-27T10:42:45Z",
    "worktree": "../../../../../tmp/untethered-m6"
-  },
-  "M7": {
-   "branch": "m7-link-previews",
-   "claimed": "2026-11-27T11:19:37Z",
-   "notes": [],
-   "owner": "main-session",
-   "paths": [
-    "README.md",
-    "rust-client/src/context_menu.rs",
-    "rust-client/src/engine/app.rs",
-    "rust-client/src/engine/mod.rs",
-    "rust-client/src/engine/previews.rs",
-    "rust-client/src/engine/rooms.rs",
-    "rust-client/src/inline.rs",
-    "rust-client/src/link_previews.rs",
-    "rust-client/src/main.rs",
-    "rust-client/src/rooms.rs",
-    "rust-client/src/rooms/engine.rs",
-    "rust-client/src/view.rs",
-    "rust-client/src/view/link_preview.rs",
-    "scripts/qa_link_previews.py",
-    "scripts/qa_media_previews.py"
-   ],
-   "status": "review",
-   "title": "Link previews",
-   "updated": "2026-11-27T11:30:13Z",
-   "worktree": "."
   }
  },
  "done": [
@@ -214,6 +187,15 @@
    "owner": "main-session",
    "result": "merged as e732170",
    "title": "Roadmap: Nitro features, free where Matrix allows"
+  },
+  {
+   "branch": "m7-link-previews",
+   "claimed": "2026-11-27T11:19:37Z",
+   "finished": "2026-11-27T11:39:39Z",
+   "id": "M7",
+   "owner": "main-session",
+   "result": "merged as a3de2bf",
+   "title": "Link previews"
   }
  ]
 }
