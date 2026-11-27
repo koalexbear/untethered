@@ -287,6 +287,11 @@
      "at": "2026-11-27T21:46:54Z",
      "by": "claude/n5-order-211d5e",
      "text": "n5-order: implemented (channel_order.rs, view/channel_order.rs, engine/arrange.rs); unit tests + 5 checks pass; running live fixture scripts/qa_channel_order.py now. Not committed yet."
+    },
+    {
+     "at": "2026-11-27T21:59:41Z",
+     "by": "claude/n5-order-211d5e",
+     "text": "n5-order: ready for review on claude/n5-order-211d5e as be94d0c (up to date with main 7b99e29). fmt/clippy (no warnings)/test (277 pass)/wasm32/windows-gnu pass; live scripts/qa_channel_order.py PASS (within a category, into another, category reorder; /state and /hierarchy agree). Hand-over: side-session-notes/.../n5-channel-order.md"
     }
    ],
    "owner": "n5-order",
