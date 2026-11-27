@@ -2,12 +2,11 @@
 
 Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 
-| ID | Title | Agent | Branch | Status | Updated | Paths |
-|---|---|---|---|---|---|---|
-| J2 | Join by link | main-session | `j2-join-links` | review | 2026-11-27T13:03:35Z | `README.md`, `rust-client/src/avatars.rs`, `rust-client/src/community.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/joining.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/invites.rs`, `rust-client/src/joining.rs`, `rust-client/src/main.rs`, `rust-client/src/replies.rs`, `rust-client/src/upgrades.rs`, `rust-client/src/view.rs`, `rust-client/src/view/community.rs`, `rust-client/src/view/joining.rs`, `scripts/qa_join_links.py` |
+Nothing claimed.
 
 ## Done
 
+- 2026-11-27 **J2** Join by link (main-session): merged as 1582107
 - 2026-11-27 **M6** Message deletion and persistent drafts (codex-m6): merged as 60f368e (PR #6)
 - 2026-11-27 **J1** Invites with Accept and Decline (main-session): merged as 09754bb
 - 2026-11-27 **M7** Link previews (main-session): merged as a3de2bf
