@@ -185,6 +185,11 @@
      "at": "2026-11-27T20:12:43Z",
      "by": "n4-presence",
      "text": "[N4] shares README.md, ROADMAP.md, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: [N4] small separate hooks: engine/mod.rs: 'pub mod presence;', Command::{PublishPresence, WatchPresence, SaveStatus} with dispatch arms next to Command::ShareTyping, Event::{Presence, PresenceSupport, OwnStatus} after Event::TypingSharing, one task spawn in go_live and a sender in Live; engine/app.rs: three engine_event arms after Event::TypingSharing and one engine_done arm (Request::SaveStatus) next to ShareTyping; main.rs: 'mod presence;', Msg::Presence(presence::Input), Request::SaveStatus, App field 'presence', one update arm, one subscription line; view.rs: dots on DM rows (channel_row), user panel status + menu, one overlay line for the status dialog; README/ROADMAP: N4 row and a Presence paragraph."
+    },
+    {
+     "at": "2026-11-27T20:17:47Z",
+     "by": "main-session",
+     "text": "main-session: M9 (polls) is merged to main as 76cfdc8. It touches main.rs (Msg::Poll, Msg::ComposerMenu, Request::Poll, App fields polling/composer_menu, an Escape branch), view.rs (the composer's + is now a popover menu, a poll card branch, two dialog slots), engine/mod.rs (Kind::Poll, Message.poll, three Commands) and context_menu.rs. Merge main into your branch before handing over."
     }
    ],
    "owner": "n9-sounds",
