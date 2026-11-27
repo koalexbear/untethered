@@ -61,9 +61,9 @@
     "scripts/qa_voice_room.py",
     "scripts/test-media-interop.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Voice processing and input sensitivity",
-   "updated": "2026-11-27T22:45:17Z",
+   "updated": "2026-11-27T22:46:22Z",
    "worktree": ".claude/worktrees/a2-voice-a94df8"
   },
   "J5": {
