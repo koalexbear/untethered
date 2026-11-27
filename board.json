@@ -1,5 +1,20 @@
 {
  "claims": {
+  "M6": {
+   "branch": "codex/m6-delete-drafts",
+   "claimed": "2026-11-27T10:07:23Z",
+   "notes": [],
+   "owner": "codex-m6",
+   "paths": [
+    "rust-client/src/drafts.rs",
+    "rust-client/src/permissions.rs",
+    "rust-client/src/reading.rs"
+   ],
+   "status": "working",
+   "title": "Message deletion and persistent drafts",
+   "updated": "2026-11-27T10:07:23Z",
+   "worktree": "../../../../../tmp/untethered-m6"
+  },
   "memory-keys": {
    "branch": "memory-keys",
    "claimed": "2026-11-27T09:48:56Z",

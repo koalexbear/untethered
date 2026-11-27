@@ -4,6 +4,7 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
+| M6 | Message deletion and persistent drafts | codex-m6 | `codex/m6-delete-drafts` | working | 2026-11-27T10:07:23Z | `rust-client/src/drafts.rs`, `rust-client/src/permissions.rs`, `rust-client/src/reading.rs` |
 | memory-keys | Memory: fewer threads, capped arenas, close left rooms' timelines; older rooms' keys in bulk; clear UTD labels | main-session | `memory-keys` | working | 2026-11-27T09:58:59Z | `README.md`, `docs/matrix-sdk-migration.md`, `rust-client/docs/matrix-sdk-migration.md`, `rust-client/src/backend/mod.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/messaging.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/session.rs`, `rust-client/src/engine/timeline.rs`, `rust-client/src/main.rs`, `rust-client/src/paging.rs`, `rust-client/src/rooms.rs`, `rust-client/src/rooms/engine.rs`, `rust-client/src/runtime.rs` |
 
 ## Done
