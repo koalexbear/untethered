@@ -6,6 +6,7 @@ use ashpd::desktop::{
     screencast::{CursorMode, Screencast, SourceType},
 };
 use ashpd::{zbus, zvariant};
+use iced::advanced::image::{self, Allocation};
 use iced::widget::image::Handle;
 use livekit::options::VideoEncoding;
 use livekit::webrtc::{
@@ -124,12 +125,33 @@ pub(crate) struct Status {
     pub live: bool,
 }
 
+/// How long an upload may stay unanswered before the frame is asked again
+/// (the renderer drops the request while the window is closed).
+const UPLOAD_PATIENCE: Duration = Duration::from_secs(1);
+
 #[derive(Clone)]
 pub(crate) struct Feed {
     pub sid: String,
     pub user: String,
     pub source: VideoInput,
-    pub frame: Handle,
+    /// The newest frame decoded or captured.
+    frame: Handle,
+    /// The newest frame already on the GPU: the one tiles draw. iced uploads
+    /// images of 2 MiB or more on a worker and draws nothing until they're
+    /// there, so a tile drawing each new frame at once flashes empty.
+    shown: Option<Allocation>,
+    /// The frame being uploaded, and since when; one at a time, so a slow
+    /// upload skips frames instead of queueing them.
+    uploading: Option<(image::Id, Instant)>,
+}
+impl Feed {
+    /// What the tile draws: the newest uploaded frame, if any is yet.
+    pub(crate) fn picture(&self) -> Option<&Handle> {
+        self.shown.as_ref().map(Allocation::handle)
+    }
+    fn waiting(&self) -> bool {
+        self.picture().is_none_or(|h| h.id() != self.frame.id())
+    }
 }
 #[derive(Default)]
 struct Wall {
@@ -151,16 +173,81 @@ impl Previews {
         let wall = self.0.lock().unwrap();
         (wall.focus.clone(), wall.feeds.values().cloned().collect())
     }
+    /// The feed the call dock previews while the stage is closed: the
+    /// focused one, else a screen share, else a remote camera.
+    pub(crate) fn docked(&self) -> Option<Feed> {
+        let (focus, feeds) = self.snapshot();
+        feeds
+            .into_iter()
+            .filter(|f| !f.user.is_empty() || f.source == VideoInput::Window)
+            .min_by(|a, b| {
+                let priority = |f: &Feed| {
+                    (
+                        Some(&f.sid) != focus.as_ref(),
+                        f.source != VideoInput::Window,
+                    )
+                };
+                priority(a)
+                    .cmp(&priority(b))
+                    .then_with(|| a.user.cmp(&b.user))
+                    .then_with(|| a.sid.cmp(&b.sid))
+            })
+    }
     pub(crate) fn focus(&self, sid: Option<String>) {
         let mut wall = self.0.lock().unwrap();
         if sid.as_ref().is_none_or(|s| wall.feeds.contains_key(s)) {
             wall.focus = sid;
         }
     }
-    fn frame(&self, sid: &str, user: &str, source: VideoInput, frame: Handle) {
+    /// Newest frames to upload for the feeds on screen (`only` one, or all),
+    /// each feed's next once its last upload has answered.
+    pub(crate) fn uploads(&self, only: Option<&str>) -> Vec<(String, Handle)> {
+        let mut wall = self.0.lock().unwrap();
+        let now = Instant::now();
+        wall.feeds
+            .values_mut()
+            .filter(|f| only.is_none_or(|sid| sid == f.sid))
+            .filter(|f| f.waiting())
+            .filter(|f| {
+                f.uploading
+                    .is_none_or(|(_, since)| now.duration_since(since) >= UPLOAD_PATIENCE)
+            })
+            .map(|f| {
+                f.uploading = Some((f.frame.id(), now));
+                (f.sid.clone(), f.frame.clone())
+            })
+            .collect()
+    }
+    /// A frame is on the GPU: tiles draw it from now on.
+    pub(crate) fn uploaded(&self, sid: &str, frame: std::result::Result<Allocation, image::Error>) {
+        let mut wall = self.0.lock().unwrap();
+        let Some(feed) = wall.feeds.get_mut(sid) else {
+            return;
+        };
+        let Ok(frame) = frame else {
+            feed.uploading = None;
+            return;
+        };
+        // An answer to a request given up on is older than what's asked now.
+        let current = feed
+            .uploading
+            .is_some_and(|(id, _)| id == frame.handle().id());
+        if current {
+            feed.uploading = None;
+        }
+        if current || feed.shown.is_none() {
+            feed.shown = Some(frame);
+        }
+    }
+    /// Keep a feed's newest frame. True when the UI should look at it now:
+    /// while an upload is out, its answer picks up the newest frame instead,
+    /// so a steady stream costs the UI one update per frame, not two.
+    fn frame(&self, sid: &str, user: &str, source: VideoInput, frame: Handle) -> bool {
         let mut wall = self.0.lock().unwrap();
         if let Some(feed) = wall.feeds.get_mut(sid) {
             feed.frame = frame;
+            feed.uploading
+                .is_none_or(|(_, since)| since.elapsed() >= UPLOAD_PATIENCE)
         } else {
             if source == VideoInput::Window {
                 wall.focus = Some(sid.into());
@@ -172,8 +259,11 @@ impl Previews {
                     user: user.into(),
                     source,
                     frame,
+                    shown: None,
+                    uploading: None,
                 },
             );
+            true
         }
     }
 }
@@ -229,8 +319,9 @@ pub(super) async fn display(
         if let Some(probe) = &mut probe {
             probe.frame(started.elapsed(), w, h);
         }
-        tile.views.frame(&tile.sid, &user, source, frame);
-        let _ = tile.events.try_send(json!({"command":"video_redraw"}));
+        if tile.views.frame(&tile.sid, &user, source, frame) {
+            let _ = tile.events.try_send(json!({"command":"video_redraw"}));
+        }
     }
 }
 
@@ -393,6 +484,53 @@ async fn authorize_camera(portal: &Camera<'_>) -> Result<()> {
     }
     Ok(())
 }
+/// One I420 frame as GStreamer writes it to `fdsink`. Its default video
+/// layout pads every row to 4 bytes, so a width that isn't a multiple of 8
+/// has wider luma or chroma rows than pixels. Read as packed planes, such a
+/// frame shears and runs into the next one: colour errors and tearing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Layout {
+    width: u32,
+    height: u32,
+    stride_y: u32,
+    stride_uv: u32,
+}
+impl Layout {
+    /// Sides are even, as `Quality::fit` and the camera size make them.
+    fn i420(width: u32, height: u32) -> Self {
+        Self {
+            width,
+            height,
+            stride_y: width.next_multiple_of(4),
+            stride_uv: (width / 2).next_multiple_of(4),
+        }
+    }
+    fn luma(self) -> usize {
+        (self.stride_y * self.height) as usize
+    }
+    fn chroma(self) -> usize {
+        (self.stride_uv * self.height / 2) as usize
+    }
+    fn size(self) -> usize {
+        self.luma() + 2 * self.chroma()
+    }
+    /// A WebRTC buffer with GStreamer's strides, so each plane copies whole.
+    fn buffer(self, frame: &[u8]) -> I420Buffer {
+        let (luma, chroma) = (self.luma(), self.chroma());
+        let mut buf = I420Buffer::with_strides(
+            self.width,
+            self.height,
+            self.stride_y,
+            self.stride_uv,
+            self.stride_uv,
+        );
+        let (y, u, v) = buf.data_mut();
+        y.copy_from_slice(&frame[..luma]);
+        u.copy_from_slice(&frame[luma..luma + chroma]);
+        v.copy_from_slice(&frame[luma + chroma..]);
+        buf
+    }
+}
 pub(super) struct Capture {
     route: CameraChoice,
     quality: Quality,
@@ -401,8 +539,7 @@ pub(super) struct Capture {
     pipe: ChildStdout,
     /// Even I420 frame size chosen when the source opened. A source that
     /// later resizes is letterboxed into it by `videoscale add-borders`.
-    width: u32,
-    height: u32,
+    layout: Layout,
     pixels: Vec<u8>,
 }
 impl Capture {
@@ -543,7 +680,8 @@ impl Capture {
             .spawn()
             .map_err(|_| "Install GStreamer and its PipeWire plugin to capture video.")?;
         let mut pipe = child.stdout.take().unwrap();
-        let mut pixels = vec![0; (width * height * 3 / 2) as usize];
+        let layout = Layout::i420(width, height);
+        let mut pixels = vec![0; layout.size()];
         time::timeout(SECOND * 12, pipe.read_exact(&mut pixels))
             .await
             .map_err(|_| "Video capture timed out.")?
@@ -554,8 +692,7 @@ impl Capture {
             lease,
             child,
             pipe,
-            width,
-            height,
+            layout,
             pixels,
         })
     }
@@ -623,9 +760,7 @@ impl Capture {
             }
         };
         tokio::pin!(closed);
-        let mut last = None;
-        // Even sides give contiguous planes: stride Y = width, U = V = width/2.
-        let luma = (self.width * self.height) as usize;
+        let layout = self.layout;
         let (pw, ph) = if input == VideoInput::Window {
             (1280, 720)
         } else {
@@ -644,29 +779,25 @@ impl Capture {
         loop {
             #[cfg(debug_assertions)]
             if let Some(probe) = &mut probe {
-                probe.capture(self.width, self.height);
+                probe.capture(layout.width, layout.height);
             }
-            let mut buf = I420Buffer::new(self.width, self.height);
-            let (y, u, v) = buf.data_mut();
-            y.copy_from_slice(&self.pixels[..luma]);
-            u.copy_from_slice(&self.pixels[luma..luma + luma / 4]);
-            v.copy_from_slice(&self.pixels[luma + luma / 4..]);
-            // The sharer's own preview stays at 10 fps; encoding gets the CPU.
-            if let Some(tile) = preview
-                && last.is_none_or(|at: Instant| at.elapsed() >= Duration::from_millis(100))
-            {
+            let mut frame =
+                VideoFrame::new(VideoRotation::VideoRotation0, layout.buffer(&self.pixels));
+            src.capture_frame(&frame);
+            // The encoder has the frame; the sharer's own tile follows the
+            // capture rate (at most `quality.fps`), as remote viewers' do.
+            if let Some(tile) = preview {
                 #[cfg(debug_assertions)]
                 let started = Instant::now();
-                let frame = rgba(&mut buf, pw, ph);
+                let shown_frame = rgba(&mut frame.buffer, pw, ph);
                 #[cfg(debug_assertions)]
                 if let Some(probe) = &mut shown {
-                    probe.frame(started.elapsed(), self.width, self.height);
+                    probe.frame(started.elapsed(), layout.width, layout.height);
                 }
-                tile.views.frame(&tile.sid, "", input, frame);
-                let _ = tile.events.try_send(json!({"command":"video_redraw"}));
-                last = Some(Instant::now());
+                if tile.views.frame(&tile.sid, "", input, shown_frame) {
+                    let _ = tile.events.try_send(json!({"command":"video_redraw"}));
+                }
             }
-            src.capture_frame(&VideoFrame::new(VideoRotation::VideoRotation0, buf));
             tokio::select! {
                 _=&mut closed=>return Ok(()),
                 f=time::timeout(SECOND*12,self.pipe.read_exact(&mut self.pixels))=>{f.map_err(|_|"Video capture timed out.")?.map_err(|_|"Video capture ended.")?;}
@@ -834,8 +965,8 @@ impl Publisher {
             Update::Chosen(Ok(cap)) => {
                 let src = NativeVideoSource::new(
                     VideoResolution {
-                        width: cap.width,
-                        height: cap.height,
+                        width: cap.layout.width,
+                        height: cap.layout.height,
                     },
                     self.input == VideoInput::Window,
                 );
@@ -1002,6 +1133,64 @@ pub(super) async fn trace_video_stats(lk: &Room) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tiles_swap_only_to_uploaded_frames() {
+        let views = Previews::default();
+        let frame = |v: u8| Handle::from_rgba(1, 1, vec![v; 4]);
+        let on_gpu = |h: &Handle| -> std::result::Result<Allocation, image::Error> {
+            // SAFETY: no renderer reads this one; it only marks the frame uploaded.
+            #[allow(unsafe_code)]
+            Ok(unsafe { image::allocate(h, iced::Size::new(1, 1)) })
+        };
+        let shown = || views.snapshot().1[0].picture().map(Handle::id);
+        let (a, b, c) = (frame(1), frame(2), frame(3));
+        assert!(views.frame("cam", "@b:h", VideoInput::Camera, a.clone()));
+        let asked = views.uploads(None);
+        assert_eq!((asked.len(), asked[0].1.id()), (1, a.id()));
+        // Nothing to draw until it's uploaded; one upload at a time.
+        assert_eq!(shown(), None);
+        // The upload's answer looks for newer frames; no need to wake the UI.
+        assert!(!views.frame("cam", "@b:h", VideoInput::Camera, b.clone()));
+        assert!(views.uploads(None).is_empty());
+        views.uploaded("cam", on_gpu(&a));
+        assert_eq!(shown(), Some(a.id()));
+        // Then the newest frame, while the tile keeps drawing the last one.
+        views.frame("cam", "@b:h", VideoInput::Camera, c.clone());
+        assert_eq!(views.uploads(None)[0].1.id(), c.id());
+        assert_eq!(shown(), Some(a.id()));
+        // A failed upload keeps the picture and asks again.
+        views.uploaded("cam", Err(image::Error::OutOfMemory));
+        assert_eq!(shown(), Some(a.id()));
+        assert_eq!(views.uploads(None)[0].1.id(), c.id());
+        // An answer to a request given up on doesn't replace a newer picture.
+        views.uploaded("cam", on_gpu(&c));
+        views.uploaded("cam", on_gpu(&b));
+        assert_eq!(shown(), Some(c.id()));
+        assert!(views.uploads(None).is_empty());
+        // Only feeds on screen are asked for.
+        views.frame("share", "", VideoInput::Window, frame(4));
+        views.frame("cam", "@b:h", VideoInput::Camera, frame(5));
+        let asked = views.uploads(Some("share"));
+        assert_eq!((asked.len(), asked[0].0.as_str()), (1, "share"));
+    }
+
+    #[test]
+    fn reads_gstreamer_padded_i420_rows() {
+        // Bytes per 900-row frame that `videoconvert ! videoscale !
+        // video/x-raw,format=I420,width=W ! fdsink` wrote on GStreamer 1.28.
+        for (width, written) in [(1600, 2_160_000), (1604, 2_167_200), (1598, 2_160_000)] {
+            assert_eq!(Layout::i420(width, 900).size(), written, "{width}");
+        }
+        let odd = Layout::i420(1598, 900);
+        assert_eq!((odd.stride_y, odd.stride_uv), (1600, 800));
+        // Each plane lands whole, padding included, in a buffer with the same strides.
+        let frame: Vec<u8> = (0..odd.size()).map(|i| (i % 251) as u8).collect();
+        let buf = odd.buffer(&frame);
+        assert_eq!(buf.strides(), (1600, 800, 800));
+        let (y, u, v) = buf.data();
+        assert_eq!([y, u, v].concat(), frame);
+    }
 
     #[test]
     fn screen_capture_keeps_source_size_up_to_1080p() {

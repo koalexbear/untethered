@@ -7735,6 +7735,7 @@ dependencies = [
  "gstreamer-app",
  "gstreamer-video",
  "iced",
+ "iced_runtime",
  "image",
  "imagesize",
  "js-sys",

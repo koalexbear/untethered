@@ -188,6 +188,44 @@ pub struct Controls {
     views: GroupViews,
 }
 impl crate::App {
+    /// Upload the newest frame of each video tile on screen. A tile swaps to
+    /// a frame only once it's on the GPU (`room_video::Feed`), so it never
+    /// draws an empty frame while iced uploads a large image in the
+    /// background. Frames nobody can see aren't uploaded.
+    pub(super) fn upload_video(&mut self) -> iced::Task<crate::Msg> {
+        let Some(call) = &self.call else {
+            return iced::Task::none();
+        };
+        let only = if call.stage_open && call.room == self.selected {
+            None
+        } else if !call.stage_open && !call.preview_hidden {
+            match call.previews.docked() {
+                Some(feed) => Some(feed.sid),
+                None => return iced::Task::none(),
+            }
+        } else {
+            return iced::Task::none();
+        };
+        iced::Task::batch(
+            call.previews
+                .uploads(only.as_deref())
+                .into_iter()
+                .map(|(sid, frame)| {
+                    iced_runtime::image::allocate(frame)
+                        .map(move |done| crate::Msg::VideoUploaded(sid.clone(), done))
+                }),
+        )
+    }
+    pub(super) fn video_uploaded(
+        &mut self,
+        sid: String,
+        frame: std::result::Result<iced::advanced::image::Allocation, iced::advanced::image::Error>,
+    ) -> iced::Task<crate::Msg> {
+        if let Some(call) = &self.call {
+            call.previews.uploaded(&sid, frame);
+        }
+        self.upload_video()
+    }
     /// A voice channel clicked in the room list joins its call, as on
     /// Discord. Its call opens if you're in it already; a call elsewhere
     /// ends first, and this one starts once it has.

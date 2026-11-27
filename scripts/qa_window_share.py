@@ -154,6 +154,27 @@ def own_share(desks,sender):
     print(f"Sharer's own stage shows Prism {own[2]-own[0]} px wide; its preview is converted at "
           f"{rate['fps']:.1f} fps from {rate['width']}x{rate['height']}, {rate['convert_ms']} ms per frame.",flush=True)
 
+def steady(desks,n=10):
+    """Every capture of the sharer's stage and both receivers' tiles shows the share.
+
+    iced 0.14 uploads images of 2 MiB or more on a worker thread and draws
+    nothing until the upload is done. A tile handed a new frame that way is
+    presented empty once per video frame: it flickers."""
+    from qa_room_layout import pattern_box
+    sender,*peers=desks
+    def own():
+        box=pattern_box(sender.kde.capture().crop((282,60,1180,700)),FIRST)
+        return bool(box and box[2]-box[0]>700)
+    seen={}
+    for i,(label,check) in enumerate([("sender's own stage",own),*((f"receiver {j+1}",lambda p=p:area(p,FIRST)) for j,p in enumerate(peers))]):
+        hits=0
+        for k in range(n):
+            if check():hits+=1
+            elif k==0 or hits==k:evidence([desks[i]],f"blank-{label.split()[0]}{i+1}-{k}")
+        seen[label]=hits
+    print("Steady video: "+", ".join(f"{label} {hits}/{n}" for label,hits in seen.items())+" captures showed Prism.",flush=True)
+    assert all(hits==n for hits in seen.values()),seen
+
 def pattern_window(stack,sender):
     kde=sender.kde
     source=sp.Popen(["/usr/bin/python",str(Path(__file__).with_name("qa_window_pattern.py"))],env=kde.env,stdin=sp.PIPE,stdout=sp.DEVNULL)
@@ -242,6 +263,7 @@ def window_share(stack,desks,secret,original,publications):
         raise
     print("Both peers rendered the selected pink/teal Prism window on one GCM screen track.",flush=True)
     own_share(desks,sender)
+    steady(desks)
     if sender.stats:check_video_rate(sender,peers,[("KWin",kde.kw.pid),("pattern window",source.pid)])
     sender.click("media-proof")
     wait_for("sharer is browsing another room",lambda:kde.window("Untethered.*media-proof"))
