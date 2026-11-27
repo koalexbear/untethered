@@ -96,9 +96,9 @@
     "scripts/qa_plain_web_files.py",
     "scripts/qa_polls.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Polls (MSC3381): show, vote, end, create",
-   "updated": "2026-11-27T20:02:43Z",
+   "updated": "2026-11-27T20:16:42Z",
    "worktree": "."
   },
   "N3": {
