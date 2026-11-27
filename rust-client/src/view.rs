@@ -17,6 +17,7 @@ mod room_search;
 mod sdk_account;
 #[cfg(not(target_arch = "wasm32"))]
 mod tray;
+mod typing;
 mod viewer;
 use iced::{
     Alignment::Center,
@@ -3276,13 +3277,18 @@ impl App {
         } else {
             "Matrix room"
         };
-        let mut footer = row![].spacing(4).align_y(Center).height(24);
-        if self.logged_in && r.encrypted && !restricted {
-            footer = footer.push(icon(Icon::Lock, 12., CHANNEL));
-        }
-        footer = footer
-            .push(text(foot).size(12).color(CHANNEL))
-            .push(Space::new().width(Fill));
+        // Who is typing takes the note's place, in one slot either way.
+        let note = self.typing_footer().unwrap_or_else(|| {
+            let mut note = row![].spacing(4).align_y(Center);
+            if self.logged_in && r.encrypted && !restricted {
+                note = note.push(icon(Icon::Lock, 12., CHANNEL));
+            }
+            note.push(text(foot).size(12).color(CHANNEL)).into()
+        });
+        let mut footer = row![note, Space::new().width(Fill)]
+            .spacing(4)
+            .align_y(Center)
+            .height(24);
         if self.logged_in && self.verified {
             let id = r.read.target().map(str::to_owned);
             let available = self.connected && !self.writing_read(&self.selected) && id.is_some();
@@ -3644,7 +3650,8 @@ impl App {
             )
             .into(),
         );
-        page = page.push(group("PRIVACY", vec![receipts]));
+        let typing = self.typing_setting(&setting);
+        page = page.push(group("PRIVACY", vec![receipts, typing]));
         #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
         {
             let dnd = self.alerts.dnd;

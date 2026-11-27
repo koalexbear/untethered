@@ -215,6 +215,16 @@ nobody. A channel becomes a `matrix.to` room link. The smiley button beside
 **Send** opens the emoji picker and inserts at the cursor. [Element
 test](scripts/replies-element.md#composer-autocomplete).
 
+**Typing indicators:** While someone else writes in the open room, the line
+under the composer reads **Mira is typing…**, **Mira and Jo are typing…**
+(up to three names) or **Several people are typing…**, with the names the
+timeline uses; it clears when they stop or send. Your own typing shows to
+others from the first character of a draft until you send, clear it, switch
+rooms or pause for about five seconds. To stop sending it, turn off
+**User Settings → Privacy → Send typing indicators**; the setting is saved to
+your Matrix account, so it applies on every device running Untethered.
+[Element test](scripts/replies-element.md#typing-indicators).
+
 **Reactions:** Hover a message and click **Add Reaction** to choose a quick reaction,
 search emoji by shortcode, or enter your own emoji or text. Click an existing reaction to add yours;
 click a highlighted reaction to remove only yours. Reactions stay on the

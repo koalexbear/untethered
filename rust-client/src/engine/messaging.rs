@@ -1,8 +1,8 @@
 //! Messaging features beyond sending: reactions and edits (through the
 //! room's matrix-sdk-ui Timeline), reports, read receipts and the unread
 //! flag, events around a message outside the loaded timeline, and the
-//! account's read receipt preference.
-use super::{Delivery, Event, Failure, Kind, Message, Reply, media::Sources};
+//! account's read receipt and typing notice preferences.
+use super::{Delivery, Event, Failure, Kind, Message, Reply, media::Sources, typing};
 use async_channel::Sender;
 use matrix_sdk::{
     Client, Room,
@@ -211,12 +211,20 @@ fn message(event: &TimelineEvent, row: i64, me: &str, sources: &Sources) -> Opti
 }
 
 pub async fn share_reads(client: &Client, public: bool) -> Result<(), Failure> {
-    let content = serde_json::value::to_raw_value(&json!({ "public": public }))
-        .map_err(|_| Failure::Failed)?;
+    set_preference(client, READ_SHARING, json!({ "public": public })).await
+}
+
+/// Replace the account data of `kind` (one of our own preferences).
+pub(super) async fn set_preference(
+    client: &Client,
+    kind: &str,
+    content: Value,
+) -> Result<(), Failure> {
+    let content = serde_json::value::to_raw_value(&content).map_err(|_| Failure::Failed)?;
     client
         .account()
         .set_account_data_raw(
-            GlobalAccountDataEventType::from(READ_SHARING),
+            GlobalAccountDataEventType::from(kind),
             Raw::from_json(content),
         )
         .await
@@ -224,8 +232,8 @@ pub async fn share_reads(client: &Client, public: bool) -> Result<(), Failure> {
         .map_err(|e| http(&e))
 }
 
-/// Report the read-sharing preference and the push rules now and whenever
-/// they sync.
+/// Report the read-sharing and typing notice preferences and the push
+/// rules now and whenever they sync.
 pub async fn account_data(client: Client, events: Sender<Event>) {
     let current = |kind: GlobalAccountDataEventType| {
         let client = client.clone();
@@ -243,6 +251,10 @@ pub async fn account_data(client: Client, events: Sender<Event>) {
         .await
         .is_some_and(|v| v["public"] == true);
     let _ = events.send(Event::ReadSharing(public)).await;
+    let typing = current(GlobalAccountDataEventType::from(typing::SHARING))
+        .await
+        .is_none_or(|v| typing::sends(&v));
+    let _ = events.send(Event::TypingSharing(typing)).await;
     if let Some(rules) = current(GlobalAccountDataEventType::PushRules).await {
         let _ = events.send(Event::PushRules(rules)).await;
     }
@@ -255,6 +267,7 @@ pub async fn account_data(client: Client, events: Sender<Event>) {
             };
             let event = match value["type"].as_str() {
                 Some(READ_SHARING) => Event::ReadSharing(value["content"]["public"] == true),
+                Some(typing::SHARING) => Event::TypingSharing(typing::sends(&value["content"])),
                 Some("m.push_rules") => Event::PushRules(value["content"].clone()),
                 _ => return,
             };

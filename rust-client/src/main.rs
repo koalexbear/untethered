@@ -51,6 +51,7 @@ mod search;
 mod transfers;
 #[cfg(not(target_arch = "wasm32"))]
 mod tray;
+mod typing;
 mod view;
 mod viewer;
 #[cfg(target_os = "linux")]
@@ -210,6 +211,8 @@ enum Msg {
     Draft(text_editor::Action),
     /// Composer autocomplete and the emoji button (autocomplete.rs).
     Autocomplete(autocomplete::Input),
+    /// Typing notices and their switch (typing.rs).
+    Typing(typing::Input),
     Send,
     Reply(String),
     Report(String, String),
@@ -345,6 +348,7 @@ enum Request {
     Mentions,
     ReadState(String, Option<String>),
     ShareReads(bool, u64),
+    ShareTyping(bool, u64),
     LeaveRoom(String),
 }
 struct App {
@@ -413,6 +417,7 @@ struct App {
     reaction_picker: Option<reactions::Picker>,
     editor: text_editor::Content,
     completion: autocomplete::State,
+    typing: typing::Typing,
     loaded: BTreeSet<String>,
     connected: bool,
     logged_in: bool,
@@ -512,6 +517,7 @@ impl App {
             reaction_picker: None,
             editor: text_editor::Content::new(),
             completion: Default::default(),
+            typing: Default::default(),
             loaded: Default::default(),
             connected: false,
             logged_in: false,
@@ -626,6 +632,7 @@ impl App {
         }
         self.clear_search();
         self.editing = None;
+        self.stop_typing();
         self.drafts
             .insert(self.selected.clone(), self.editor.text());
         self.editor =
@@ -846,7 +853,8 @@ impl App {
                         Ok(paste::Content::Text(s)) if self.selected == room => {
                             self.editor.perform(text_editor::Action::Edit(
                                 text_editor::Edit::Paste(s.into()),
-                            ))
+                            ));
+                            self.composer_changed();
                         }
                         Err(reason) if self.selected == room => self.status = reason.into(),
                         _ => {}
@@ -885,6 +893,7 @@ impl App {
                 self.stopped = true;
                 self.connected = false;
                 self.pending.clear();
+                self.typing.forget();
                 self.mentions_failed();
                 if let Some(d) = &mut self.editing {
                     d.pending = None;
@@ -1532,8 +1541,22 @@ impl App {
                 self.engine_verify();
                 self.recovery.clear();
             }
-            Msg::Draft(a) => self.draft(a),
-            Msg::Autocomplete(input) => return self.autocomplete(input),
+            Msg::Draft(a) => {
+                let edit = a.is_edit();
+                self.draft(a);
+                if edit {
+                    self.composer_changed();
+                }
+            }
+            Msg::Autocomplete(input) => {
+                let emoji = matches!(input, autocomplete::Input::PickEmoji(_));
+                let task = self.autocomplete(input);
+                if emoji {
+                    self.composer_changed();
+                }
+                return task;
+            }
+            Msg::Typing(input) => self.typing_input(input),
             Msg::Permissions => {
                 if self.permission_panel {
                     self.leave_permission_panel();
@@ -1656,7 +1679,10 @@ impl App {
                     return operation::focus("composer");
                 }
             }
-            Msg::Send if self.logged_in => self.engine_compose(),
+            Msg::Send if self.logged_in => {
+                self.stop_typing();
+                self.engine_compose();
+            }
             Msg::Send => {
                 // The signed-out preview: a local echo only.
                 #[cfg(not(target_arch = "wasm32"))]
@@ -1950,6 +1976,7 @@ fn main() -> iced::Result {
                 if app.auto_target().is_some(){
                     iced::time::every(std::time::Duration::from_millis(750)).map(|_|Msg::CheckReading)
                 }else{iced::Subscription::none()},
+                app.typing_subscription(),
                 #[cfg(not(target_arch = "wasm32"))]
                 iced::event::listen_with(|event, _, _| match event {
                     // Page Up and Down scroll the messages, also while typing, as on Discord.

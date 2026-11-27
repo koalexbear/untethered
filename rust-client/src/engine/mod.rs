@@ -34,6 +34,7 @@ mod session;
 pub(crate) use session::profile_root;
 mod state;
 mod timeline;
+mod typing;
 mod verify;
 #[cfg(target_arch = "wasm32")]
 mod web;
@@ -198,6 +199,16 @@ pub enum Command {
         id: i64,
         public: bool,
     },
+    /// Tell the room we're typing, or that we stopped. No answer.
+    Typing {
+        room: String,
+        typing: bool,
+    },
+    /// Whether to send typing notices, synced as account data.
+    ShareTyping {
+        id: i64,
+        send: bool,
+    },
     /// The homeserver's upload size limit, as [`Event::UploadLimit`].
     UploadLimit {
         id: i64,
@@ -330,6 +341,13 @@ pub enum Event {
     },
     /// The account's read receipt preference.
     ReadSharing(bool),
+    /// Who is typing in a room now, never us.
+    Typing {
+        room: String,
+        users: Vec<String>,
+    },
+    /// The account's "Send typing indicators" preference.
+    TypingSharing(bool),
     /// How much of an upload (`backend::Command::Upload`) has been sent.
     UploadProgress {
         id: i64,
@@ -789,6 +807,8 @@ struct Live {
     sync: Arc<SyncService>,
     timelines: Arc<timeline::Timelines>,
     verifier: Arc<verify::Verifier>,
+    /// Typing notices for `typing::notices`, in order.
+    typing: Sender<(String, bool)>,
     tasks: Tasks,
 }
 
@@ -852,6 +872,9 @@ impl Engine {
         tasks.spawn(rooms::updates(client.clone(), self.events.clone()));
         tasks.spawn(messaging::account_data(client.clone(), self.events.clone()));
         state::member_changes(&client, self.events.clone());
+        typing::watch(&client, self.events.clone());
+        let (typing, notices) = async_channel::unbounded();
+        tasks.spawn(typing::notices(client.clone(), notices));
         #[cfg(target_os = "linux")]
         calls::watch(&client, self.events.clone());
         alerts::register(&client, self.events.clone()).await;
@@ -869,6 +892,7 @@ impl Engine {
             sync,
             timelines,
             verifier,
+            typing,
             tasks,
         });
     }
@@ -1133,6 +1157,17 @@ impl Engine {
             Command::ShareReads { id, public } => {
                 self.job(id, move |client, _, _| async move {
                     messaging::share_reads(&client, public).await
+                })
+                .await
+            }
+            Command::Typing { room, typing } => {
+                if let Some(live) = &self.live {
+                    let _ = live.typing.try_send((room, typing));
+                }
+            }
+            Command::ShareTyping { id, send } => {
+                self.job(id, move |client, _, _| async move {
+                    typing::share(&client, send).await
                 })
                 .await
             }

@@ -342,6 +342,10 @@ impl App {
             Event::Connection(connection) => {
                 const OFFLINE: &str = "Offline. Untethered will reconnect automatically.";
                 const RETRYING: &str = "Sync stopped after an error. Retrying…";
+                // Who is typing is unknown until the sync is back.
+                if connection != Connection::Online {
+                    self.typing.forget();
+                }
                 match connection {
                     Connection::Offline => self.status = OFFLINE.into(),
                     Connection::Retrying => self.status = RETRYING.into(),
@@ -370,6 +374,8 @@ impl App {
                 messages,
             } => self.engine_context(room, event, messages),
             Event::ReadSharing(public) => self.read_sharing.set_from_engine(public),
+            Event::Typing { room, users } => self.typing_seen(room, users),
+            Event::TypingSharing(send) => self.typing_shared(send),
             Event::UploadProgress { id, fraction } => self.upload_progress(id, fraction),
             Event::Uploaded { id, result } => {
                 // Absent after a cancel: that attempt must never send.
@@ -409,6 +415,15 @@ impl App {
                 }
             }
             Event::Member { room, user, member } => {
+                // Someone who joined or changed their name since the room
+                // loaded: the timeline and the typing line use it before
+                // their next message brings it.
+                if matches!(member.kind, crate::moderation::Kind::Joined)
+                    && !member.name.is_empty()
+                    && let Some(r) = self.live.list.get_mut(&room)
+                {
+                    r.members.insert(user.clone(), member.name.clone());
+                }
                 if self.people && self.selected == room {
                     self.directory.observe(&user, member);
                 }
@@ -574,6 +589,9 @@ impl App {
             (Request::ShareReads(..), Err(_)) => {
                 self.status =
                     "Could not save your read receipt preference. Try again.".into();
+            }
+            (Request::ShareTyping(send, revision), result) => {
+                self.typing_saved(send, revision, result.is_ok())
             }
             (Request::MediaSend(room, attachment), Ok(())) => {
                 self.finish_delivery(&room, attachment, true)
