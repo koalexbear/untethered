@@ -5,10 +5,10 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
 | N3 | Pinned messages and Matrix threads | codex-n3 | `codex/n3-pins-threads` | working | 2026-11-27T14:10:28Z | `rust-client/src/engine/account_ui.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/live_test.rs`, `rust-client/src/engine/messaging.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/pins.rs`, `rust-client/src/engine/threads.rs`, `scripts/qa_matrix_sdk.py` |
-| fix-unread-counts | Unread badges trust the client's counts | main-session | `fix-unread-counts` | review | 2026-11-27T14:36:53Z | `rust-client/src/engine/rooms.rs` |
 
 ## Done
 
+- 2026-11-27 **fix-unread-counts** Unread badges trust the client's counts (main-session): merged as 93e2e7d
 - 2026-11-27 **N2** Remember where you were (main-session): merged as 3777467
 - 2026-11-27 **N1** Quick switcher (main-session): merged as 5d1ff40
 - 2026-11-27 **J3** DMs and blocking (main-session): merged as 5679235

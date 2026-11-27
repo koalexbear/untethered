@@ -30,19 +30,6 @@
    "title": "Pinned messages and Matrix threads",
    "updated": "2026-11-27T14:10:28Z",
    "worktree": "../../../../../tmp/untethered-n3"
-  },
-  "fix-unread-counts": {
-   "branch": "fix-unread-counts",
-   "claimed": "2026-11-27T14:33:11Z",
-   "notes": [],
-   "owner": "main-session",
-   "paths": [
-    "rust-client/src/engine/rooms.rs"
-   ],
-   "status": "review",
-   "title": "Unread badges trust the client's counts",
-   "updated": "2026-11-27T14:36:53Z",
-   "worktree": "."
   }
  },
  "done": [
@@ -252,6 +239,15 @@
    "owner": "main-session",
    "result": "merged as 3777467",
    "title": "Remember where you were"
+  },
+  {
+   "branch": "fix-unread-counts",
+   "claimed": "2026-11-27T14:33:11Z",
+   "finished": "2026-11-27T14:39:00Z",
+   "id": "fix-unread-counts",
+   "owner": "main-session",
+   "result": "merged as 93e2e7d",
+   "title": "Unread badges trust the client's counts"
   }
  ]
 }
