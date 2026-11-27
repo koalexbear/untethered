@@ -54,6 +54,11 @@
      "at": "2026-11-27T15:58:47Z",
      "by": "main-session",
      "text": "[P2] shares rust-client/src/player.rs rust-client/src/media.rs rust-client/src/preview.rs rust-client/src/inline.rs rust-client/src/avatars.rs rust-client/src/view.rs rust-client/src/view/viewer.rs rust-client/src/viewer.rs rust-client/src/engine/media.rs rust-client/src/main.rs rust-client/src/web_files.rs ROADMAP.md README.md scripts/qa_phase4.py: same branch as P1 (phase4-media), one session"
+    },
+    {
+     "at": "2026-11-27T15:58:49Z",
+     "by": "main-session",
+     "text": "[P5] shares rust-client/src/player.rs rust-client/src/media.rs rust-client/src/preview.rs rust-client/src/inline.rs rust-client/src/avatars.rs rust-client/src/view.rs rust-client/src/view/viewer.rs rust-client/src/viewer.rs rust-client/src/engine/media.rs rust-client/src/main.rs rust-client/src/web_files.rs ROADMAP.md README.md scripts/qa_phase4.py: same branch as P1 (phase4-media), one session"
     }
    ],
    "owner": "main-session",
@@ -68,7 +73,13 @@
   "P2": {
    "branch": "phase4-media",
    "claimed": "2026-11-27T15:58:47Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-27T15:58:49Z",
+     "by": "main-session",
+     "text": "[P5] shares rust-client/src/player.rs rust-client/src/media.rs rust-client/src/preview.rs rust-client/src/inline.rs rust-client/src/avatars.rs rust-client/src/view.rs rust-client/src/view/viewer.rs rust-client/src/viewer.rs rust-client/src/engine/media.rs rust-client/src/main.rs rust-client/src/web_files.rs ROADMAP.md README.md scripts/qa_phase4.py: same branch as P1 (phase4-media), one session"
+    }
+   ],
    "owner": "main-session",
    "paths": [
     "rust-client/src/player.rs rust-client/src/media.rs rust-client/src/preview.rs rust-client/src/inline.rs rust-client/src/avatars.rs rust-client/src/view.rs rust-client/src/view/viewer.rs rust-client/src/viewer.rs rust-client/src/engine/media.rs rust-client/src/main.rs rust-client/src/web_files.rs ROADMAP.md README.md scripts/qa_phase4.py"
@@ -76,6 +87,19 @@
    "status": "working",
    "title": "Inline players",
    "updated": "2026-11-27T15:58:47Z",
+   "worktree": "."
+  },
+  "P5": {
+   "branch": "phase4-media",
+   "claimed": "2026-11-27T15:58:49Z",
+   "notes": [],
+   "owner": "main-session",
+   "paths": [
+    "rust-client/src/player.rs rust-client/src/media.rs rust-client/src/preview.rs rust-client/src/inline.rs rust-client/src/avatars.rs rust-client/src/view.rs rust-client/src/view/viewer.rs rust-client/src/viewer.rs rust-client/src/engine/media.rs rust-client/src/main.rs rust-client/src/web_files.rs ROADMAP.md README.md scripts/qa_phase4.py"
+   ],
+   "status": "working",
+   "title": "Sending video",
+   "updated": "2026-11-27T15:58:49Z",
    "worktree": "."
   }
  },
