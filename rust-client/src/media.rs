@@ -322,9 +322,13 @@ impl Media {
                                 .is_none_or(|n| n <= INLINE_BYTES as u64)
                     })
                     .or_else(|| {
-                        // A video only shows its thumbnail; an image may be its own.
-                        size.filter(|n| kind == Kind::Image && *n <= INLINE_BYTES as u64)
-                            .map(|_| (mxc, encrypted))
+                        // A video only shows its thumbnail. An image without
+                        // one previews itself: the homeserver thumbnails a
+                        // plain image, and an encrypted one is fetched whole,
+                        // as Element does.
+                        (kind == Kind::Image
+                            && (!encrypted || size.is_none_or(|n| n <= FULL_BYTES as u64)))
+                        .then_some((mxc, encrypted))
                     })?;
                 Some(PreviewRef {
                     mxc: picked.0.to_owned(),
@@ -365,6 +369,21 @@ impl Media {
                 fit: Fit::Full,
             }
         })
+    }
+    /// The size the timeline draws the preview at, from the event's width
+    /// and height: within the decoded preview's bounds, never enlarged. The
+    /// timeline keeps this space while it loads, so nothing moves when it
+    /// arrives.
+    pub fn inline_size(&self) -> Option<(f32, f32)> {
+        let (w, h) = self.dims?;
+        let (most_w, most_h) = Fit::Inline.bounds();
+        let scale = (most_w as f32 / w as f32)
+            .min(most_h as f32 / h as f32)
+            .min(1.);
+        Some((
+            (w as f32 * scale).round().max(1.),
+            (h as f32 * scale).round().max(1.),
+        ))
     }
     /// Shown in the media viewer.
     pub fn viewable(&self) -> bool {
@@ -470,8 +489,49 @@ mod preview_tests {
             Media::parse(&data).unwrap().preview.unwrap().mxc,
             "mxc://s/original"
         );
+        // Without a thumbnail, an encrypted image previews from its original
+        // up to the viewer's limit, also when the event gives no size.
         data["info"]["size"] = json!(INLINE_BYTES + 1);
+        assert_eq!(
+            Media::parse(&data).unwrap().preview.unwrap().mxc,
+            "mxc://s/original"
+        );
+        data["info"].as_object_mut().unwrap().remove("size");
+        assert!(Media::parse(&data).unwrap().preview.is_some());
+        data["info"]["size"] = json!(FULL_BYTES + 1);
         assert!(Media::parse(&data).unwrap().preview.is_none());
+    }
+
+    #[test]
+    fn a_preview_keeps_the_pictures_shape_within_its_bounds() {
+        let sized = |w: u32, h: u32| {
+            Media::parse(&json!({"msgtype":"m.image","url":"mxc://s/p","info":{"w":w,"h":h}}))
+                .unwrap()
+                .inline_size()
+        };
+        assert_eq!(sized(4032, 3024), Some((347., 260.)));
+        assert_eq!(sized(1280, 720), Some((400., 225.)));
+        assert_eq!(sized(64, 48), Some((64., 48.)), "never enlarged");
+        assert_eq!(sized(8000, 10), Some((400., 1.)));
+        let unknown = json!({"msgtype":"m.image","url":"mxc://s/p","info":{}});
+        assert_eq!(Media::parse(&unknown).unwrap().inline_size(), None);
+    }
+
+    #[test]
+    fn a_plain_image_always_previews_through_the_homeserver_thumbnail() {
+        for info in [
+            json!({}),
+            json!({"size": FULL_BYTES * 4}),
+            json!({"size": 9_000_000, "thumbnail_url": "mxc://s/small",
+                   "thumbnail_info": {"size": INLINE_BYTES + 1}}),
+        ] {
+            let data = json!({"msgtype":"m.image","url":"mxc://s/photo","info":info});
+            let preview = Media::parse(&data).unwrap().preview.unwrap();
+            assert_eq!(
+                (preview.mxc.as_str(), preview.encrypted, preview.fit),
+                ("mxc://s/photo", false, Fit::Inline)
+            );
+        }
     }
 
     #[test]

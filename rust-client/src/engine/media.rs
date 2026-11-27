@@ -90,7 +90,8 @@ pub async fn inline(
 }
 
 /// The bytes of a small image for the timeline. Plain images use the
-/// homeserver's thumbnail; encrypted ones can only be fetched whole.
+/// homeserver's thumbnail; encrypted ones can only be fetched whole, and an
+/// image without a thumbnail is fetched whole up to the viewer's limit.
 pub async fn inline_bytes(
     client: Client,
     sources: Arc<Sources>,
@@ -98,14 +99,14 @@ pub async fn inline_bytes(
 ) -> Option<Vec<u8>> {
     let source = sources.get(&preview.mxc, preview.encrypted)?;
     let media = client.media();
-    let limit = if preview.fit == Fit::Full {
-        FULL_BYTES
-    } else {
+    let whole_limit = if preview.fit == Fit::Avatar {
         INLINE_BYTES
+    } else {
+        FULL_BYTES
     };
-    let bytes = match source {
+    let (bytes, limit) = match source {
         // The media viewer shows the original.
-        _ if preview.fit == Fit::Full => whole(&media, source).await?,
+        _ if preview.fit == Fit::Full => (whole(&media, source).await?, FULL_BYTES),
         MediaSource::Plain(_) => {
             let size = if preview.fit == Fit::Avatar {
                 // Cropped to a square, at twice the largest size drawn.
@@ -122,11 +123,11 @@ pub async fn inline_bytes(
                 format: MediaFormat::Thumbnail(size),
             };
             match media.get_media_content(&thumbnail, true).await {
-                Ok(bytes) => bytes,
-                Err(_) => whole(&media, source).await?,
+                Ok(bytes) => (bytes, INLINE_BYTES),
+                Err(_) => (whole(&media, source).await?, whole_limit),
             }
         }
-        MediaSource::Encrypted(_) => whole(&media, source).await?,
+        MediaSource::Encrypted(_) => (whole(&media, source).await?, whole_limit),
     };
     (bytes.len() <= limit).then_some(bytes)
 }

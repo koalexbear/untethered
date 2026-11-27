@@ -26,7 +26,7 @@ mod messaging;
 #[cfg(debug_assertions)]
 pub mod qa;
 mod rooms;
-mod rt;
+pub mod rt;
 mod search;
 mod session;
 // The desktop's own settings live beside the profile (tray.rs).

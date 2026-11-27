@@ -126,6 +126,8 @@ enum Msg {
     CancelUpload(String, u64, i64),
     SaveFile(media::Media),
     InlineReady(u64, media::PreviewRef, Option<iced::widget::image::Handle>),
+    /// A failed preview's wait is over: fetch it again.
+    RetryInline(u64, media::PreviewRef),
     AvatarReady(String, Option<iced::widget::image::Handle>),
     ShowInline(media::PreviewRef),
     #[cfg(not(target_arch = "wasm32"))]
@@ -200,7 +202,9 @@ enum Msg {
     Setup(community::Input),
     CheckReading,
     /// Scrolled the timeline: away from the bottom, and far enough for Jump to present.
-    ReadingScroll(String, bool, bool),
+    /// The timeline scrolled: away from the newest message, a screen or
+    /// more up, and how far up its shown window (0 to 1).
+    ReadingScroll(String, bool, bool, f32),
     /// Scrolled near the top of what's loaded: fetch older messages.
     AutoPage(String),
     /// Page Up (true) or Page Down: scroll the timeline by most of a screen.
@@ -877,7 +881,8 @@ impl App {
                     }
                 }
             }
-            Msg::InlineReady(epoch, key, img) => self.inline.complete(epoch, key, img),
+            Msg::InlineReady(epoch, key, img) => return self.inline.complete(epoch, key, img),
+            Msg::RetryInline(epoch, key) => self.inline.retry(epoch, &key),
             Msg::AvatarReady(mxc, img) => self.avatars.complete(mxc, img),
             Msg::OpenViewer(event) => return self.open_viewer(event),
             Msg::ViewerStep(delta) => return self.step_viewer(delta),
@@ -1337,7 +1342,14 @@ impl App {
                     room = self.selected.clone();
                 }
                 if self.can_stage() && self.rooms().list.contains_key(&room) {
-                    return self.stage_files(room, files);
+                    // Dropped, pasted or picked files are sent with Enter in
+                    // the composer, as on Discord.
+                    let focus = if room == self.selected {
+                        operation::focus("composer")
+                    } else {
+                        Task::none()
+                    };
+                    return Task::batch([self.stage_files(room, files), focus]);
                 }
             }
             Msg::Thumbnail(room, id, thumb) => {
@@ -1457,11 +1469,12 @@ impl App {
                 self.open_mentions();
             }
             Msg::CheckReading => return self.check_reading(),
-            Msg::ReadingScroll(room, away, far)
+            Msg::ReadingScroll(room, away, far, depth)
                 if room == self.selected && self.original.is_none() =>
             {
                 self.scrolled_away = away;
                 self.scrolled_far = far;
+                self.inline.depth = depth;
             }
             Msg::PageScroll(up) if self.viewer.is_none() => {
                 // Anchored at the bottom, a positive offset moves toward older messages.
