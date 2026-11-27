@@ -682,6 +682,8 @@ impl App {
             (Request::Download, Ok(())) => self.status = "Attachment saved.".into(),
             #[cfg(not(target_arch = "wasm32"))]
             (Request::CopyImage(path), result) => self.image_fetched(path, result.is_ok()),
+            #[cfg(target_arch = "wasm32")]
+            (Request::PlayVideo, result) => self.web_video_ready(result.is_ok()),
             (Request::Download, Err(_)) => {
                 self.status = "Could not save the attachment.".into();
             }

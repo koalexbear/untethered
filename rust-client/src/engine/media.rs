@@ -84,7 +84,7 @@ pub async fn inline(
     client: Client,
     sources: Arc<Sources>,
     preview: PreviewRef,
-) -> Option<iced::widget::image::Handle> {
+) -> Option<crate::preview::Picture> {
     let fit = preview.fit;
     crate::preview::inline(inline_bytes(client, sources, preview).await?, fit).await
 }
@@ -110,7 +110,7 @@ pub async fn inline_bytes(
             (whole(&media, source).await?, FULL_BYTES)
         }
         MediaSource::Plain(_) => {
-            let size = if preview.fit == Fit::Avatar {
+            let mut size = if preview.fit == Fit::Avatar {
                 // Cropped to a square, at twice the largest size drawn.
                 MediaThumbnailSettings::with_method(
                     Method::Crop,
@@ -120,6 +120,9 @@ pub async fn inline_bytes(
             } else {
                 MediaThumbnailSettings::new(UInt::from(800u32), UInt::from(600u32))
             };
+            // An animated GIF or WebP stays animated (P1); the homeserver
+            // sends a still thumbnail of anything else.
+            size.animated = true;
             let thumbnail = MediaRequestParameters {
                 source: source.clone(),
                 format: MediaFormat::Thumbnail(size),
@@ -229,6 +232,14 @@ pub async fn upload(
             }
             _ => None,
         };
+        // A video gets its poster, size and duration, so other clients show
+        // a frame before it plays (ROADMAP P5).
+        #[cfg(target_os = "linux")]
+        let video = if mime.type_() == mime::VIDEO {
+            video_poster(&bytes).await
+        } else {
+            None
+        };
         let length = bytes.len();
         let source = send(&client, &mime, bytes, encrypt, Some((id, &events))).await?;
         let mut info = json!({ "mimetype": mime.essence_str(), "size": length });
@@ -236,6 +247,18 @@ pub async fn upload(
             info["w"] = json!(w);
             info["h"] = json!(h);
         }
+        #[cfg(target_os = "linux")]
+        let thumbnail = match video {
+            Some(v) => {
+                info["w"] = json!(v.width);
+                info["h"] = json!(v.height);
+                if let Some(ms) = v.duration {
+                    info["duration"] = json!(ms);
+                }
+                Some(v.poster)
+            }
+            None => thumbnail,
+        };
         if let Some((data, w, h)) = thumbnail {
             let length = data.len();
             let source = send(&client, &mime::IMAGE_JPEG, data, encrypt, None).await?;
@@ -272,6 +295,50 @@ pub async fn upload(
         result = work => result,
         _ = cancel.recv() => Err(Failure::Cancelled),
     }
+}
+
+/// A video's size, duration (milliseconds) and poster (a JPEG of its first
+/// frame within the thumbnail box, with its size).
+#[cfg(target_os = "linux")]
+struct VideoInfo {
+    width: u32,
+    height: u32,
+    duration: Option<u64>,
+    poster: (Vec<u8>, u32, u32),
+}
+
+/// Read a video's first frame and duration through GStreamer, from a
+/// private copy that's removed afterwards.
+#[cfg(target_os = "linux")]
+async fn video_poster(bytes: &[u8]) -> Option<VideoInfo> {
+    use std::io::Write;
+    let dir = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
+    let mut copy = tempfile::Builder::new()
+        .prefix("untethered-send-")
+        .tempfile_in(dir)
+        .ok()?;
+    copy.write_all(bytes).ok()?;
+    let path = copy.into_temp_path();
+    rt::blocking(move || {
+        let poster = crate::player::poster(&path).ok()?;
+        let frame = image::RgbaImage::from_raw(poster.width, poster.height, poster.pixels)?;
+        let small = image::DynamicImage::ImageRgba8(frame).thumbnail(THUMBNAIL.0, THUMBNAIL.1);
+        let mut jpeg = Vec::new();
+        small
+            .to_rgb8()
+            .write_to(&mut Cursor::new(&mut jpeg), image::ImageFormat::Jpeg)
+            .ok()?;
+        Some(VideoInfo {
+            width: poster.width,
+            height: poster.height,
+            duration: poster.duration.map(|d| d.as_millis() as u64),
+            poster: (jpeg, small.width(), small.height()),
+        })
+    })
+    .await
+    .flatten()
 }
 
 #[cfg(target_arch = "wasm32")]

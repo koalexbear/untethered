@@ -1,9 +1,15 @@
 //! Profile pictures and room icons: small cropped thumbnails, fetched once
 //! per mxc URI and kept for the session. The cache is bounded and keeps the
 //! pictures the current view wants; a failed fetch is not retried.
-use crate::{App, Msg, backend::Command, media::PreviewRef};
+use crate::{
+    App, Msg,
+    backend::Command,
+    media::PreviewRef,
+    preview::{Frames, Picture},
+};
 use iced::{Task, widget::image::Handle};
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 /// Fetches at once; the engine's media store caches what it downloaded.
 const INFLIGHT: usize = 4;
@@ -12,7 +18,7 @@ const KEEP: usize = 512;
 
 #[derive(Default)]
 pub struct Avatars {
-    cache: BTreeMap<String, Option<Handle>>,
+    cache: BTreeMap<String, Option<Picture>>,
     inflight: BTreeSet<String>,
     /// Least recently wanted first, for eviction.
     seen: Vec<String>,
@@ -20,10 +26,30 @@ pub struct Avatars {
 
 impl Avatars {
     pub fn get(&self, mxc: Option<&str>) -> Option<&Handle> {
-        self.cache.get(mxc?).and_then(Option::as_ref)
+        self.cache
+            .get(mxc?)
+            .and_then(Option::as_ref)
+            .map(Picture::still)
     }
-    pub fn complete(&mut self, mxc: String, image: Option<Handle>) {
+    /// An animated picture's frames (ROADMAP P1).
+    pub fn moving(&self, mxc: Option<&str>) -> Option<&Arc<Frames>> {
+        match self.cache.get(mxc?)? {
+            Some(Picture::Moving(frames)) => Some(frames),
+            _ => None,
+        }
+    }
+    pub fn complete(&mut self, mxc: String, image: Option<Picture>) {
         if self.inflight.remove(&mxc) {
+            let round = |picture| match picture {
+                Picture::Still(h) => Picture::Still(round(h)),
+                Picture::Moving(f) => Picture::Moving(Arc::new(Frames {
+                    frames: f
+                        .frames
+                        .iter()
+                        .map(|(h, delay)| (round(h.clone()), *delay))
+                        .collect(),
+                })),
+            };
             self.cache.insert(mxc, image.map(round));
         }
     }

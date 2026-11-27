@@ -30,6 +30,8 @@ mod hotkeys;
 #[cfg(target_os = "linux")]
 mod incoming;
 mod inline;
+#[cfg(target_os = "linux")]
+mod inline_player;
 #[cfg(not(target_arch = "wasm32"))]
 mod instance;
 mod invites;
@@ -137,10 +139,10 @@ enum Msg {
     DismissSkipped(String),
     CancelUpload(String, u64, i64),
     SaveFile(media::Media),
-    InlineReady(u64, media::PreviewRef, Option<iced::widget::image::Handle>),
+    InlineReady(u64, media::PreviewRef, Option<preview::Picture>),
     /// A failed preview's wait is over: fetch it again.
     RetryInline(u64, media::PreviewRef),
-    AvatarReady(String, Option<iced::widget::image::Handle>),
+    AvatarReady(String, Option<preview::Picture>),
     ShowInline(media::PreviewRef),
     #[cfg(not(target_arch = "wasm32"))]
     SaveTo(media::Media, Option<std::path::PathBuf>),
@@ -324,7 +326,7 @@ enum Msg {
     ImageCopied(Result<(), &'static str>),
     /// A viewer original (or a sharper one) decoded, or not; and the shown
     /// picture zoomed into (viewer.rs).
-    Original(media::PreviewRef, Option<iced::widget::image::Handle>),
+    Original(media::PreviewRef, Option<preview::Picture>),
     ViewerZoomed,
     #[cfg(target_os = "linux")]
     ViewerVideo(u64, bool),
@@ -334,6 +336,19 @@ enum Msg {
     PlayerControl(player::Control),
     #[cfg(target_os = "linux")]
     PlayerScrub(f32),
+    /// Playing a video or audio file in the timeline (inline_player.rs).
+    #[cfg(target_os = "linux")]
+    PlayInline(String, media::Media),
+    #[cfg(target_os = "linux")]
+    InlineFetched(u64, bool),
+    #[cfg(target_os = "linux")]
+    InlinePlayer(player::Event),
+    #[cfg(target_os = "linux")]
+    InlineControl(player::Control),
+    #[cfg(target_os = "linux")]
+    InlineScrub(f32),
+    #[cfg(target_os = "linux")]
+    InlineTick,
     /// Collapse or expand a channel category, keyed by section and kind.
     Collapse(String),
     MemberFilter(String),
@@ -406,6 +421,9 @@ enum Request {
     Report,
     Search,
     IndexSearch,
+    /// The browser: fetching a video to play in the viewer (viewer.rs).
+    #[cfg(target_arch = "wasm32")]
+    PlayVideo,
     /// Downloading an image's original to copy it (copy_image.rs).
     #[cfg(not(target_arch = "wasm32"))]
     CopyImage(tempfile::TempPath),
@@ -511,6 +529,9 @@ struct App {
     avatars: avatars::Avatars,
     viewer: Option<viewer::Viewer>,
     originals: viewer::Originals,
+    /// The video or audio playing in the timeline (inline_player.rs).
+    #[cfg(target_os = "linux")]
+    inline_player: Option<inline_player::InlinePlayer>,
     /// The account's profile picture (mxc URI).
     own_avatar: Option<String>,
     batch: Option<transfers::Batch>,
@@ -642,6 +663,8 @@ impl App {
             avatars: Default::default(),
             viewer: None,
             originals: Default::default(),
+            #[cfg(target_os = "linux")]
+            inline_player: None,
             own_avatar: None,
             batch: None,
             hover_files: false,
@@ -791,6 +814,8 @@ impl App {
             text_editor::Content::with_text(self.drafts.get(&id).map(String::as_str).unwrap_or(""));
         let left = std::mem::replace(&mut self.selected, id.clone());
         self.release_timeline(left);
+        #[cfg(target_os = "linux")]
+        self.stop_inline();
         self.snap_to_newest = true;
         self.timeline_end = None;
         if self.people {
@@ -1061,6 +1086,18 @@ impl App {
             Msg::Player(event) => self.player_event(event),
             #[cfg(target_os = "linux")]
             Msg::PlayerControl(control) => self.player_control(control),
+            #[cfg(target_os = "linux")]
+            Msg::PlayInline(event, media) => return self.play_inline(event, media),
+            #[cfg(target_os = "linux")]
+            Msg::InlineFetched(epoch, ok) => self.inline_fetched(epoch, ok),
+            #[cfg(target_os = "linux")]
+            Msg::InlinePlayer(event) => self.inline_event(event),
+            #[cfg(target_os = "linux")]
+            Msg::InlineControl(control) => self.inline_control(control),
+            #[cfg(target_os = "linux")]
+            Msg::InlineScrub(at) => self.inline_scrub(at),
+            #[cfg(target_os = "linux")]
+            Msg::InlineTick => self.inline_tick(),
             #[cfg(target_os = "linux")]
             Msg::PlayerScrub(at) => self.player_scrub(at),
             Msg::ShowInline(key) => self.inline.request(key),
@@ -1607,6 +1644,7 @@ impl App {
                         .try_send(backend::Command::Download {
                             id: self.seq,
                             media,
+                            play: false,
                         })
                         .is_ok()
                     {
@@ -2330,6 +2368,15 @@ fn main() -> iced::Result {
                     .as_ref()
                     .and_then(|v| v.video.as_ref())
                     .map_or_else(iced::Subscription::none, |p| p.subscription().map(Msg::Player)),
+                #[cfg(target_os = "linux")]
+                app.inline_player
+                    .as_ref()
+                    .and_then(|p| p.player.as_ref())
+                    .map_or_else(iced::Subscription::none, |p| p.subscription().map(Msg::InlinePlayer)),
+                #[cfg(target_os = "linux")]
+                if app.inline_running() {
+                    iced::time::every(std::time::Duration::from_millis(250)).map(|_| Msg::InlineTick)
+                } else { iced::Subscription::none() },
                 iced::keyboard::listen().filter_map(|event| match event {
                     iced::keyboard::Event::KeyPressed {
                         key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Tab),

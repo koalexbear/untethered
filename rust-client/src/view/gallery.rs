@@ -4,7 +4,7 @@
 //! grid under one header, as Discord shows a message's attachments. Each
 //! picture is still its own message: its own row ID (scroll positions, jumps
 //! and read markers find it), right-click menu and viewer entry.
-use super::{App, BOLD, CHANNEL, El, FLOAT, Msg, TEXT, face, profile, surface};
+use super::{App, BOLD, CHANNEL, El, FLOAT, Msg, TEXT, profile, surface};
 use crate::{
     media::{Kind, Media},
     rooms::{Post, Room},
@@ -116,7 +116,7 @@ impl App {
                     profile::link(
                         self,
                         &first.sender,
-                        face(name, self.user_picture(r, &first.sender), 40.)
+                        self.user_face(r, &first.sender, name, 40.)
                     )
                 ))
                 .padding(Padding {
@@ -180,14 +180,22 @@ impl App {
         let (Some(m), Some(id)) = (alone(p), p.event_id.as_ref()) else {
             return Space::new().into();
         };
-        let picture: El = match m.preview.as_ref().and_then(|s| self.inline.ready(s)) {
-            Some(h) => image(h)
+        let source = m.preview.as_ref();
+        let moving = source.and_then(|s| self.inline.moving(s));
+        let picture: El = match (moving, source.and_then(|s| self.inline.ready(s))) {
+            (Some(frames), _) => super::animated::animated(frames.clone())
+                .width(size)
+                .height(size)
+                .content_fit(iced::ContentFit::Cover)
+                .border_radius(6.)
+                .into(),
+            (None, Some(h)) => image(h)
                 .width(size)
                 .height(size)
                 .content_fit(iced::ContentFit::Cover)
                 .border_radius(6)
                 .into(),
-            None => container(Space::new())
+            (None, None) => container(Space::new())
                 .width(size)
                 .height(size)
                 .style(|_| surface(FLOAT, 6.))

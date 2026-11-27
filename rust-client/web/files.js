@@ -51,3 +51,32 @@ export function save_bytes(bytes, name) {
     const link=document.createElement("a");link.href=url;link.download=name || "attachment";
     document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
 }
+// The media viewer's video in the browser (ROADMAP P4): a native player over
+// the viewer's stage, between its header and its strip and caption.
+let video, videoUrl;
+export function show_video(bytes, name) {
+    hide_video();
+    const type = /\.webm$/i.test(name) ? "video/webm" : /\.ogv$/i.test(name) ? "video/ogg" : "video/mp4";
+    videoUrl = URL.createObjectURL(new Blob([bytes], {type}));
+    video = document.createElement("video");
+    video.id = "untethered-video";
+    video.controls = true; video.autoplay = true; video.playsInline = true;
+    Object.assign(video.style, {position: "fixed", left: "72px", right: "72px", top: "64px",
+        bottom: (video_bottom || 40) + "px", width: "calc(100% - 144px)", objectFit: "contain",
+        background: "transparent", zIndex: 10});
+    video.style.height = `calc(100% - ${64 + (video_bottom || 40)}px)`;
+    video.src = videoUrl;
+    document.body.append(video);
+}
+let video_bottom = 40;
+export function place_video(bottom) {
+    video_bottom = bottom;
+    if (video) {
+        video.style.bottom = bottom + "px";
+        video.style.height = `calc(100% - ${64 + bottom}px)`;
+    }
+}
+export function hide_video() {
+    if (video) { video.pause(); video.remove(); video = null; }
+    if (videoUrl) { URL.revokeObjectURL(videoUrl); videoUrl = null; }
+}

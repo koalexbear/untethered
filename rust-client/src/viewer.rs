@@ -6,10 +6,14 @@ use crate::{
     App, Msg,
     backend::Command,
     media::{Kind, Media, PreviewRef},
+    preview::{Frames, Picture},
     rooms::{Post, Room},
 };
 use iced::{Task, widget::image::Handle};
-use std::collections::{BTreeSet, VecDeque};
+use std::{
+    collections::{BTreeSet, VecDeque},
+    sync::Arc,
+};
 
 /// Decoded originals kept while the viewer is open: the one shown, those
 /// either side, and the last few seen.
@@ -20,15 +24,15 @@ pub const STRIP: usize = 7;
 /// Originals the viewer has decoded or is decoding.
 #[derive(Default)]
 pub struct Originals {
-    kept: VecDeque<(PreviewRef, Handle)>,
+    kept: VecDeque<(PreviewRef, Picture)>,
     loading: BTreeSet<PreviewRef>,
     failed: BTreeSet<PreviewRef>,
 }
 impl Originals {
-    pub fn get(&self, source: &PreviewRef) -> Option<&Handle> {
+    pub fn get(&self, source: &PreviewRef) -> Option<&Picture> {
         self.kept.iter().find(|(s, _)| s == source).map(|(_, h)| h)
     }
-    fn put(&mut self, source: PreviewRef, handle: Handle) {
+    fn put(&mut self, source: PreviewRef, handle: Picture) {
         self.kept.retain(|(s, _)| s != &source);
         self.kept.push_back((source, handle));
         while self.kept.len() > KEEP {
@@ -45,11 +49,17 @@ impl Originals {
 pub struct Viewer {
     pub room: String,
     pub event: String,
-    /// The full-size image, once loaded, and sharper once zoomed into.
+    /// The full-size image, once loaded, and sharper once zoomed into; an
+    /// animated one's frames (ROADMAP P1).
     pub image: Option<Handle>,
     pub sharp: Option<Handle>,
+    pub moving: Option<Arc<Frames>>,
     pub failed: bool,
     epoch: u64,
+    /// The browser: the video plays in the page's own player, over the
+    /// stage (ROADMAP P4).
+    #[cfg(target_arch = "wasm32")]
+    pub web_video: bool,
     /// Linux: the playing video and its decrypted copy, removed on close.
     #[cfg(target_os = "linux")]
     pub video: Option<crate::player::Player>,
@@ -107,8 +117,18 @@ impl App {
         };
         let epoch = self.viewer.as_ref().map_or(0, |v| v.epoch) + 1;
         self.copy_note = None;
+        // One thing plays at a time.
+        #[cfg(target_os = "linux")]
+        self.stop_inline();
+        #[cfg(target_arch = "wasm32")]
+        crate::web_files::hide_video();
         let full = media.full();
-        let image = full.as_ref().and_then(|s| self.originals.get(s)).cloned();
+        let cached = full.as_ref().and_then(|s| self.originals.get(s)).cloned();
+        let image = cached.as_ref().map(|p| p.still().clone());
+        let moving = match cached {
+            Some(Picture::Moving(frames)) => Some(frames),
+            _ => None,
+        };
         let failed = full
             .as_ref()
             .is_some_and(|s| self.originals.failed.contains(s));
@@ -118,8 +138,11 @@ impl App {
             event,
             image,
             sharp: None,
+            moving,
             failed,
             epoch,
+            #[cfg(target_arch = "wasm32")]
+            web_video: false,
             #[cfg(target_os = "linux")]
             video: None,
             #[cfg(target_os = "linux")]
@@ -131,9 +154,44 @@ impl App {
             Kind::Image => full.map_or_else(Task::none, |s| self.load_original(s)),
             #[cfg(target_os = "linux")]
             Kind::Video => self.load_video(media, epoch),
+            #[cfg(target_arch = "wasm32")]
+            Kind::Video => self.play_web_video(media),
             _ => Task::none(),
         };
         Task::batch([unfocus, load, self.load_neighbours()])
+    }
+
+    /// The browser: fetch the video and play it in the page's own player.
+    #[cfg(target_arch = "wasm32")]
+    fn play_web_video(&mut self, media: Media) -> Task<Msg> {
+        let strip = self
+            .viewer
+            .as_ref()
+            .and_then(|v| Some(v.strip(self.live.list.get(&v.room)?).len() > 1))
+            .unwrap_or(false);
+        // Above the caption, and the strip when there is one.
+        crate::web_files::place_video(if strip { 108. } else { 40. });
+        self.seq += 1;
+        if self
+            .commands
+            .try_send(Command::Download {
+                id: self.seq,
+                media,
+                play: true,
+            })
+            .is_ok()
+        {
+            self.pending.insert(self.seq, crate::Request::PlayVideo);
+        }
+        Task::none()
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn web_video_ready(&mut self, ok: bool) {
+        if let Some(v) = &mut self.viewer {
+            v.web_video = ok;
+            v.failed = !ok;
+        }
     }
 
     /// Decode an original, unless it's kept, loading or failed already.
@@ -193,7 +251,7 @@ impl App {
     }
 
     /// An original arrived (or didn't).
-    pub fn original_loaded(&mut self, source: PreviewRef, image: Option<Handle>) {
+    pub fn original_loaded(&mut self, source: PreviewRef, image: Option<Picture>) {
         self.originals.loading.remove(&source);
         let Some(v) = &mut self.viewer else {
             return;
@@ -211,13 +269,17 @@ impl App {
                 self.originals.failed.insert(source.clone());
             }
             if sharp.as_ref() == Some(&source) {
-                v.sharp = image;
+                v.sharp = image.map(|p| p.still().clone());
             }
             return;
         }
         if full.as_ref() == Some(&source) {
             v.failed = image.is_none();
-            v.image = image.clone();
+            v.image = image.as_ref().map(|p| p.still().clone());
+            v.moving = match &image {
+                Some(Picture::Moving(frames)) => Some(frames.clone()),
+                _ => None,
+            };
         }
         match image {
             Some(handle) => self.originals.put(source, handle),
@@ -307,6 +369,10 @@ impl App {
     }
 
     pub fn close_viewer(&mut self) {
+        #[cfg(target_arch = "wasm32")]
+        if self.viewer.is_some() {
+            crate::web_files::hide_video();
+        }
         self.viewer = None;
         self.copy_note = None;
         // The decoded originals are large; they load again next time.
@@ -460,8 +526,12 @@ pub(crate) mod tests {
             .collect()
     }
 
-    fn pixel() -> Option<Handle> {
-        Some(Handle::from_rgba(1, 1, vec![0; 4]))
+    fn pixel() -> Option<crate::preview::Picture> {
+        Some(crate::preview::Picture::Still(Handle::from_rgba(
+            1,
+            1,
+            vec![0; 4],
+        )))
     }
 
     #[test]

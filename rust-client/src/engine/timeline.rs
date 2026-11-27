@@ -824,7 +824,19 @@ fn message(item: &EventTimelineItem, row: i64, me: &str, sources: &Sources) -> O
                 .map(|m| (m.user_ids.iter().map(ToString::to_string).collect(), m.room));
             (kind, m.body().to_owned(), m.is_edited())
         }
-        MsgLikeKind::Sticker(s) => (Kind::Sticker, s.content().body.clone(), false),
+        // A sticker shows as its picture, animated or not (ROADMAP P1).
+        MsgLikeKind::Sticker(s) => {
+            let sticker = s.content();
+            let mut image = matrix_sdk::ruma::events::room::message::ImageMessageEventContent::new(
+                sticker.body.clone(),
+                sticker.source.clone().into(),
+            );
+            image.info = Some(Box::new(sticker.info.clone()));
+            let msgtype = MessageType::Image(image);
+            sources.remember(&msgtype);
+            media = serde_json::to_value(&msgtype).ok();
+            (Kind::Attachment, sticker.body.clone(), false)
+        }
         MsgLikeKind::Redacted => (Kind::Redacted, String::new(), false),
         MsgLikeKind::UnableToDecrypt(m) => (
             Kind::Undecryptable(unreadable(m.utd_cause())),

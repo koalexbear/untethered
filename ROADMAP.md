@@ -44,8 +44,11 @@ plan ([calls-parity-plan.md](rust-client/docs/calls-parity-plan.md)).
   the user panel.
 - **Files and media:** drop, paste and pick files with progress, cancel and
   retry; every image previews inline, keeping its space while it loads;
-  video posters; a media viewer with full-size images, arrow-key browsing
-  through a room's media and (Linux) video playback with seeking.
+  animated GIFs, WebPs, stickers and profile pictures, paused off screen;
+  galleries for pictures sent together; videos and audio playing in the
+  timeline; posters for videos you send; a media viewer with zoom, a
+  thumbnail strip, preloading and Copy Image, playing video on Linux and in
+  the browser.
 - **Calls:** encrypted DM calls and voice rooms with Element interop (a click
   on a voice channel joins it), screen and window sharing with app audio,
   cameras, push-to-talk (also global), the call dock, per-participant
@@ -137,11 +140,11 @@ doesn't:
 
 | Step | Matrix | Deliverable | Done when |
 |---|---|---|---|
-| **P1. Animated images** | Client | Play GIF and animated WebP in the timeline and viewer, and animated custom emoji, stickers and profile pictures (pause when off screen). | A GIF sent from Element and an animated profile picture both animate here and stop using CPU when scrolled away. |
-| **P2. Inline players** | Client (MSC3245 waveforms) | Play videos inline in the timeline as Discord does, plus an audio player for voice notes and `m.audio`. | A short clip plays without opening the viewer; an audio file shows a waveform-less player with seek. |
+| **P1. Animated images** · done | Client | Play GIF and animated WebP in the timeline and viewer, and animated custom emoji, stickers and profile pictures (pause when off screen). | A GIF sent from Element and an animated profile picture both animate here and stop using CPU when scrolled away. |
+| **P2. Inline players** · done | Client (MSC3245 waveforms) | Play videos inline in the timeline as Discord does, plus an audio player for voice notes and `m.audio`. | A short clip plays without opening the viewer; an audio file shows a waveform-less player with seek. |
 | **P3. Viewer polish** · done | Client | Zoom and pan, a thumbnail strip, copy image, preloading the neighbouring images, and a gallery layout for several attachments in one message. Matrix sends each attachment as its own message, so pictures sent together by one sender form the gallery. | Ten screenshots step without a loading pause; scroll-zoom keeps the point under the cursor. |
-| **P4. Video everywhere** | Client | Video playback on Windows (Media Foundation or bundled GStreamer) and in the browser (an HTML `<video>` element over the canvas). | The same MP4 plays on Linux, Windows and Chromium. |
-| **P5. Sending video** | Spec (`info`, thumbnails) | Thumbnail, dimensions and duration for videos you send, so other clients show a poster. | A clip sent from here shows its poster frame in Element. |
+| **P4. Video everywhere** · browser done | Client | Video playback on Windows (Media Foundation or bundled GStreamer) and in the browser (an HTML `<video>` element over the canvas). The browser plays videos in its own player over the viewer; Windows playback is still open. | The same MP4 plays on Linux, Windows and Chromium. |
+| **P5. Sending video** · done | Spec (`info`, thumbnails) | Thumbnail, dimensions and duration for videos you send, so other clients show a poster. | A clip sent from here shows its poster frame in Element. |
 
 ### Phase 5 — calls
 
