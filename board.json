@@ -3,7 +3,13 @@
   "fix-media-previews": {
    "branch": "fix-media-previews",
    "claimed": "2026-11-27T08:15:28Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-27T08:38:22Z",
+     "by": "codex-m5",
+     "text": "M5 Profiles will keep logic in dedicated profile modules. In view.rs I will add sender avatar/name click and profile overlay/settings hooks outside the media viewer; in engine/mod.rs I will add typed profile/DM commands and handlers separate from media dispatch. I will reuse Msg::Sdk to avoid main.rs if possible."
+    }
+   ],
    "owner": "main-session",
    "paths": [
     "README.md",
