@@ -77,6 +77,17 @@ def cpu_line(label,usage):
     top=", ".join(f"{n} {v:.0f}%" for n,v in names[:4] if v>=1)
     return f"{label} {total:.0f}% ({top})"
 
+def debug_stats(desk):
+    """The client prints UNTETHERED_QA_VIDEO_STATS lines: a debug build.
+
+    Release builds (UNTETHERED_QA_UI_CLIENT) print none; skip the rate checks."""
+    if not desk.stats:return False
+    try:return bool(wait_for("video stats in the client log",lambda:STAT.search(desk.stats.read_text(errors="replace")),10))
+    except RuntimeError:
+        print("No video stats in the client log (release build): rate checks skipped.",flush=True)
+        desk.stats=None
+        return False
+
 def check_video_rate(sender,peers,others=()):
     """Sender encodes the share at >=1280 px and >=24 fps; each receiver decodes >=24 fps.
 
@@ -143,7 +154,7 @@ def own_share(desks,sender):
     except RuntimeError:
         evidence(desks,"own-stage-failed");raise
     evidence(desks,"own-stage")
-    if not sender.stats:
+    if not debug_stats(sender):
         print(f"Sharer's own stage shows Prism {own[2]-own[0]} px wide.",flush=True);return
     def smooth():
         got=video_stats(sender,"render").get("local-window")

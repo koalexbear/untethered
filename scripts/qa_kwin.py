@@ -39,7 +39,9 @@ class KWin:
                        XDG_STATE_HOME=str(tmp/"state"),XDG_SESSION_TYPE="wayland",
                        DBUS_SYSTEM_BUS_ADDRESS="unix:path="+str(runtime/"no-system-bus"))
         env["DBUS_SESSION_BUS_ADDRESS"] = "unix:path="+str(runtime/"bus")
-        binary=Path(os.getenv("UNTETHERED_QA_CLIENT") or root/"rust-client/target/debug/untethered-iced").resolve()
+        # UNTETHERED_QA_UI_CLIENT runs a release build; seeding needs a debug one.
+        binary=Path(os.getenv("UNTETHERED_QA_UI_CLIENT") or os.getenv("UNTETHERED_QA_CLIENT")
+                    or root/"rust-client/target/debug/untethered-iced").resolve()
         if global_shortcuts:
             # Installed as a package installs it: the portal takes the client's
             # app ID only from a desktop file whose Exec it can find.

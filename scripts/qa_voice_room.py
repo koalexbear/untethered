@@ -75,7 +75,8 @@ class Desktop:
         # Limit per-client rendering/codec parallelism in this three-GUI fixture.
         # Separate four-core sets, when available, stand in for separate machines.
         cores=client_cores(i)
-        binary=os.getenv("UNTETHERED_QA_CLIENT") or root/"rust-client/target/debug/untethered-iced"
+        binary=(os.getenv("UNTETHERED_QA_UI_CLIENT") or os.getenv("UNTETHERED_QA_CLIENT")
+                or root/"rust-client/target/debug/untethered-iced")
         self.client=stack.enter_context(child([*prefix,"taskset","-c",",".join(map(str,cores)),binary],env,stderr=log))
         def window():
             assert self.client.poll() is None,f"client {i+1} exited"
@@ -186,10 +187,12 @@ class Desktop:
         after=self.shot().crop(area)
         if debug:=os.environ.get("KWIN_QA_DEBUG"):
             before.save(Path(debug)/f"tooltip-{self.i}-{x}-before.png");after.save(Path(debug)/f"tooltip-{self.i}-{x}-after.png")
-        text=ImageChops.subtract(after.convert("L"),before.convert("L")).point(lambda v:255 if v>24 else 0)
-        if not (box:=text.getbbox()):return ""
-        im=ImageOps.invert(text.crop((max(0,box[0]-4),max(0,box[1]-4),min(text.width,box[2]+4),min(text.height,box[3]+4))))
-        buf=io.BytesIO();im.resize((im.width*3,im.height*3)).save(buf,"PNG")
+        gain=ImageChops.subtract(after.convert("L"),before.convert("L"))
+        if not (box:=gain.point(lambda v:255 if v>24 else 0).getbbox()):return ""
+        # Keep the grey levels: a hard threshold thins "Stop" into "step".
+        im=gain.crop((max(0,box[0]-4),max(0,box[1]-4),min(gain.width,box[2]+4),min(gain.height,box[3]+4)))
+        im=ImageOps.invert(ImageOps.autocontrast(im))
+        buf=io.BytesIO();im.resize((im.width*3,im.height*3),Image.LANCZOS).save(buf,"PNG")
         return sp.run(["tesseract","stdin","stdout","--psm","7"],input=buf.getvalue(),capture_output=True).stdout.decode().lower()
 
     def title(self):
