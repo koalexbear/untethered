@@ -127,9 +127,9 @@
    "paths": [
     "rust-client/src/player.rs rust-client/src/media.rs rust-client/src/preview.rs rust-client/src/inline.rs rust-client/src/avatars.rs rust-client/src/view.rs rust-client/src/view/viewer.rs rust-client/src/viewer.rs rust-client/src/engine/media.rs rust-client/src/main.rs rust-client/src/web_files.rs ROADMAP.md README.md scripts/qa_phase4.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Video in the browser (Windows playback stays open)",
-   "updated": "2026-11-27T15:58:51Z",
+   "updated": "2026-11-27T16:22:49Z",
    "worktree": "."
   },
   "P5": {
