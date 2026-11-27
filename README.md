@@ -98,10 +98,11 @@ history from the homeserver. **Preceding messages** shows what led up to it, and
 **Back to latest** returns to the conversation.
 
 **History:** Older messages load from the homeserver as you scroll up, a
-screen before you reach the top, and a room opens with at least a screenful.
-**Page Up** and **Page Down** scroll the messages, also while you type. Once
-you're a screen or more above the newest message, a **Jump to present** bar
-appears above the composer.
+screen before you reach the top, and keep loading while you stay at the top;
+a room opens with at least a screenful. **Page Up** and **Page Down** scroll
+the messages, also while you type. Once you're a screen or more above the
+newest message, a **You're viewing older messages** bar appears above the
+composer: click anywhere on it to jump to the present.
 
 **Upgraded rooms:** A room upgraded in Element (or any client) stays one
 channel, like a Discord channel's single history. Once you've joined the new
@@ -244,8 +245,10 @@ rooms or pause for about five seconds. To stop sending it, turn off
 your Matrix account, so it applies on every device running Untethered.
 [Element test](scripts/replies-element.md#typing-indicators).
 
-**Reactions:** Hover a message and click **Add Reaction** to choose a quick reaction,
-search emoji by shortcode, or enter your own emoji or text. Click an existing reaction to add yours;
+**Reactions:** Hover a message and click **Add Reaction** (or use the smile
+beside its reactions) to choose a quick reaction, search emoji by shortcode,
+or enter your own emoji or text. The picker floats under the button that
+opened it; a click elsewhere or Escape closes it. Click an existing reaction to add yours;
 click a highlighted reaction to remove only yours. Reactions stay on the
 same message when its text is edited. In encrypted rooms, Untethered and Element
 use standard `m.reaction` events: the reaction key and target ID are visible
@@ -414,8 +417,11 @@ before anyone is rung.
 The [desktop call tests](experiments/rtc-audio/README.md) drive both clients'
 actual call controls and measure audio through isolated Linux devices.
 
-**Linux voice rooms (experimental):** Open an existing encrypted Matrix call
-room (`org.matrix.msc3417.call`, marked **♪**) and click **Join voice**.
+**Linux voice rooms (experimental):** Click an existing encrypted Matrix call
+room (`org.matrix.msc3417.call`, marked **♪**) in the room list to join its
+call, as on Discord; **Join voice** joins it again from the room. Clicking it
+while you're in its call opens the call, and clicking another voice room
+moves you there once the current call has ended.
 People in voice appear under the room name. While you’re connected, each
 person talking, including you, gets a green ring around their avatar and a
 green speaker icon after their name. Both clear when their microphone goes

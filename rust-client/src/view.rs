@@ -10,6 +10,7 @@ mod emoji_picker;
 mod hover;
 mod icons;
 mod mentions;
+mod popover;
 mod reaction_bar;
 mod rich;
 mod room_people;
@@ -563,12 +564,44 @@ fn rail_button<'a>(
 impl App {
     /// Reactions, reply, edit and report, shown while a message is hovered:
     /// the entries of its right-click menu that have a toolbar icon.
+    /// A message row, with the reaction picker floating under its hover
+    /// toolbar while it's open there (opened from the toolbar or the
+    /// right-click menu); the smile beside its reactions anchors its own.
+    fn reaction_popover<'a>(&'a self, p: &'a crate::rooms::Post, row: El<'a>) -> El<'a> {
+        let popup = self
+            .reaction_picker
+            .as_ref()
+            .filter(|picker| !picker.beside_chips && p.event_id.as_ref() == Some(&picker.target))
+            .and_then(|_| reaction_bar::panel(self, p));
+        let Some(id) = p.event_id.clone() else {
+            return row;
+        };
+        // The toolbar rises 16 px above the row's top-right corner, 16 px in,
+        // and is about 36 px tall (view/hover.rs).
+        popover::popover(
+            row,
+            popup,
+            popover::Place::UnderCorner {
+                inset: 16.,
+                drop: 20.,
+            },
+            Msg::ReactionPicker(id),
+        )
+    }
     fn message_tools<'a>(&'a self, p: &'a crate::rooms::Post) -> Option<El<'a>> {
         // An open menu covers the window; a toolbar would catch its clicks.
         if self.context_menu.open.is_some() {
             return None;
         }
         let id = p.event_id.as_ref()?;
+        // Nor do other messages raise theirs over an open reaction picker.
+        if self
+            .reaction_picker
+            .as_ref()
+            .is_some_and(|picker| &picker.target != id)
+        {
+            return None;
+        }
         let items = self.message_items(&self.selected, p);
         if items.is_empty() {
             return None;
@@ -1368,7 +1401,11 @@ impl App {
         let link = button(entry)
             .width(Fill)
             .padding(if r.dm { [5, 8] } else { [6, 8] })
-            .on_press(Msg::Open(id.clone()))
+            .on_press(if r.voice {
+                Msg::OpenVoice(id.clone())
+            } else {
+                Msg::Open(id.clone())
+            })
             .style(move |_, s| button::Style {
                 background: if active {
                     Some(ACTIVE.into())
@@ -2827,28 +2864,22 @@ impl App {
                 .as_ref()
                 .map_or_else(|| format!("post-row-{row}"), |id| format!("post-{id}"));
             feed = feed.push(
-                container(self.message_area(p, hover::row(body, gutter, tools, ROW_HOVER)))
-                    .width(Fill)
-                    .padding(Padding {
-                        top: if group { 14. } else { 0. },
-                        ..Padding::ZERO
-                    })
-                    .id(id),
+                container(self.message_area(
+                    p,
+                    self.reaction_popover(p, hover::row(body, gutter, tools, ROW_HOVER)),
+                ))
+                .width(Fill)
+                .padding(Padding {
+                    top: if group { 14. } else { 0. },
+                    ..Padding::ZERO
+                })
+                .id(id),
             );
         }
         if original.is_none() && timeline.end == count {
             feed = feed.extend(self.seams(history, count));
         }
-        let has_older = timeline.start > 0;
         let has_newer = timeline.end < count;
-        // Older messages come from the server once the local ones are shown,
-        // a little before the top so they're usually there when you get there.
-        let server_older = !has_older
-            && self.logged_in
-            && self.connected
-            && !r.end
-            && !paging
-            && self.auto_page_failed.as_deref() != Some(self.selected.as_str());
         if original.is_none() && has_newer {
             feed = feed.push(edge("Newer messages", Some(Msg::TimelineEdge(false))));
         }
@@ -2865,53 +2896,47 @@ impl App {
         let feed = if original.is_some() {
             feed
         } else {
+            // Where it is; paging.rs loads more at the edges (Discord offers
+            // Jump to present once you're a screen or so up).
             feed.anchor_bottom().on_scroll(move |v| {
-                let away = has_newer || v.absolute_offset().y > 1.;
-                // Discord offers Jump to present once you're a screen or so up.
-                let far = has_newer || v.absolute_offset().y > v.bounds().height * 1.5;
-                if v.content_bounds().height > v.bounds().height {
-                    if has_older && v.absolute_offset_reversed().y < 24. {
-                        return Msg::TimelineEdge(true);
-                    }
-                    if server_older && v.absolute_offset_reversed().y < v.bounds().height {
-                        return Msg::AutoPage(self.selected.clone());
-                    }
-                    if has_newer && v.absolute_offset().y < 24. {
-                        return Msg::TimelineEdge(false);
-                    }
-                }
-                let travel = (v.content_bounds().height - v.bounds().height).max(1.);
-                let depth = (v.absolute_offset().y / travel).clamp(0., 1.);
-                Msg::ReadingScroll(self.selected.clone(), away, far, depth)
+                Msg::ReadingScroll(
+                    self.selected.clone(),
+                    crate::paging::Scrolled::of(v, has_newer),
+                )
             })
         };
         // The feed always sits in this stack: adding the layer only while
         // scrolled up would rebuild the scrollable and lose its position.
         let jump: El = if original.is_none() && self.scrolled_far {
-            let bar = container(
+            // The whole bar is the button, as on Discord.
+            let bar = button(
                 row![
                     text("You're viewing older messages")
                         .size(14)
                         .color(Color::WHITE)
                         .width(Fill),
-                    button(
-                        row![
-                            text("Jump to present").size(14).font(BOLD),
-                            icon(Icon::ChevronDown, 14., Color::WHITE)
-                        ]
-                        .spacing(6)
-                        .align_y(Center)
-                    )
-                    .padding([2, 8])
-                    .style(plain(Color::WHITE, color!(0xdee0fc)))
-                    .on_press(Msg::Latest)
+                    row![
+                        text("Jump to present").size(14).font(BOLD),
+                        icon(Icon::ChevronDown, 14., Color::WHITE)
+                    ]
+                    .spacing(6)
+                    .align_y(Center)
                 ]
                 .align_y(Center),
             )
-            .padding([6, 16])
+            .padding([8, 16])
             .width(Fill)
-            .style(|_| container::Style {
-                background: Some(color!(0x5865f2).into()),
+            .on_press(Msg::Latest)
+            .style(|_, s| button::Style {
+                background: Some(
+                    if s == button::Status::Hovered {
+                        color!(0x4752c4)
+                    } else {
+                        color!(0x5865f2)
+                    }
+                    .into(),
+                ),
+                text_color: Color::WHITE,
                 border: Border::default().rounded(border::top(8)),
                 ..Default::default()
             });

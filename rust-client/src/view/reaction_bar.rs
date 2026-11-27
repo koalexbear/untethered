@@ -6,7 +6,7 @@ use crate::{
 use iced::{
     Alignment::Center,
     Border, Color, color,
-    widget::{Column, Row, button, row, text, text_input, tooltip},
+    widget::{Row, button, container, row, text, text_input, tooltip},
 };
 
 /// Reaction pills, like Discord's: emoji and count, outlined in blurple when
@@ -36,100 +36,123 @@ fn pill<'a>(caption: El<'a>, own: bool, action: Option<Msg>) -> button::Button<'
         })
 }
 
-pub(super) fn view<'a>(app: &'a App, post: &Post) -> Option<El<'a>> {
+/// The message's reactions with the smile to add one; the picker floats
+/// under that smile when it was opened there.
+pub(super) fn view<'a>(app: &'a App, post: &'a Post) -> Option<El<'a>> {
     let id = post.event_id.as_ref()?;
-    let picker = app.reaction_picker.as_ref().filter(|p| &p.target == id);
     // An older room's reactions (upgrades.rs) show, but don't change.
-    if !(post.reactable || post.from.is_some()) || post.chips.is_empty() && picker.is_none() {
+    if !(post.reactable || post.from.is_some()) || post.chips.is_empty() {
         return None;
     }
-    let action = |key: &str| {
-        if app.connected && app.verified && !app.reaction_pending(id, key) {
-            Toggle::for_post(&app.selected, post, key).map(Msg::ToggleReaction)
-        } else {
-            None
-        }
-    };
-    let own = |key: &str| post.chips.get(key).and_then(Chip::mine).is_some();
-    let mut bar = Column::new().spacing(6);
-    if !post.chips.is_empty() {
-        let mut chips = Row::new().spacing(4);
-        for (key, chip) in &post.chips {
-            let mine = own(key);
-            let caption = row![
-                text(key.to_string()).size(15),
-                text(chip.count.to_string()).size(14).font(super::BOLD)
-            ]
-            .spacing(6)
-            .align_y(Center);
-            let hint = format!(
-                "{} · {} · {}",
-                label(key),
-                chip.count,
-                if mine {
-                    "Remove your reaction"
-                } else {
-                    "Add your reaction"
-                }
-            );
-            chips = chips.push(with_tip(
-                pill(caption.into(), mine, action(key)),
-                hint,
-                tooltip::Position::Top,
-            ));
-        }
-        let open = picker.is_some();
+    let picker = app.reaction_picker.as_ref().filter(|p| &p.target == id);
+    let action = |key: &str| action(app, post, key);
+    let own = |key: &str| own(post, key);
+    let mut chips = Row::new().spacing(4);
+    for (key, chip) in &post.chips {
+        let mine = own(key);
+        let caption = row![
+            text(key.to_string()).size(15),
+            text(chip.count.to_string()).size(14).font(super::BOLD)
+        ]
+        .spacing(6)
+        .align_y(Center);
+        let hint = format!(
+            "{} · {} · {}",
+            label(key),
+            chip.count,
+            if mine {
+                "Remove your reaction"
+            } else {
+                "Add your reaction"
+            }
+        );
         chips = chips.push(with_tip(
-            pill(
-                icons::icon(Icon::Smile, 18., if open { TEXT } else { CHANNEL }),
-                false,
-                (app.verified && app.connected && post.reactable)
-                    .then(|| Msg::ReactionPicker(id.clone())),
-            ),
-            "Add Reaction",
+            pill(caption.into(), mine, action(key)),
+            hint,
             tooltip::Position::Top,
         ));
-        bar = bar.push(chips.wrap());
     }
-    if let Some(p) = picker {
-        let key = p.custom.trim();
-        let act = action(key);
-        let input = text_input("Search emoji, or react with text", &p.custom)
-            .width(220)
+    let open = picker.is_some();
+    let smile = pill(
+        icons::icon(Icon::Smile, 18., if open { TEXT } else { CHANNEL }),
+        false,
+        (app.verified && app.connected && post.reactable)
+            .then(|| Msg::ReactionPickerChips(id.clone())),
+    );
+    // Its tooltip would cover the open picker.
+    let smile: El = if open {
+        smile.into()
+    } else {
+        with_tip(smile, "Add Reaction", tooltip::Position::Top)
+    };
+    let popup = picker
+        .filter(|p| p.beside_chips)
+        .and_then(|_| panel(app, post));
+    chips = chips.push(super::popover::popover(
+        smile,
+        popup,
+        super::popover::Place::Below,
+        Msg::ReactionPicker(id.clone()),
+    ));
+    Some(chips.wrap().into())
+}
+
+fn action(app: &App, post: &Post, key: &str) -> Option<Msg> {
+    let id = post.event_id.as_ref()?;
+    if app.connected && app.verified && !app.reaction_pending(id, key) {
+        Toggle::for_post(&app.selected, post, key).map(Msg::ToggleReaction)
+    } else {
+        None
+    }
+}
+
+fn own(post: &Post, key: &str) -> bool {
+    post.chips.get(key).and_then(Chip::mine).is_some()
+}
+
+/// The open reaction picker for `post`: the quick reactions, a search field
+/// and what it finds, or a reaction typed as text.
+pub(super) fn panel<'a>(app: &'a App, post: &'a Post) -> Option<El<'a>> {
+    let id = post.event_id.as_ref()?;
+    let p = app.reaction_picker.as_ref().filter(|p| &p.target == id)?;
+    let key = p.custom.trim();
+    let act = action(app, post, key);
+    let input = text_input("Search emoji, or react with text", &p.custom)
+        .id(crate::reactions::SEARCH)
+        .width(220)
+        .size(14)
+        .padding(7)
+        .style(input_style)
+        .on_input(Msg::ReactionInput)
+        .on_submit_maybe(act.clone());
+    let add = button(
+        text(if own(post, key) { "Remove" } else { "Add" })
             .size(14)
-            .padding(7)
-            .style(input_style)
-            .on_input(Msg::ReactionInput)
-            .on_submit_maybe(act.clone());
-        let add = button(
-            text(if own(key) { "Remove" } else { "Add" })
-                .size(14)
-                .font(super::BOLD),
-        )
-        .padding([6, 12])
-        .style(|_, s| button::Style {
-            background: Some(
-                match s {
-                    button::Status::Hovered => color!(0x4752c4),
-                    button::Status::Disabled => color!(0x3c428a),
-                    _ => BLURPLE,
-                }
-                .into(),
-            ),
-            text_color: Color::WHITE,
-            border: Border::default().rounded(4),
-            ..Default::default()
-        })
-        .on_press_maybe(act);
-        bar = bar.push(super::emoji_picker::panel(
-            "QUICK REACTIONS",
-            &p.custom,
-            input.into(),
-            Some(add.into()),
-            false,
-            action,
-            own,
-        ));
-    }
-    Some(bar.into())
+            .font(super::BOLD),
+    )
+    .padding([6, 12])
+    .style(|_, s| button::Style {
+        background: Some(
+            match s {
+                button::Status::Hovered => color!(0x4752c4),
+                button::Status::Disabled => color!(0x3c428a),
+                _ => BLURPLE,
+            }
+            .into(),
+        ),
+        text_color: Color::WHITE,
+        border: Border::default().rounded(4),
+        ..Default::default()
+    })
+    .on_press_maybe(act);
+    let panel = super::emoji_picker::panel(
+        "QUICK REACTIONS",
+        &p.custom,
+        input.into(),
+        Some(add.into()),
+        false,
+        |key| action(app, post, key),
+        |key| own(post, key),
+    );
+    Some(container(panel).width(340).into())
 }
