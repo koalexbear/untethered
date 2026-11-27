@@ -10,6 +10,7 @@
     "ROADMAP.md",
     "rust-client/src/account.rs",
     "rust-client/src/drafts.rs",
+    "rust-client/src/engine/app.rs",
     "rust-client/src/main.rs",
     "rust-client/src/paging.rs",
     "rust-client/src/places.rs",
@@ -20,7 +21,7 @@
    ],
    "status": "working",
    "title": "Remember where you were",
-   "updated": "2026-11-27T14:22:12Z",
+   "updated": "2026-11-27T14:22:25Z",
    "worktree": "."
   },
   "N3": {
