@@ -150,6 +150,27 @@
    "title": "Pinned messages and Matrix threads",
    "updated": "2026-11-27T15:03:37Z",
    "worktree": "../../../../../tmp/untethered-n3"
+  },
+  "N9": {
+   "branch": "claude/n9-sounds-8156ba",
+   "claimed": "2026-11-27T20:10:34Z",
+   "notes": [],
+   "owner": "n9-sounds",
+   "paths": [
+    "rust-client/src/engine/alerts.rs",
+    "rust-client/src/engine/qa.rs",
+    "rust-client/src/notifications.rs",
+    "rust-client/src/notifications/desktop.rs",
+    "rust-client/src/shortcuts.rs",
+    "rust-client/src/sounds.rs",
+    "rust-client/src/view/shortcuts.rs",
+    "rust-client/src/view/sounds.rs",
+    "scripts/qa_sounds.py"
+   ],
+   "status": "working",
+   "title": "Sounds and shortcuts",
+   "updated": "2026-11-27T20:10:34Z",
+   "worktree": ".claude/worktrees/n9-sounds-8156ba"
   }
  },
  "done": [
