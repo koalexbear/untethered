@@ -55,9 +55,9 @@
     "rust-client/src/view/room_search.rs",
     "scripts/qa_space_search.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Search across a space",
-   "updated": "2026-11-27T14:55:02Z",
+   "updated": "2026-11-27T15:07:55Z",
    "worktree": "."
   }
  },
