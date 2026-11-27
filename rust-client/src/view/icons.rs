@@ -43,6 +43,9 @@ pub(super) enum Icon {
     Pause,
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     Muted,
+    /// Four corners: open in the media viewer.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    Expand,
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     Phone,
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
@@ -232,6 +235,12 @@ fn outline(icon: Icon) -> Path {
         Icon::Pause => {
             b.rounded_rectangle(p(6., 4.), Size::new(4., 16.), 1.0.into());
             b.rounded_rectangle(p(14., 4.), Size::new(4., 16.), 1.0.into());
+        }
+        Icon::Expand => {
+            poly(b, &[(4., 9.), (4., 4.), (9., 4.)]);
+            poly(b, &[(15., 4.), (20., 4.), (20., 9.)]);
+            poly(b, &[(20., 15.), (20., 20.), (15., 20.)]);
+            poly(b, &[(9., 20.), (4., 20.), (4., 15.)]);
         }
         Icon::Muted => {
             poly(

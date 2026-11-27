@@ -10,6 +10,11 @@ use crate::{
     player::{Control, Event, Player},
 };
 use iced::Task;
+use std::time::{Duration, Instant};
+
+/// How long a playing video's controls stay after the pointer last moved
+/// over it, as on Discord.
+const PEEK: Duration = Duration::from_millis(2500);
 
 pub struct InlinePlayer {
     pub room: String,
@@ -18,6 +23,14 @@ pub struct InlinePlayer {
     pub failed: bool,
     epoch: u64,
     file: Option<tempfile::TempPath>,
+    /// Until when the controls show while it plays.
+    peek_until: Option<Instant>,
+}
+
+/// Whether a video's controls show: always while it's paused or over, and
+/// while it plays only for a moment after the pointer moves over it.
+fn controls_shown(playing: bool, peek_until: Option<Instant>, now: Instant) -> bool {
+    !playing || peek_until.is_some_and(|until| now < until)
 }
 
 impl App {
@@ -31,6 +44,7 @@ impl App {
             if let Some(player) = &mut p.player {
                 player.control(Control::Toggle);
             }
+            p.peek_until = Some(Instant::now() + PEEK);
             return Task::none();
         }
         crate::player::warm_up();
@@ -52,6 +66,8 @@ impl App {
             failed: destination.is_none(),
             epoch,
             file,
+            // It was just clicked: the pointer is over it.
+            peek_until: Some(Instant::now() + PEEK),
         });
         let Some(destination) = destination else {
             return Task::none();
@@ -109,9 +125,28 @@ impl App {
     }
 
     pub fn inline_control(&mut self, control: Control) {
-        if let Some(player) = self.inline_player.as_mut().and_then(|p| p.player.as_mut()) {
+        let Some(p) = &mut self.inline_player else {
+            return;
+        };
+        if let Some(player) = &mut p.player {
             player.control(control);
+            p.peek_until = Some(Instant::now() + PEEK);
         }
+    }
+
+    /// The pointer moved over the playing video (true), or left it.
+    pub fn inline_pointer(&mut self, over: bool) {
+        if let Some(p) = &mut self.inline_player {
+            p.peek_until = over.then(|| Instant::now() + PEEK);
+        }
+    }
+
+    /// Whether the controls over the video `event` show now. The tick that
+    /// moves the time on while it plays redraws it as they hide.
+    pub fn inline_controls(&self, event: &str) -> bool {
+        self.inline_playing(Some(event))
+            .and_then(|p| Some((p.player.as_ref()?, p.peek_until)))
+            .is_some_and(|(player, until)| controls_shown(player.playing, until, Instant::now()))
     }
 
     pub fn inline_scrub(&mut self, at: f32) {
@@ -145,5 +180,26 @@ impl App {
 
     pub fn stop_inline(&mut self) {
         self.inline_player = None;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn controls_hide_a_moment_after_the_pointer_stops_while_it_plays() {
+        let now = Instant::now();
+        // Paused or over: always.
+        assert!(controls_shown(false, None, now));
+        // Playing: just after the pointer moved, not once that's past or
+        // the pointer left.
+        assert!(controls_shown(true, Some(now + PEEK), now));
+        assert!(!controls_shown(
+            true,
+            Some(now),
+            now + Duration::from_millis(1)
+        ));
+        assert!(!controls_shown(true, None, now));
     }
 }

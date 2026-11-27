@@ -14,9 +14,10 @@ null sink, must:
 - P1: barely use the CPU while the GIF is scrolled away, then play it once
   it's on screen (both colours show) and use the CPU for it; play Mira's
   profile picture beside her message;
-- P2: play the video in place on a click (its picture moves, the viewer
-  stays shut), and the tone in its card, whose time moves on and jumps when
-  the seek bar is clicked;
+- P2: play the video in place on a click, in its poster's space (the
+  viewer stays shut), with its controls over it: shown when the pointer
+  moves over it, hidden a moment after it stops; and play the tone in its
+  card, whose time moves on and jumps when the seek bar is clicked;
 - P5: send a video dropped from Dolphin with its width, height, duration
   and a poster thumbnail (the frame Element shows), which decodes.
 --shots DIR keeps the screenshots; UNTETHERED_QA_UI_CLIENT runs another
@@ -78,6 +79,11 @@ def main():
         gst("videotestsrc", "num-buffers=60", "pattern=ball", "!", "video/x-raw,width=320,height=240,framerate=30/1",
             "!", "videoconvert", "!", "openh264enc", "!", "h264parse", "!", "mp4mux", "!", "filesink",
             f"location={clip}")
+        # Long enough to watch its controls hide while it plays.
+        long = tmp / "long.mp4"
+        gst("videotestsrc", "num-buffers=600", "pattern=ball", "!", "video/x-raw,width=320,height=240,framerate=30/1",
+            "!", "videoconvert", "!", "openh264enc", "!", "h264parse", "!", "mp4mux", "!", "filesink",
+            f"location={long}")
         tone = tmp / "tone.ogg"
         gst("audiotestsrc", "num-buffers=350", "!", "audioconvert", "!", "vorbisenc", "!", "oggmux", "!", "filesink",
             f"location={tone}")
@@ -109,10 +115,11 @@ def main():
             say(hdr, {"msgtype": "m.text", "body": f"chatter line {n}"})
         poster = io.BytesIO()
         Image.new("RGB", (320, 240), MAGENTA).save(poster, "JPEG")
-        say(hdr, {"msgtype": "m.video", "body": "clip.mp4", "url": upload(hdr, clip.read_bytes(), "clip.mp4",
+        # Not clip.mp4, which P5 looks for among the newest messages.
+        say(hdr, {"msgtype": "m.video", "body": "long.mp4", "url": upload(hdr, long.read_bytes(), "long.mp4",
                                                                         "video/mp4"),
-                  "info": {"w": 320, "h": 240, "duration": 2000, "mimetype": "video/mp4",
-                           "size": clip.stat().st_size,
+                  "info": {"w": 320, "h": 240, "duration": 20000, "mimetype": "video/mp4",
+                           "size": long.stat().st_size,
                            "thumbnail_url": upload(hdr, poster.getvalue(), "poster.jpg", "image/jpeg"),
                            "thumbnail_info": {"w": 320, "h": 240, "mimetype": "image/jpeg",
                                               "size": len(poster.getvalue())}}})
@@ -184,11 +191,11 @@ def look(tmp, shots, files, sent_video, media):
         def containing(part, rect=FEED):
             return next(((x, y) for w, x, y in words(rect) if part in w.lower()), None)
 
-        def find(colour, rect=FEED, step=6):
+        def find(colour, rect=FEED, step=6, slack=50):
             im = kde.capture().crop(WINDOW).convert("RGB")
             px = im.load()
             pts = [(x, y) for y in range(rect[1], rect[3], step) for x in range(rect[0], rect[2], step)
-                   if near(px[x, y], colour)]
+                   if near(px[x, y], colour, slack)]
             if len(pts) < 20:
                 return None
             xs, ys = [p[0] for p in pts], [p[1] for p in pts]
@@ -237,18 +244,43 @@ def look(tmp, shots, files, sent_video, media):
         assert colours_seen(*face, [GREEN, YELLOW]), "Mira's profile picture isn't playing"
         print("UI: Mira's animated profile picture played beside her message", flush=True)
 
-        # P2: the video plays where it is.
+        # P2: the video plays where it is, in its poster's space.
         for _ in range(12):
             kde.keys(("Down", PAGE_DOWN), ("Up", PAGE_DOWN))
             time.sleep(0.4)
         poster = wait_for("the video's poster", lambda: find(MAGENTA), 20)
-        tap(kde, (poster[0] + poster[2]) // 2, (poster[1] + poster[3]) // 2)
+        vx, vy = (poster[0] + poster[2]) // 2, (poster[1] + poster[3]) // 2
+        tap(kde, vx, vy)
+        black = (0, 0, 0)
+
+        def frame():
+            """The playing video's box: its black picture, the poster gone."""
+            return not find(MAGENTA) and find(black, slack=25)
+
+        def video_clock():
+            """The time in the bar over the video, while it shows."""
+            box = find(black, slack=25)
+            return box and any(re.match(r"\d:\d\d", w) for w, _, _ in words((box[0], box[3] - 44, box[2], box[3] + 4)))
+
+        def peek(dx):
+            kde.actions("pointer", [{"type": "pointerMove", "x": vx + dx, "y": vy}])
         try:
-            wait_for("the video playing in place", lambda: not find(MAGENTA) and containing("viewer"), 30)
+            box = wait_for("the video playing in place", frame, 30)
         finally:
             shot("video-playing")
+        assert all(abs(a - b) <= 8 for a, b in zip(box, poster)), (box, poster)
         assert "of" not in {w.lower() for w, _, _ in words((0, 840, 1180, 900))}, "the viewer opened"
-        print("UI: a click played the video in the timeline, with its control bar, and the viewer stayed shut",
+        peek(12)
+        try:
+            wait_for("its controls when the pointer moves", video_clock, 5)
+        finally:
+            shot("video-controls")
+        wait_for("its controls hiding while the pointer rests", lambda: not video_clock(), 8)
+        shot("video-bare")
+        peek(-12)
+        wait_for("its controls back when the pointer moves", video_clock, 5)
+        print(f"UI: a click played the video in place in its poster's {box[2] - box[0]}x{box[3] - box[1]} px, the "
+              "viewer stayed shut, and its controls showed over it when the pointer moved and hid when it rested",
               flush=True)
 
         # P2: the tone plays in its card, and the seek bar jumps.
