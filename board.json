@@ -65,6 +65,26 @@
    "title": "Pinned messages and Matrix threads",
    "updated": "2026-11-27T15:03:37Z",
    "worktree": "../../../../../tmp/untethered-n3"
+  },
+  "inline-video-overlay": {
+   "branch": "inline-video-overlay",
+   "claimed": "2026-11-27T18:09:03Z",
+   "notes": [],
+   "owner": "main-session",
+   "paths": [
+    "README.md",
+    "rust-client/src/inline_player.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/media.rs",
+    "rust-client/src/view.rs",
+    "rust-client/src/view/icons.rs",
+    "rust-client/src/view/players.rs",
+    "scripts/qa_phase4.py"
+   ],
+   "status": "working",
+   "title": "Inline video: controls over the video, auto-hiding",
+   "updated": "2026-11-27T18:09:03Z",
+   "worktree": "."
   }
  },
  "done": [
