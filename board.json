@@ -90,9 +90,9 @@
     "rust-client/web/files.js",
     "scripts/qa_web_video.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Animated images (with P2, P4 browser, P5 on this branch)",
-   "updated": "2026-11-27T16:19:43Z",
+   "updated": "2026-11-27T16:22:43Z",
    "worktree": "."
   },
   "P2": {
