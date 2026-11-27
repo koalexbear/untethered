@@ -23,6 +23,11 @@
      "at": "2026-11-27T21:43:12Z",
      "by": "main-session",
      "text": "[M11] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: engine/mod.rs+app.rs: packs module, three Commands, Event::Packs, a Live sender, one Paginate line, two app.rs arms and emote pills in send/edit; main.rs: mod emotes, Msg::Emote/EmoteReady, Request::Pack, an App field, two update arms, an Escape branch, schedule_emotes beside schedule_avatars; view.rs: mod emotes and a sticker button in the composer row; icons.rs: Icon::Sticker; README/ROADMAP: M11 row and an Emoji paragraph"
+    },
+    {
+     "at": "2026-11-27T21:51:14Z",
+     "by": "claude/a2-voice-a94df8",
+     "text": "a2-voice: client side done (desktop_call/voice.rs APM+gate, call_settings.rs voice.json, view/voice_settings.rs in the Devices panel). Fixtures: new --voice-processing; voice-room harness now starts clients with processing off (steady tones vs AEC3). Live runs in progress."
     }
    ],
    "owner": "a2-voice",
