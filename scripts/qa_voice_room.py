@@ -43,7 +43,8 @@ class Desktop:
         self.kde=kde
         self.room=room
         # A click on a voice channel in the room list opens it and joins its
-        # call (14e985b). Leave it unclicked until the fixture joins.
+        # call (14e985b). Leave it unclicked until the fixture joins: it opens
+        # by itself as the account's only room (test_group).
         self.voice=room=="Atrium"
         self.tone=i
         self.windows=deque(maxlen=12)
@@ -83,16 +84,7 @@ class Desktop:
             assert self.client.poll() is None,f"client {i+1} exited"
             return self.cmd("xdotool","search","--onlyvisible","--name","Untethered",check=False).strip()
         self.win=wait_for(f"client {i+1} window",window,35).splitlines()[0]
-        def synced():
-            assert self.client.poll() is None,f"client {i+1} exited"
-            if room in self.cmd("xdotool","getwindowname",self.win):return True
-            # matrix-sdk shows its stored rooms before the first sync and may
-            # open another one first; open this room from the sidebar.
-            spot=next(((x,y) for w,x,y in self.words() if w==room.lower() and x<CHAT_X),None)
-            if spot and self.voice:return True
-            if spot:self.press(*spot)
-            return False
-        wait_for(f"client {i+1} synced {room}",synced,35)
+        self.show(room,f"client {i+1}")
         self.cmd("xdotool","windowmove",self.win,"0","0")
         self.cmd("xdotool","windowsize",self.win,"1180","760")
 
@@ -105,15 +97,25 @@ class Desktop:
             return kde.window("^Untethered")
         self.win=wait_for("Wayland call window",opened,35)
         kde.position(self.win,0,0,1180,850)
+        self.show(room,"Wayland client")
+
+    def show(self,room,who):
+        """Wait until `room` is the open room, after the first sync."""
         def shown():
-            assert self.client.poll() is None,"Wayland client exited"
-            if room in kde.command("kdotool","getwindowname",self.win,check=False).stdout:return True
-            # As on X11, matrix-sdk may open another stored room first.
+            assert self.client.poll() is None,who+" exited"
+            if room in self.title():return True
+            # matrix-sdk shows its stored rooms before the first sync and may
+            # open another one first. A voice channel must open by itself, as
+            # the account's only room (test_group); open others from the sidebar.
+            if self.voice:return False
             spot=next(((x,y) for w,x,y in self.words() if w==room.lower() and x<CHAT_X),None)
-            if spot and self.voice:return True
             if spot:self.press(*spot)
             return False
-        wait_for(f"Wayland client synced {room}",shown,35)
+        try:wait_for(f"{who} opened {room}",shown,35)
+        except RuntimeError:
+            if debug:=os.environ.get("KWIN_QA_DEBUG"):self.image().save(Path(debug)/f"open-{self.i}.png")
+            print(f"{who} title:",self.title().strip(),"labels:",[w for w,_,_ in self.words()],flush=True)
+            raise
 
     def restart(self,room="Atrium"):
         """KWin desktops: quit the client and start it on the same profile."""
@@ -287,7 +289,11 @@ def check_speaking(desks,names):
 def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=False,ptt=False,layout=False,reconnect=False,jwt=None):
     dirs=[tmp/f"p{i}" for i in range(3)]
     for p in dirs:p.mkdir()
-    credentials=[seed(p,hs) for p in dirs]
+    # Atrium is each account's only room, so the client opens it by itself.
+    # Push-to-talk is armed in the open voice channel's header, and a click on
+    # Atrium in the room list would join its call (14e985b). A seeded
+    # "media-proof" room stays in the client's store and opens first.
+    credentials=[seed(p,hs,room=False) for p in dirs]
     users=["@"+f["username"]+":"+name for f,_ in credentials]
     auth=credentials[0][1]
     assert len(set(users))==3
