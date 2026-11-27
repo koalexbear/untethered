@@ -45,31 +45,6 @@
    "title": "Pinned messages and Matrix threads",
    "updated": "2026-11-27T15:03:37Z",
    "worktree": "../../../../../tmp/untethered-n3"
-  },
-  "copy-image-zoom": {
-   "branch": "copy-image-zoom",
-   "claimed": "2026-11-27T15:20:26Z",
-   "notes": [],
-   "owner": "main-session",
-   "paths": [
-    "README.md",
-    "ROADMAP.md",
-    "rust-client/src/context_menu.rs",
-    "rust-client/src/copy_image.rs",
-    "rust-client/src/engine/app.rs",
-    "rust-client/src/main.rs",
-    "rust-client/src/view.rs",
-    "rust-client/src/view/context_menu.rs",
-    "rust-client/src/view/viewer.rs",
-    "rust-client/src/view/zoom.rs",
-    "rust-client/src/viewer.rs",
-    "rust-client/vendor/smithay-clipboard",
-    "scripts/qa_copy_zoom.py"
-   ],
-   "status": "review",
-   "title": "Copy Image, and zoom in the viewer (part of P3)",
-   "updated": "2026-11-27T15:32:44Z",
-   "worktree": "."
   }
  },
  "done": [
@@ -297,6 +272,15 @@
    "owner": "main-session",
    "result": "merged as eeda711",
    "title": "Search across a space"
+  },
+  {
+   "branch": "copy-image-zoom",
+   "claimed": "2026-11-27T15:20:26Z",
+   "finished": "2026-11-27T15:33:38Z",
+   "id": "copy-image-zoom",
+   "owner": "main-session",
+   "result": "merged as 372e13d",
+   "title": "Copy Image, and zoom in the viewer (part of P3)"
   }
  ]
 }
