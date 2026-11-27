@@ -1,39 +1,5 @@
 {
- "claims": {
-  "J3": {
-   "branch": "j3-dms-blocking",
-   "claimed": "2026-11-27T13:23:02Z",
-   "notes": [],
-   "owner": "main-session",
-   "paths": [
-    "README.md",
-    "ROADMAP.md",
-    "rust-client/src/avatars.rs",
-    "rust-client/src/blocking.rs",
-    "rust-client/src/context_menu.rs",
-    "rust-client/src/dms.rs",
-    "rust-client/src/engine/app.rs",
-    "rust-client/src/engine/dms.rs",
-    "rust-client/src/engine/messaging.rs",
-    "rust-client/src/engine/mod.rs",
-    "rust-client/src/engine/rooms.rs",
-    "rust-client/src/incoming.rs",
-    "rust-client/src/main.rs",
-    "rust-client/src/notifications.rs",
-    "rust-client/src/rooms.rs",
-    "rust-client/src/typing.rs",
-    "rust-client/src/view.rs",
-    "rust-client/src/view/context_menu.rs",
-    "rust-client/src/view/dms.rs",
-    "rust-client/src/view/profile.rs",
-    "scripts/qa_dms_blocking.py"
-   ],
-   "status": "review",
-   "title": "DMs and blocking",
-   "updated": "2026-11-27T13:43:13Z",
-   "worktree": "."
-  }
- },
+ "claims": {},
  "done": [
   {
    "branch": "main",
@@ -214,6 +180,15 @@
    "owner": "main-session",
    "result": "merged as 1582107",
    "title": "Join by link"
+  },
+  {
+   "branch": "j3-dms-blocking",
+   "claimed": "2026-11-27T13:23:02Z",
+   "finished": "2026-11-27T13:44:00Z",
+   "id": "J3",
+   "owner": "main-session",
+   "result": "merged as 5679235",
+   "title": "DMs and blocking"
   }
  ]
 }
