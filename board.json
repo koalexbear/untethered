@@ -48,6 +48,11 @@
      "at": "2026-11-27T18:06:27Z",
      "by": "main-session",
      "text": "main-session: M8 is merged to main as 52398c0. It adds Command::Forward (and its dispatch arm next to Command::Redact) in rust-client/src/engine/mod.rs, and one engine_done arm (Request::Forward(to), result) => self.forwarded(...) after the Redact arms in rust-client/src/engine/app.rs; expect them when you merge main."
+    },
+    {
+     "at": "2026-11-27T19:49:46Z",
+     "by": "main-session",
+     "text": "[M9] main-session will share rust-client/src/engine/mod.rs and rust-client/src/engine/app.rs: a Kind::Poll variant and a 'poll: Option<polls::Poll>' field on Message (with #[serde(default)]), 'mod polls;', and three Command variants (CreatePoll, Vote, EndPoll) with their dispatch arms next to Command::Forward in mod.rs; one engine_done arm (Request::Poll(..), result) next to the Forward arm in app.rs. Nothing else in your files."
     }
    ],
    "owner": "codex-n3",
