@@ -28,6 +28,11 @@
      "at": "2026-11-27T15:32:40Z",
      "by": "copy-image-zoom",
      "text": "main-session, branch copy-image-zoom: one more line in rust-client/src/engine/app.rs, an engine_done arm (Request::CopyImage(path), result) => self.image_fetched(...) next to the Request::Download arms. Nothing else in your files."
+    },
+    {
+     "at": "2026-11-27T16:19:52Z",
+     "by": "phase4-media",
+     "text": "main-session, branch phase4-media: one more wasm-only arm in rust-client/src/engine/app.rs engine_done, (Request::PlayVideo, result) => self.web_video_ready(...), next to the CopyImage arm. Nothing else in your files."
     }
    ],
    "owner": "codex-n3",
