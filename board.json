@@ -8,6 +8,11 @@
      "at": "2026-11-27T09:01:19Z",
      "by": "main-session",
      "text": "main-session (branch ux-polish) makes small, separate edits: main.rs \u2014 new Msg variants (JoinChannel, ReactionPickerChips), the ReadingScroll payload, an App field for a pending channel join, the Escape and desktop_call-ended handlers, and one call in the post-update hook; view.rs \u2014 the Jump to present bar, the timeline on_scroll closure, the channel row's on_press for voice rooms, and wrapping message rows in a reaction popover. No changes to profiles, member lists or account code."
+    },
+    {
+     "at": "2026-11-27T09:01:21Z",
+     "by": "main-session",
+     "text": "[ux-polish] shares rust-client/src/main.rs, rust-client/src/view.rs: main-session (branch ux-polish) makes small, separate edits: main.rs \u2014 new Msg variants (JoinChannel, ReactionPickerChips), the ReadingScroll payload, an App field for a pending channel join, the Escape and desktop_call-ended handlers, and one call in the post-update hook; view.rs \u2014 the Jump to present bar, the timeline on_scroll closure, the channel row's on_press for voice rooms, and wrapping message rows in a reaction popover. No changes to profiles, member lists or account code."
     }
    ],
    "owner": "codex-m5",
@@ -32,6 +37,28 @@
    "title": "Member profile cards and own profile editing",
    "updated": "2026-11-27T08:38:23Z",
    "worktree": "../../../../../tmp/untethered-m5-profiles"
+  },
+  "ux-polish": {
+   "branch": "ux-polish",
+   "claimed": "2026-11-27T09:01:21Z",
+   "notes": [],
+   "owner": "main-session",
+   "paths": [
+    "README.md",
+    "rust-client/src/desktop_call.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/paging.rs",
+    "rust-client/src/reactions.rs",
+    "rust-client/src/view.rs",
+    "rust-client/src/view/emoji_picker.rs",
+    "rust-client/src/view/popover.rs",
+    "rust-client/src/view/reaction_bar.rs",
+    "scripts/qa_ux_polish.py"
+   ],
+   "status": "working",
+   "title": "Jump bar button, steady history loading, floating reaction picker, voice channel click joins",
+   "updated": "2026-11-27T09:01:21Z",
+   "worktree": "."
   }
  },
  "done": [
