@@ -25,19 +25,6 @@
    "title": "Message deletion and persistent drafts",
    "updated": "2026-11-27T10:31:47Z",
    "worktree": "../../../../../tmp/untethered-m6"
-  },
-  "roadmap-parity": {
-   "branch": "roadmap-parity",
-   "claimed": "2026-11-27T10:32:26Z",
-   "notes": [],
-   "owner": "main-session",
-   "paths": [
-    "ROADMAP.md"
-   ],
-   "status": "review",
-   "title": "Roadmap: status refresh and new Discord-parity steps",
-   "updated": "2026-11-27T10:33:33Z",
-   "worktree": "."
   }
  },
  "done": [
@@ -148,6 +135,15 @@
    "owner": "main-session",
    "result": "merged as fd54b81",
    "title": "Memory: fewer threads, capped arenas, close left rooms' timelines; older rooms' keys in bulk; clear UTD labels"
+  },
+  {
+   "branch": "roadmap-parity",
+   "claimed": "2026-11-27T10:32:26Z",
+   "finished": "2026-11-27T10:36:32Z",
+   "id": "roadmap-parity",
+   "owner": "main-session",
+   "result": "merged as b9834ed",
+   "title": "Roadmap: status refresh and new Discord-parity steps"
   }
  ]
 }
