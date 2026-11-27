@@ -2,12 +2,11 @@
 
 Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 
-| ID | Title | Agent | Branch | Status | Updated | Paths |
-|---|---|---|---|---|---|---|
-| room-upgrades | Upgraded rooms as one chat | room-upgrades | `claude/room-upgrades` | review | 2026-11-27T00:23:01Z | `README.md`, `rust-client/src/context_menu.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/live_test.rs`, `rust-client/src/engine/messaging.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/rooms.rs`, `rust-client/src/engine/search.rs`, `rust-client/src/engine/timeline.rs`, `rust-client/src/engine/upgrades.rs`, `rust-client/src/main.rs`, `rust-client/src/mentions.rs`, `rust-client/src/reading.rs`, `rust-client/src/replies.rs`, `rust-client/src/rooms.rs`, `rust-client/src/rooms/engine.rs`, `rust-client/src/search.rs`, `rust-client/src/upgrades.rs`, `rust-client/src/view.rs`, `rust-client/src/view/reaction_bar.rs`, `rust-client/src/view/upgrades.rs`, `scripts/qa_room_upgrades.py` |
+Nothing claimed.
 
 ## Done
 
+- 2026-11-27 **room-upgrades** Upgraded rooms as one chat (room-upgrades): merged as fedb2d4
 - 2026-11-27 **M3** Typing indicators (m3-typing): merged as a9422b5
 - 2026-11-26 **single-instance** Single instance: a second launch shows the running window (main-session): merged as 2d29437
 - 2026-11-26 **N6** System tray (n6-system-tray): merged as 4145624

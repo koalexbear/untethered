@@ -1,51 +1,5 @@
 {
- "claims": {
-  "room-upgrades": {
-   "branch": "claude/room-upgrades",
-   "claimed": "2026-11-26T23:53:45Z",
-   "notes": [
-    {
-     "at": "2026-11-27T00:09:51Z",
-     "by": "room-upgrades",
-     "text": "Progress: engine chain timelines, list hiding, seams, join offer, permalinks committed (5cb8666); unit tests pass; fmt/clippy/wasm/windows clean. Next: live Synapse test (engine live_test + scripts/qa_room_upgrades.py)."
-    },
-    {
-     "at": "2026-11-27T00:23:01Z",
-     "by": "room-upgrades",
-     "text": "Ready for review on claude/room-upgrades: 5cb8666 (feature) + 20aa6a0 (live test + fixture). fmt/clippy/test/wasm/windows clean; scripts/qa_room_upgrades.py passes live (and --ui in private KWin with the release build). Older rooms' messages are read-only (README). Shared-file edits are small and listed in the side-session notes (room-upgrades.md). Not pushed or merged."
-    }
-   ],
-   "owner": "room-upgrades",
-   "paths": [
-    "README.md",
-    "rust-client/src/context_menu.rs",
-    "rust-client/src/engine/app.rs",
-    "rust-client/src/engine/live_test.rs",
-    "rust-client/src/engine/messaging.rs",
-    "rust-client/src/engine/mod.rs",
-    "rust-client/src/engine/rooms.rs",
-    "rust-client/src/engine/search.rs",
-    "rust-client/src/engine/timeline.rs",
-    "rust-client/src/engine/upgrades.rs",
-    "rust-client/src/main.rs",
-    "rust-client/src/mentions.rs",
-    "rust-client/src/reading.rs",
-    "rust-client/src/replies.rs",
-    "rust-client/src/rooms.rs",
-    "rust-client/src/rooms/engine.rs",
-    "rust-client/src/search.rs",
-    "rust-client/src/upgrades.rs",
-    "rust-client/src/view.rs",
-    "rust-client/src/view/reaction_bar.rs",
-    "rust-client/src/view/upgrades.rs",
-    "scripts/qa_room_upgrades.py"
-   ],
-   "status": "review",
-   "title": "Upgraded rooms as one chat",
-   "updated": "2026-11-27T00:23:01Z",
-   "worktree": ".claude/worktrees/room-upgrades"
-  }
- },
+ "claims": {},
  "done": [
   {
    "branch": "main",
@@ -109,6 +63,15 @@
    "owner": "m3-typing",
    "result": "merged as a9422b5",
    "title": "Typing indicators"
+  },
+  {
+   "branch": "claude/room-upgrades",
+   "claimed": "2026-11-26T23:53:45Z",
+   "finished": "2026-11-27T06:18:44Z",
+   "id": "room-upgrades",
+   "owner": "room-upgrades",
+   "result": "merged as fedb2d4",
+   "title": "Upgraded rooms as one chat"
   }
  ]
 }
