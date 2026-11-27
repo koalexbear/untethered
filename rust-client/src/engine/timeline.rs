@@ -3,9 +3,18 @@
 //! The Timeline aggregates edits, redactions and local echoes itself. Each
 //! batch of diffs produces a full snapshot of the room's loaded messages; the
 //! UI keeps a bounded window of it, so this stays cheap at today's sizes.
-use super::{Delivery, Event, Failure, Kind, Message, Reply, TimelineSnapshot, media::Sources};
+//!
+//! An opened room is a chain of segments, one Timeline each: the room itself,
+//! then each older room it was upgraded from (upgrades.rs), added once
+//! scrolling back reaches the start of the one before. One snapshot carries
+//! them all, oldest first, with a seam where each room's history begins.
+use super::{
+    Delivery, Event, Failure, Kind, Message, Reply, TimelineSnapshot,
+    media::Sources,
+    upgrades::{self, Above, Seam},
+};
 use async_channel::Sender;
-use futures_util::{FutureExt, StreamExt};
+use futures_util::{FutureExt, Stream, StreamExt};
 use matrix_sdk::{
     Client,
     room::edit::EditedContent,
@@ -20,7 +29,7 @@ use matrix_sdk::{
 };
 use matrix_sdk_ui::{
     Timeline,
-    eyeball_im::Vector,
+    eyeball_im::{Vector, VectorDiff},
     timeline::{
         EventSendState, EventTimelineItem, MsgLikeKind, RoomExt, TimelineDetails,
         TimelineEventItemId, TimelineItem, TimelineItemContent,
@@ -28,7 +37,7 @@ use matrix_sdk_ui::{
 };
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex as Shared},
+    sync::{Arc, Mutex as Shared, Weak},
     time::Duration,
 };
 use tokio::sync::{Mutex, Notify, broadcast};
@@ -40,16 +49,96 @@ const PAGE: u16 = 50;
 /// events it loaded. The item goes away when the Timeline is cleared.
 type Start = Arc<Shared<Option<String>>>;
 
-struct Open {
+/// One room's Timeline, mirrored for the opened rooms that show it: its own
+/// and those of the rooms that were upgraded from it.
+struct Segment {
+    room: OwnedRoomId,
     timeline: Arc<Timeline>,
     start: Start,
-    refresh: Arc<Notify>,
-    forwarder: super::rt::JoinHandle<()>,
+    mirror: Arc<Mirror>,
+    task: super::rt::JoinHandle<()>,
+}
+impl Drop for Segment {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+impl Segment {
+    fn listen(&self, changed: &Arc<Notify>) {
+        self.mirror
+            .listeners
+            .lock()
+            .unwrap()
+            .push(Arc::downgrade(changed));
+    }
+
+    /// A pagination confirmed the start, and the Timeline still shows it.
+    async fn at_start(&self) -> bool {
+        let Some(marker) = self.start.lock().unwrap().clone() else {
+            return false;
+        };
+        self.timeline
+            .items()
+            .await
+            .iter()
+            .any(|i| i.is_timeline_start() && i.unique_id().0 == marker)
+    }
+}
+
+/// A Timeline's items as of its latest batch of diffs.
+#[derive(Default)]
+struct Mirror {
+    items: Shared<Vector<Arc<TimelineItem>>>,
+    /// Take everything the Timeline has emitted so far, now.
+    refresh: Notify,
+    /// The emitters of the opened rooms that show these items.
+    listeners: Shared<Vec<Weak<Notify>>>,
+}
+impl Mirror {
+    fn wake(&self) {
+        self.listeners
+            .lock()
+            .unwrap()
+            .retain(|listener| match listener.upgrade() {
+                Some(changed) => {
+                    changed.notify_one();
+                    true
+                }
+                None => false,
+            });
+    }
+}
+
+/// An opened room, which emits the timeline snapshots for its chain.
+struct Open {
+    chain: Arc<Shared<Chain>>,
+    changed: Arc<Notify>,
+    emitter: super::rt::JoinHandle<()>,
 }
 impl Drop for Open {
     fn drop(&mut self) {
-        self.forwarder.abort();
+        self.emitter.abort();
     }
+}
+impl Open {
+    fn segments(&self) -> Vec<Arc<Segment>> {
+        self.chain.lock().unwrap().segments.clone()
+    }
+    /// The opened room's own Timeline, where new messages go.
+    fn timeline(&self) -> Arc<Timeline> {
+        self.chain.lock().unwrap().segments[0].timeline.clone()
+    }
+}
+
+/// Segments newest first; the first is the opened room.
+#[derive(Default)]
+struct Chain {
+    segments: Vec<Arc<Segment>>,
+    /// `seams[i]` joins `segments[i]` to the older `segments[i + 1]`, and
+    /// one more sits above the oldest when its predecessor can't be read.
+    seams: Vec<Seam>,
+    /// Nothing older remains to load.
+    complete: bool,
 }
 
 pub struct Timelines {
@@ -57,6 +146,7 @@ pub struct Timelines {
     events: Sender<Event>,
     sources: Arc<Sources>,
     open: Mutex<HashMap<OwnedRoomId, Arc<Open>>>,
+    segments: Mutex<HashMap<OwnedRoomId, Arc<Segment>>>,
 }
 
 impl Timelines {
@@ -66,7 +156,32 @@ impl Timelines {
             events,
             sources,
             open: Default::default(),
+            segments: Default::default(),
         }
+    }
+
+    async fn segment(&self, id: &RoomId) -> Result<Arc<Segment>, Failure> {
+        let mut segments = self.segments.lock().await;
+        if let Some(existing) = segments.get(id) {
+            return Ok(existing.clone());
+        }
+        let room = self.client.get_room(id).ok_or(Failure::Unavailable)?;
+        let timeline = Arc::new(room.timeline().await.map_err(|_| Failure::Failed)?);
+        let (items, stream) = timeline.subscribe().await;
+        let shared = Arc::new(Mirror {
+            items: Shared::new(items),
+            ..Default::default()
+        });
+        let task = super::rt::spawn(mirror(stream, shared.clone()));
+        let segment = Arc::new(Segment {
+            room: id.to_owned(),
+            timeline,
+            start: Start::default(),
+            mirror: shared,
+            task,
+        });
+        segments.insert(id.to_owned(), segment.clone());
+        Ok(segment)
     }
 
     async fn get(&self, room: &str) -> Result<Arc<Open>, Failure> {
@@ -75,63 +190,135 @@ impl Timelines {
         if let Some(existing) = open.get(&id) {
             return Ok(existing.clone());
         }
-        let joined = self.client.get_room(&id).ok_or(Failure::Unavailable)?;
-        let timeline = Arc::new(joined.timeline().await.map_err(|_| Failure::Failed)?);
-        let start = Start::default();
-        let refresh = Arc::new(Notify::new());
-        let forwarder = super::rt::spawn(forward(
+        let segment = self.segment(&id).await?;
+        let changed = Arc::new(Notify::new());
+        segment.listen(&changed);
+        let chain = Arc::new(Shared::new(Chain {
+            segments: vec![segment],
+            ..Default::default()
+        }));
+        let emitter = super::rt::spawn(emit(
             room.to_owned(),
             self.client
                 .user_id()
                 .map(ToString::to_string)
                 .unwrap_or_default(),
-            timeline.clone(),
-            start.clone(),
-            refresh.clone(),
+            chain.clone(),
+            changed.clone(),
             self.events.clone(),
             self.sources.clone(),
         ));
         let entry = Arc::new(Open {
-            timeline,
-            start,
-            refresh,
-            forwarder,
+            chain,
+            changed,
+            emitter,
         });
         open.insert(id, entry.clone());
         Ok(entry)
     }
 
+    /// Load older messages: from the newest segment whose start isn't shown
+    /// yet. Reaching the start of the oldest continues into the room it was
+    /// upgraded from, which loads a page at once so the seam isn't left at
+    /// the top of what's shown.
     pub async fn paginate(&self, room: &str) -> Result<(), Failure> {
         let open = self.get(room).await?;
-        let start = open
-            .timeline
-            .paginate_backwards(PAGE)
-            .await
-            .map_err(|_| Failure::Unreachable)?;
-        if start {
-            self.settle(room, &open.timeline).await;
-            let marker = open
+        loop {
+            let segments = open.segments();
+            let mut target = None;
+            for (i, segment) in segments.iter().enumerate() {
+                if !segment.at_start().await {
+                    target = Some(i);
+                    break;
+                }
+            }
+            let Some(i) = target else {
+                // Every start is shown already (an older room opened on its
+                // own reached it): continue above the oldest.
+                let oldest = segments.last().expect("a chain starts with its room");
+                if open.chain.lock().unwrap().complete || !self.extend(&open, oldest).await {
+                    break;
+                }
+                continue;
+            };
+            let segment = &segments[i];
+            let start = segment
                 .timeline
-                .items()
+                .paginate_backwards(PAGE)
                 .await
-                .iter()
-                .find(|i| i.is_timeline_start())
-                .map(|i| i.unique_id().0.clone());
-            *open.start.lock().unwrap() = marker;
+                .map_err(|_| Failure::Unreachable)?;
+            if start {
+                self.settle(segment).await;
+                let marker = segment
+                    .timeline
+                    .items()
+                    .await
+                    .iter()
+                    .find(|i| i.is_timeline_start())
+                    .map(|i| i.unique_id().0.clone());
+                *segment.start.lock().unwrap() = marker;
+            }
+            segment.mirror.refresh.notify_one();
+            // A segment cleared and paged back to its start already has the
+            // older ones after it.
+            if !start || i + 1 < segments.len() || !self.extend(&open, segment).await {
+                break;
+            }
         }
-        open.refresh.notify_one();
+        open.changed.notify_one();
         Ok(())
+    }
+
+    /// Continue `open`'s chain above `oldest`, whose start is now shown.
+    /// Whether an older room's segment was added.
+    async fn extend(&self, open: &Open, oldest: &Segment) -> bool {
+        let above = match self.client.get_room(&oldest.room) {
+            Some(room) => upgrades::above(&self.client, &room).await,
+            None => Above::Start,
+        };
+        let (older, seam) = match above {
+            Above::Start => {
+                open.chain.lock().unwrap().complete = true;
+                return false;
+            }
+            Above::Unreadable(seam) => (None, seam),
+            Above::Older(room, seam) => {
+                let looped = open
+                    .segments()
+                    .iter()
+                    .any(|s| s.room.as_str() == room.room_id().as_str());
+                let segment = match looped {
+                    true => None,
+                    false => self.segment(room.room_id()).await.ok(),
+                };
+                (segment, seam)
+            }
+        };
+        let mut chain = open.chain.lock().unwrap();
+        match older {
+            Some(segment) => {
+                segment.listen(&open.changed);
+                chain.seams.push(seam);
+                chain.segments.push(segment);
+                true
+            }
+            None => {
+                chain.seams.push(Seam {
+                    readable: false,
+                    ..seam
+                });
+                chain.complete = true;
+                false
+            }
+        }
     }
 
     /// `paginate_backwards` returns once the event cache has the events; the
     /// Timeline adds them on its own task, which can be later (it is when
     /// they come from the store after a restart). Wait until the oldest ones
     /// show, so the start is never reported above a hole.
-    async fn settle(&self, room: &str, timeline: &Timeline) {
-        let Some(joined) = RoomId::parse(room)
-            .ok()
-            .and_then(|id| self.client.get_room(&id))
-        else {
+    async fn settle(&self, segment: &Segment) {
+        let Some(joined) = self.client.get_room(&segment.room) else {
             return;
         };
         let Some(Ok((cache, _handles))) = (match self.client.event_cache() {
@@ -153,12 +340,30 @@ impl Timelines {
         };
         for _ in 0..200 {
             for id in &oldest {
-                if timeline.item_by_event_id(id).await.is_some() {
+                if segment.timeline.item_by_event_id(id).await.is_some() {
                     return;
                 }
             }
             super::rt::sleep(Duration::from_millis(10)).await;
         }
+    }
+
+    /// The Timeline of the room that owns `event`, among `room`'s segments:
+    /// reactions and edits go where the event is. The room's own otherwise.
+    async fn owner(
+        &self,
+        room: &str,
+        event: &TimelineEventItemId,
+    ) -> Result<Arc<Timeline>, Failure> {
+        let segments = self.get(room).await?.segments();
+        if let TimelineEventItemId::EventId(id) = event {
+            for segment in &segments[1..] {
+                if segment.timeline.item_by_event_id(id).await.is_some() {
+                    return Ok(segment.timeline.clone());
+                }
+            }
+        }
+        Ok(segments[0].timeline.clone())
     }
 
     pub async fn send(
@@ -168,20 +373,20 @@ impl Timelines {
         pills: &[crate::pills::Pill],
         reply_to: Option<String>,
     ) -> Result<(), Failure> {
-        let open = self.get(room).await?;
+        let timeline = self.get(room).await?.timeline();
         match reply_to {
             // Replies stay literal text, as with gomuks's base_content: a
             // slash or Markdown in a reply is never a command.
             Some(target) => {
                 let target = EventId::parse(target).map_err(|_| Failure::Unavailable)?;
-                open.timeline
+                timeline
                     .send_reply(super::compose::literal(body, pills), target)
                     .await
                     .map_err(|_| Failure::Failed)?;
             }
             // Messages render Markdown like gomuks's send_message.
             None => {
-                open.timeline
+                timeline
                     .send(
                         RoomMessageEventContent::from(super::compose::markdown(body, pills)).into(),
                     )
@@ -202,7 +407,7 @@ impl Timelines {
         content: serde_json::Value,
         reply_to: Option<String>,
     ) -> Result<(), Failure> {
-        let open = self.get(room).await?;
+        let timeline = self.get(room).await?.timeline();
         let content: RoomMessageEventContent =
             serde_json::from_value(content).map_err(|_| Failure::Failed)?;
         if !is_attachment(&content.msgtype) {
@@ -219,9 +424,9 @@ impl Timelines {
                 let target = EventId::parse(target).map_err(|_| Failure::Unavailable)?;
                 let mut reply = RoomMessageEventContentWithoutRelation::new(content.msgtype);
                 reply.mentions = content.mentions;
-                open.timeline.send_reply(reply, target).await
+                timeline.send_reply(reply, target).await
             }
-            None => open.timeline.send(content.into()).await,
+            None => timeline.send(content.into()).await,
         }
         .map_err(|_| Failure::Failed)?;
         let ours = handle.transaction_id().to_owned();
@@ -259,9 +464,10 @@ impl Timelines {
     }
 
     pub async fn react(&self, room: &str, event: &str, key: &str) -> Result<(), Failure> {
-        let open = self.get(room).await?;
-        open.timeline
-            .toggle_reaction(&Self::item(event)?, key)
+        let item = Self::item(event)?;
+        self.owner(room, &item)
+            .await?
+            .toggle_reaction(&item, key)
             .await
             .map(|_| ())
             .map_err(|_| Failure::Failed)
@@ -274,10 +480,11 @@ impl Timelines {
         body: String,
         pills: &[crate::pills::Pill],
     ) -> Result<(), Failure> {
-        let open = self.get(room).await?;
-        open.timeline
+        let item = Self::item(event)?;
+        self.owner(room, &item)
+            .await?
             .edit(
-                &Self::item(event)?,
+                &item,
                 EditedContent::RoomMessage(super::compose::markdown(body, pills)),
             )
             .await
@@ -329,46 +536,66 @@ pub async fn resume_after_errors(client: Client) {
     }
 }
 
-async fn forward(
-    room: String,
-    me: String,
-    timeline: Arc<Timeline>,
-    start: Start,
-    refresh: Arc<Notify>,
-    events: Sender<Event>,
-    sources: Arc<Sources>,
+/// Keep a segment's items current, and wake the emitters that show them.
+async fn mirror(
+    mut stream: impl Stream<Item = Vec<VectorDiff<Arc<TimelineItem>>>> + Unpin,
+    mirror: Arc<Mirror>,
 ) {
-    let (mut items, mut stream) = timeline.subscribe().await;
-    let mut rows = Rows::default();
     loop {
-        let marker = start.lock().unwrap().clone();
-        let latest = timeline.latest_event_id().await.map(|e| e.to_string());
-        let mut snapshot = snapshot(&room, &me, &items, &mut rows, marker.as_deref(), &sources);
-        snapshot.latest_event = latest;
-        if events.send(Event::Timeline(snapshot)).await.is_err() {
-            return;
-        }
         tokio::select! {
             biased;
             diffs = stream.next() => match diffs {
                 Some(diffs) => {
+                    let mut items = mirror.items.lock().unwrap();
                     for diff in diffs {
                         diff.apply(&mut items);
                     }
                 }
                 None => return,
             },
-            _ = refresh.notified() => {
+            _ = mirror.refresh.notified() => {
                 // A pagination that confirmed the start waited for its
                 // events; take everything the Timeline has emitted so far.
                 while let Some(next) = stream.next().now_or_never() {
                     let Some(diffs) = next else { return };
+                    let mut items = mirror.items.lock().unwrap();
                     for diff in diffs {
                         diff.apply(&mut items);
                     }
                 }
             }
         }
+        mirror.wake();
+    }
+}
+
+/// Send the opened room's snapshot now and whenever one of its segments
+/// changes.
+async fn emit(
+    room: String,
+    me: String,
+    chain: Arc<Shared<Chain>>,
+    changed: Arc<Notify>,
+    events: Sender<Event>,
+    sources: Arc<Sources>,
+) {
+    let mut rows = Rows::default();
+    loop {
+        let (segments, seams, complete) = {
+            let chain = chain.lock().unwrap();
+            (chain.segments.clone(), chain.seams.clone(), chain.complete)
+        };
+        let latest = segments[0]
+            .timeline
+            .latest_event_id()
+            .await
+            .map(|e| e.to_string());
+        let mut snapshot = snapshot(&room, &me, &segments, &seams, complete, &mut rows, &sources);
+        snapshot.latest_event = latest;
+        if events.send(Event::Timeline(snapshot)).await.is_err() {
+            return;
+        }
+        changed.notified().await;
     }
 }
 
@@ -393,27 +620,95 @@ impl Rows {
 fn snapshot(
     room: &str,
     me: &str,
-    items: &Vector<Arc<TimelineItem>>,
+    segments: &[Arc<Segment>],
+    seams: &[Seam],
+    complete: bool,
     rows: &mut Rows,
-    start: Option<&str>,
     sources: &Sources,
 ) -> TimelineSnapshot {
+    let parts = segments
+        .iter()
+        .map(|segment| {
+            let items = segment.mirror.items.lock().unwrap().clone();
+            let started = segment
+                .start
+                .lock()
+                .unwrap()
+                .as_ref()
+                .is_some_and(|marker| {
+                    items
+                        .iter()
+                        .any(|i| i.is_timeline_start() && &i.unique_id().0 == marker)
+                });
+            let messages = items
+                .iter()
+                .filter_map(|item| {
+                    let event = item.as_event()?;
+                    let key = format!("{}\n{}", segment.room, item.unique_id().0);
+                    message(event, rows.get(&key), me, sources)
+                })
+                .collect();
+            Part {
+                room: segment.room.to_string(),
+                messages,
+                started,
+            }
+        })
+        .collect();
+    let (messages, seams, start_reached) = assemble(parts, seams, complete);
     TimelineSnapshot {
         room: room.to_owned(),
-        start_reached: start.is_some_and(|marker| {
-            items
-                .iter()
-                .any(|i| i.is_timeline_start() && i.unique_id().0 == marker)
-        }),
-        messages: items
-            .iter()
-            .filter_map(|item| {
-                let event = item.as_event()?;
-                message(event, rows.get(&item.unique_id().0), me, sources)
-            })
-            .collect(),
+        start_reached,
+        messages,
         latest_event: None,
+        seams,
     }
+}
+
+/// One segment's share of a snapshot.
+struct Part {
+    room: String,
+    messages: Vec<Message>,
+    /// Its start is shown: nothing of this room is missing above.
+    started: bool,
+}
+
+/// The chain's messages oldest first, the seams between its rooms, and
+/// whether this is the start of all the history there is. `parts` and
+/// `seams` are as in [`Chain`].
+fn assemble(
+    mut parts: Vec<Part>,
+    seams: &[Seam],
+    complete: bool,
+) -> (Vec<Message>, Vec<Seam>, bool) {
+    // Older rooms show only while history is unbroken down to them: a
+    // Timeline that was cleared no longer reaches its start.
+    let shown = parts
+        .iter()
+        .position(|p| !p.started)
+        .map_or(parts.len(), |i| i + 1);
+    let whole = shown == parts.len() && parts.last().is_some_and(|p| p.started);
+    parts.truncate(shown);
+    let mut messages = Vec::new();
+    let mut joins = Vec::new();
+    // An older room that can't be read sits above everything.
+    if whole && let Some(seam) = seams.get(shown - 1) {
+        joins.push(seam.clone());
+    }
+    for (k, part) in parts.into_iter().enumerate().rev() {
+        let from = (k > 0).then_some(part.room);
+        messages.extend(part.messages.into_iter().map(|m| Message {
+            from: from.clone(),
+            ..m
+        }));
+        if k > 0 {
+            joins.push(Seam {
+                index: messages.len(),
+                ..seams[k - 1].clone()
+            });
+        }
+    }
+    (messages, joins, whole && complete)
 }
 
 fn message(item: &EventTimelineItem, row: i64, me: &str, sources: &Sources) -> Option<Message> {
@@ -517,5 +812,138 @@ fn message(item: &EventTimelineItem, row: i64, me: &str, sources: &Sources) -> O
             })
             .collect(),
         media,
+        from: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn message(event: &str) -> Message {
+        Message {
+            row: 0,
+            event_id: Some(event.into()),
+            sender: "@a:example".into(),
+            sender_name: None,
+            sender_avatar: None,
+            time: 0,
+            body: event.into(),
+            formatted: None,
+            kind: Kind::Text,
+            encrypted: false,
+            delivery: Delivery::Sent,
+            edited: false,
+            reply_to: None,
+            reactions: Vec::new(),
+            text: true,
+            editable: false,
+            mentions: None,
+            edit_id: None,
+            edit_time: None,
+            receipts: Vec::new(),
+            media: None,
+            from: None,
+        }
+    }
+
+    fn part(room: &str, events: &[&str], started: bool) -> Part {
+        Part {
+            room: room.into(),
+            messages: events.iter().map(|e| message(e)).collect(),
+            started,
+        }
+    }
+
+    fn seam(newer: &str, older: &str, readable: bool) -> Seam {
+        Seam {
+            index: 0,
+            older: older.into(),
+            newer: newer.into(),
+            time: Some(1_700_000_000_000),
+            readable,
+        }
+    }
+
+    fn bodies(messages: &[Message]) -> Vec<(&str, Option<&str>)> {
+        messages
+            .iter()
+            .map(|m| (m.body.as_str(), m.from.as_deref()))
+            .collect()
+    }
+
+    #[test]
+    fn several_upgrades_read_as_one_history_with_seams() {
+        let (messages, seams, start) = assemble(
+            vec![
+                part("!c", &["c1", "c2"], true),
+                part("!b", &["b1"], true),
+                part("!a", &["a1", "a2"], true),
+            ],
+            &[seam("!c", "!b", true), seam("!b", "!a", true)],
+            true,
+        );
+        assert_eq!(
+            bodies(&messages),
+            [
+                ("a1", Some("!a")),
+                ("a2", Some("!a")),
+                ("b1", Some("!b")),
+                ("c1", None),
+                ("c2", None)
+            ]
+        );
+        assert_eq!(
+            seams
+                .iter()
+                .map(|s| (s.index, s.newer.as_str()))
+                .collect::<Vec<_>>(),
+            [(2, "!b"), (3, "!c")]
+        );
+        assert!(start);
+    }
+
+    #[test]
+    fn an_unreadable_predecessor_ends_history_with_a_seam() {
+        let (messages, seams, start) = assemble(
+            vec![part("!r", &["r1"], true)],
+            &[seam("!r", "!p", false)],
+            true,
+        );
+        assert_eq!(bodies(&messages), [("r1", None)]);
+        assert_eq!(seams.len(), 1);
+        assert_eq!((seams[0].index, seams[0].readable), (0, false));
+        assert!(start);
+    }
+
+    #[test]
+    fn an_older_room_loading_keeps_the_start_unreached() {
+        // The predecessor's latest messages show above the seam before its
+        // start is reached.
+        let (messages, seams, start) = assemble(
+            vec![part("!r", &["r1"], true), part("!p", &["p9"], false)],
+            &[seam("!r", "!p", true)],
+            false,
+        );
+        assert_eq!(bodies(&messages), [("p9", Some("!p")), ("r1", None)]);
+        assert_eq!(seams[0].index, 1);
+        assert!(!start);
+        // Before the room's own start: no seam yet.
+        let (messages, seams, start) = assemble(vec![part("!r", &["r1"], false)], &[], false);
+        assert_eq!(bodies(&messages), [("r1", None)]);
+        assert!(seams.is_empty() && !start);
+    }
+
+    #[test]
+    fn a_cleared_timeline_hides_the_older_rooms_behind_its_gap() {
+        // The newest room's Timeline was reset (a gappy sync): its start is
+        // no longer shown, so the older room would sit above a hole.
+        let (messages, seams, start) = assemble(
+            vec![part("!r", &["r7", "r8"], false), part("!p", &["p1"], true)],
+            &[seam("!r", "!p", true)],
+            true,
+        );
+        assert_eq!(bodies(&messages), [("r7", None), ("r8", None)]);
+        assert!(seams.is_empty() && !start);
+    }
 }

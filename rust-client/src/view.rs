@@ -17,6 +17,7 @@ mod room_search;
 mod sdk_account;
 #[cfg(not(target_arch = "wasm32"))]
 mod tray;
+mod upgrades;
 mod viewer;
 use iced::{
     Alignment::Center,
@@ -2552,12 +2553,16 @@ impl App {
                 cached
             };
             let date_change = prev.is_none_or(|(_, _, day)| day != p.day);
+            // An upgraded room's history meets the older room's (upgrades.rs).
+            let seam = self.seams(history, index);
             // Like Discord, a reply always starts a new group with its own header.
             let group = date_change
+                || seam.is_some()
                 || p.reply.is_some()
                 || prev.is_none_or(|(sender, time, _)| {
                     sender != p.sender || p.time.saturating_sub(time) > 300_000
                 });
+            feed = feed.extend(seam);
             if date_change {
                 feed = feed.push(
                     container(
@@ -2821,6 +2826,9 @@ impl App {
                     .id(id),
             );
         }
+        if original.is_none() && timeline.end == count {
+            feed = feed.extend(self.seams(history, count));
+        }
         let has_older = timeline.start > 0;
         let has_newer = timeline.end < count;
         // Older messages come from the server once the local ones are shown,
@@ -2953,9 +2961,12 @@ impl App {
         {
             viewport = viewport.push(text("Loading original message…").size(13));
         }
-        let restricted =
-            self.logged_in && r.posting.can_post(&self.matrix_id, r.encrypted) == Some(false);
-        let hint = if restricted {
+        let upgraded = r.successor.is_some();
+        let restricted = self.logged_in
+            && (upgraded || r.posting.can_post(&self.matrix_id, r.encrypted) == Some(false));
+        let hint = if upgraded {
+            "This room was upgraded".into()
+        } else if restricted {
             "Read-only for your account".into()
         } else {
             format!("Message {}{}", if r.dm { "@" } else { "#" }, r.name)
@@ -3012,7 +3023,7 @@ impl App {
         let has_files = files.is_some_and(|q| !q.is_empty());
         let skipped = self.outbox.skipped.get(&self.selected);
         let uploading = self.batch.as_ref().is_some_and(|b| b.room == self.selected);
-        let mut tray = Column::new().spacing(4);
+        let mut tray = Column::new().spacing(4).extend(self.upgrade_offer(r));
         if let Some(d) = &self.reporting {
             let busy = self.report_pending();
             let ready = !busy && self.connected && self.verified && !d.reason.trim().is_empty();
@@ -3267,7 +3278,9 @@ impl App {
                 }),
                 ..Default::default()
             });
-        let foot = if restricted {
+        let foot = if upgraded {
+            "Read-only: this room was upgraded"
+        } else if restricted {
             "Read-only for your account"
         } else if !self.logged_in {
             "Local preview · Messages stay here"

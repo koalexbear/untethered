@@ -22,6 +22,9 @@ pub struct Rooms {
     pub(super) ordered_spaces: BTreeMap<String, Vec<String>>,
     pub children: BTreeMap<String, BTreeSet<String>>,
     pub hierarchy_revision: u64,
+    /// Old rooms and the joined rooms that replaced them in an upgrade; the
+    /// old ones aren't in `list` (upgrades.rs).
+    pub(crate) replaced: BTreeMap<String, String>,
 }
 #[derive(Default)]
 pub struct Room {
@@ -47,6 +50,11 @@ pub struct Room {
     pub avatar: Option<String>,
     /// Members' profile pictures (mxc URIs), as the timeline shows them.
     pub avatars: BTreeMap<String, String>,
+    /// The room that replaced this one, when this account hasn't joined it
+    /// yet: the room is read-only and offers to join it (upgrades.rs).
+    pub successor: Option<String>,
+    /// Where older rooms' history meets the next room's in `order`.
+    pub seams: Vec<crate::engine::Seam>,
     pub history: BTreeMap<i64, Post>,
     // Keep the timestamp and row-ID ordering used by the timeline.
     pub(super) order: Vec<(i64, i64)>,
@@ -69,6 +77,9 @@ impl Quote {
 pub struct Post {
     pub reactable: bool,
     pub chips: crate::reactions::Chips,
+    /// The older room this message belongs to, above an upgrade's seam.
+    /// Such messages are read-only (upgrades.rs).
+    pub from: Option<String>,
     pub(super) text_message: bool,
     pub(super) encrypted: bool,
     pub(super) mentions: Value,
@@ -290,6 +301,7 @@ impl Room {
                         Some("m.room.message" | "m.sticker")
                     )),
             chips: crate::reactions::chips(e),
+            from: None,
             text_message: !redacted
                 && e["state_key"].is_null()
                 && content["msgtype"] == "m.text"
@@ -364,6 +376,7 @@ impl Room {
 impl Rooms {
     /// Shortest path to each joined channel. A room may have several parents
     /// and spaces can contain cycles; never traverse through unjoined spaces.
+    /// An upgraded child counts as its newest joined room.
     pub fn channels(&self, space: &str) -> BTreeMap<&str, usize> {
         let mut channels = BTreeMap::new();
         let Some((id, r)) = self.list.get_key_value(space) else {
@@ -376,14 +389,16 @@ impl Rooms {
         let mut todo = std::collections::VecDeque::from([(id.as_str(), 0)]);
         while let Some((id, n)) = todo.pop_front() {
             for child in self.children.get(id).into_iter().flatten() {
-                if !visited.insert(child.as_str()) {
+                // A child that was upgraded is its newest room.
+                let child = self.newest(child);
+                if !visited.insert(child) {
                     continue;
                 }
                 if let Some(r) = self.list.get(child) {
                     if r.space {
                         todo.push_back((child, n + 1));
                     } else {
-                        channels.insert(child.as_str(), n + 1);
+                        channels.insert(child, n + 1);
                     }
                 }
             }

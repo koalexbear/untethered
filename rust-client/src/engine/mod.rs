@@ -34,6 +34,7 @@ mod session;
 pub(crate) use session::profile_root;
 mod state;
 mod timeline;
+mod upgrades;
 mod verify;
 #[cfg(target_arch = "wasm32")]
 mod web;
@@ -54,6 +55,7 @@ use std::{
 };
 
 pub use browser::Opener;
+pub use upgrades::Seam;
 
 /// Events per room in the sliding sync room list.
 const ROOM_LIST_TIMELINE: u32 = 20;
@@ -183,6 +185,12 @@ pub enum Command {
     },
     /// Leave a room; it drops out of the next room list.
     LeaveRoom {
+        id: i64,
+        room: String,
+    },
+    /// Join the room that replaced `room` in an upgrade (its tombstone's
+    /// successor); the next room list then leaves `room` out.
+    FollowUpgrade {
         id: i64,
         room: String,
     },
@@ -559,6 +567,12 @@ pub struct RoomSummary {
         allow(dead_code)
     )]
     pub space_alerts: Option<serde_json::Value>,
+    /// The room that replaced this one in an upgrade (`m.room.tombstone`).
+    #[serde(default)]
+    pub successor: Option<String>,
+    /// The room this one replaced (`m.room.create`'s `predecessor`).
+    #[serde(default)]
+    pub predecessor: Option<String>,
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -571,6 +585,10 @@ pub struct TimelineSnapshot {
     /// edit, a reaction): what reading the room marks read.
     #[serde(default)]
     pub latest_event: Option<String>,
+    /// Where the history of an older room this one was upgraded from
+    /// continues above, oldest first (upgrades.rs).
+    #[serde(default)]
+    pub seams: Vec<Seam>,
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -614,6 +632,10 @@ pub struct Message {
     /// An attachment's content (`msgtype`, `url` or `file`, `info`), for
     /// `media::Media::parse`.
     pub media: Option<serde_json::Value>,
+    /// The older room this message belongs to, when the snapshot continues
+    /// into a room this one was upgraded from. Such messages are read-only.
+    #[serde(default)]
+    pub from: Option<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
@@ -1112,6 +1134,12 @@ impl Engine {
             Command::LeaveRoom { id, room } => {
                 self.job(id, move |client, _, _| async move {
                     rooms::leave(&client, &room).await
+                })
+                .await
+            }
+            Command::FollowUpgrade { id, room } => {
+                self.job(id, move |client, _, _| async move {
+                    upgrades::follow(&client, &room).await
                 })
                 .await
             }

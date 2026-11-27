@@ -39,7 +39,8 @@ fn pill<'a>(caption: El<'a>, own: bool, action: Option<Msg>) -> button::Button<'
 pub(super) fn view<'a>(app: &'a App, post: &Post) -> Option<El<'a>> {
     let id = post.event_id.as_ref()?;
     let picker = app.reaction_picker.as_ref().filter(|p| &p.target == id);
-    if !post.reactable || post.chips.is_empty() && picker.is_none() {
+    // An older room's reactions (upgrades.rs) show, but don't change.
+    if !(post.reactable || post.from.is_some()) || post.chips.is_empty() && picker.is_none() {
         return None;
     }
     let action = |key: &str| {
@@ -82,7 +83,8 @@ pub(super) fn view<'a>(app: &'a App, post: &Post) -> Option<El<'a>> {
             pill(
                 icons::icon(Icon::Smile, 18., if open { TEXT } else { CHANNEL }),
                 false,
-                (app.verified && app.connected).then(|| Msg::ReactionPicker(id.clone())),
+                (app.verified && app.connected && post.reactable)
+                    .then(|| Msg::ReactionPicker(id.clone())),
             ),
             "Add Reaction",
             tooltip::Position::Top,

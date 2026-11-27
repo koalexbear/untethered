@@ -280,14 +280,17 @@ impl App {
                 ready.then(|| Msg::ReactionPicker(id.clone())),
             ));
         }
-        items.push(item(Entry::Reply, Some(Msg::Reply(id.clone()))));
+        // An older room's message (upgrades.rs) can't be replied to from here.
+        if p.from.is_none() {
+            items.push(item(Entry::Reply, Some(Msg::Reply(id.clone()))));
+        }
         if p.may_edit(&self.matrix_id) && r.has_metadata && r.encrypted == p.encrypted {
             items.push(item(
                 Entry::Edit,
                 (self.connected && self.editing.is_none()).then(|| Msg::Edit(id.clone())),
             ));
         }
-        if p.reactable && !p.text().trim().is_empty() {
+        if (p.reactable || p.from.is_some()) && !p.text().trim().is_empty() {
             items.push(item(
                 Entry::CopyText,
                 Some(act(Event::CopyText(id.clone()))),
@@ -303,7 +306,7 @@ impl App {
         items.push(item(
             Entry::CopyMessageLink,
             Some(act(Event::CopyLink {
-                room: room.to_owned(),
+                room: p.from.clone().unwrap_or_else(|| room.to_owned()),
                 event: Some(id.clone()),
             })),
         ));

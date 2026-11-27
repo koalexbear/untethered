@@ -8,9 +8,17 @@ use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
 impl Rooms {
-    /// Replace the joined-room list. Returns rooms that are no longer joined.
-    pub fn apply_engine(&mut self, list: RoomList) -> Vec<String> {
+    /// Replace the joined-room list. Returns rooms that are no longer joined,
+    /// or were replaced by a joined room in an upgrade (upgrades.rs).
+    pub fn apply_engine(&mut self, mut list: RoomList) -> Vec<String> {
         let mut order_changed = false;
+        let replaced = crate::upgrades::replaced(&list.rooms);
+        list.rooms.retain(|r| !replaced.contains_key(&r.id));
+        if self.replaced != replaced {
+            self.replaced = replaced;
+            self.hierarchy_revision += 1;
+            order_changed = true;
+        }
         if self.children != list.children {
             self.children = list.children;
             self.hierarchy_revision += 1;
@@ -44,6 +52,7 @@ impl Rooms {
             room.dm = s.dm;
             room.voice = s.voice;
             room.encrypted = s.encrypted;
+            room.successor = s.successor;
             #[cfg(target_os = "linux")]
             {
                 room.dm_peer = s.dm_peer;
@@ -110,7 +119,12 @@ impl Room {
         self.order.clear();
         self.event_rows.clear();
         self.related.clear();
-        let sent = |m: &Message| m.event_id.clone().filter(|_| m.delivery == Delivery::Sent);
+        // Read state is the live room's alone; older rooms' messages have none.
+        let sent = |m: &Message| {
+            m.event_id
+                .clone()
+                .filter(|_| m.delivery == Delivery::Sent && m.from.is_none())
+        };
         let events = read_order(&messages, sent);
         let receipts: Vec<(String, String, i64)> = messages
             .iter()
@@ -198,12 +212,15 @@ fn post(m: Message, time: i64, previous: Option<&Post>) -> Post {
         }),
     };
     let event_id = m.event_id.filter(|_| m.delivery == Delivery::Sent);
+    // Older rooms' messages are read-only: no reactions, edits or replies.
+    let live = m.from.is_none();
     let revision = (m.edited && m.kind == Kind::Text).then(|| {
         let id = m.edit_id.or_else(|| event_id.clone()).unwrap_or_default();
         std::sync::Arc::new(crate::edits::Revision::applied(body.clone(), id))
     });
     Post {
-        reactable: event_id.is_some()
+        reactable: live
+            && event_id.is_some()
             && matches!(m.kind, Kind::Text | Kind::Attachment | Kind::Sticker),
         chips: m
             .reactions
@@ -211,7 +228,8 @@ fn post(m: Message, time: i64, previous: Option<&Post>) -> Post {
             .map(|(key, count, mine)| (key, crate::reactions::engine_chip(count, mine)))
             .collect(),
         // Only gates the Edit button, so follow the SDK's own rule.
-        text_message: m.text && m.kind == Kind::Text && m.editable,
+        text_message: live && m.text && m.kind == Kind::Text && m.editable,
+        from: m.from,
         encrypted: m.encrypted,
         mentions: m.mentions.map_or(
             Value::Null,
@@ -275,6 +293,7 @@ mod tests {
             edit_time: None,
             receipts: Vec::new(),
             media: None,
+            from: None,
         }
     }
 
