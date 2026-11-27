@@ -66,9 +66,9 @@
     "rust-client/src/viewer.rs",
     "scripts/qa_viewer_polish.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Viewer polish: preloading, thumbnail strip, gallery, sharper zoom",
-   "updated": "2026-11-27T15:52:26Z",
+   "updated": "2026-11-27T15:52:28Z",
    "worktree": "."
   }
  },
