@@ -74,6 +74,11 @@
      "at": "2026-11-27T18:33:19Z",
      "by": "claude/fix-call-video",
      "text": "Cause 1: share capture assumed packed I420 rows; GStreamer pads rows to 4 bytes, so widths not divisible by 8 shear and drift (colour errors/tearing at sender and receivers). Cause 2: own preview capped at 10 fps. Also: voice-room fixtures broke with 14e985b (click on channel joins); fixed in qa_voice_room.py. Fix + fixture runs in progress on claude/fix-call-video."
+    },
+    {
+     "at": "2026-11-27T19:25:13Z",
+     "by": "claude/fix-call-video",
+     "text": "Ready for review on claude/fix-call-video (5 commits, not merged). Fixed: odd-width share tearing (GStreamer row padding), 10 fps own preview, tile flicker (iced 0.14 async upload of >=2 MiB images; tiles now draw image::allocate'd frames). Fixtures: voice-room join after 14e985b, dock tooltip OCR, release UI via UNTETHERED_QA_UI_CLIENT. Passing: --window-share (debug+release), --room-camera, --voice-room. --room-ptt still needs the room open without joining."
     }
    ],
    "owner": "fix-call-video",
