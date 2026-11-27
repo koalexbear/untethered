@@ -50,6 +50,11 @@
      "at": "2026-11-27T21:30:27Z",
      "by": "n5-order",
      "text": "[N5] shares README.md, ROADMAP.md, rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/engine/rooms.rs, rust-client/src/main.rs, rust-client/src/rooms.rs, rust-client/src/rooms/engine.rs, rust-client/src/view.rs: N5: engine/mod.rs 'mod arrange;' + Command::Arrange {id, changes} with one dispatch arm near the poll arms, and RoomSummary.children (space child edges with order/ts, serde default); engine/app.rs one engine_done arm (Request::Arrange); engine/rooms.rs children() also returns order+ts; rooms.rs/rooms/engine.rs sort_rooms orders a space's channels by m.space.child order and builds subspace categories; main.rs mod channel_order, Msg::Order, App.order field, Request::Arrange, one update arm + Escape arm; view.rs channel_list grows subspace categories and wraps rows in drag slots (view/channel_order.rs); README/ROADMAP N5 row and a short Channel order note"
+    },
+    {
+     "at": "2026-11-27T21:40:31Z",
+     "by": "claude/m12-names-fc018c",
+     "text": "m12-names: engine + App + views committed (a2ad...); unit tests pass, clippy clean; next: live fixture scripts/qa_names.py, README/ROADMAP."
     }
    ],
    "owner": "m12-names",
