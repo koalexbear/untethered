@@ -76,19 +76,25 @@ pub(super) fn dialog(app: &App) -> Option<El<'_>> {
             .style(input_style)
             .on_input_maybe(ready.then_some(|t| Msg::Names(Input::Edit(t))))
             .on_submit_maybe((ready && changed).then_some(save.clone())),
-        row![
-            text(format!("{left} characters left"))
-                .size(12)
-                .color(CHANNEL)
-                .width(Fill),
+    ]
+    .spacing(8);
+    let mut under = row![
+        text(format!("{left} characters left"))
+            .size(12)
+            .color(CHANNEL)
+            .width(Fill)
+    ]
+    .align_y(Center);
+    // As on Discord, only a nickname that's set can be reset.
+    if current.is_some() {
+        under = under.push(
             button(text("Reset Nickname").size(12))
                 .padding(0)
                 .style(plain(super::LINK, color!(0x5fc5ff)))
-                .on_press_maybe((ready && current.is_some()).then_some(Msg::Names(Input::Reset))),
-        ]
-        .align_y(Center),
-    ]
-    .spacing(8);
+                .on_press_maybe(ready.then_some(Msg::Names(Input::Reset))),
+        );
+    }
+    field = field.push(under);
     if saving {
         field = field.push(
             text("Changing your name in each channel…")
