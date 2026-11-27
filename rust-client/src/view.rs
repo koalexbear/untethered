@@ -13,6 +13,7 @@ mod icons;
 mod invites;
 mod joining;
 mod link_preview;
+mod switcher;
 pub(crate) use link_preview::image_source as link_preview_image;
 mod mentions;
 mod popover;
@@ -1228,7 +1229,8 @@ impl App {
             _ => none(),
         };
         let dialog = self
-            .delete_dialog()
+            .switcher_view()
+            .or_else(|| self.delete_dialog())
             .or_else(|| self.leave_dialog())
             .or_else(|| self.block_dialog())
             .or_else(|| self.new_message_dialog())

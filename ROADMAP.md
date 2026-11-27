@@ -2,11 +2,11 @@
 
 **2026-11-27 · `main`**
 
-**Next: navigation (N1–N3), then search across a space (N7).**
+**Next: the rest of navigation (N2, N3), then search across a space (N7).**
 Messages feel like Discord, and people can get in: invites show with
 Accept and Decline, Matrix links open in the app, and New message starts
-DMs and group DMs. What a community misses next is finding its way around:
-a quick switcher, coming back to where you were, pins and threads. Explore
+DMs and group DMs. Ctrl+K switches rooms. What a community misses next is
+finding its way around: coming back to where you were, pins and threads. Explore
 (J4) and sign-in everywhere (J5) finish Phase 2 after that, and the rest of
 Phase 1 (M8 onwards) fills in around them. Calls continue in their own
 plan ([calls-parity-plan.md](rust-client/docs/calls-parity-plan.md)).
@@ -16,8 +16,9 @@ plan ([calls-parity-plan.md](rust-client/docs/calls-parity-plan.md)).
 - **Engine:** matrix-rust-sdk on desktop and in the browser (a Web Worker).
 - **Layout:** Discord-style server rail with server icons, channel list with
   collapsible categories, header actions, hover toolbars, user panel and
-  settings. On the desktop: a system tray with close to tray, an unread
-  badge and start at sign-in; launching again shows the running window.
+  settings, and a Ctrl+K quick switcher over rooms, DMs and spaces. On the
+  desktop: a system tray with close to tray, an unread badge and start at
+  sign-in; launching again shows the running window.
 - **Messaging:** formatted messages (code blocks, quotes, lists, spoilers),
   `@`, `#` and `:` autocomplete with real mentions, typing indicators,
   right-click menus, profile cards and editing your own profile, replies
@@ -117,7 +118,7 @@ doesn't:
 
 | Step | Matrix | Deliverable | Done when |
 |---|---|---|---|
-| **N1. Quick switcher** | Client | Ctrl+K: fuzzy search over rooms, DMs and spaces, unread first. | Ctrl+K, three letters and Enter opens a room without the mouse. |
+| **N1. Quick switcher** · done | Client | Ctrl+K: fuzzy search over rooms, DMs and spaces, unread first. | Ctrl+K, three letters and Enter opens a room without the mouse. |
 | **N2. Remember where you were** | Client | Last room per space and scroll position per room, restored on switch and restart. | Leave a room mid-history, visit two others, come back to the same message. |
 | **N3. Pins and threads** | Spec (pinned events; threads since v1.4) | Pinned messages panel (`m.room.pinned_events`); Matrix threads in a side panel with a thread list per channel. | A thread started in Element shows its replies in the panel; pinning here shows in Element. |
 | **N4. Presence** | Spec, often off on large servers | Online/idle/offline dots and custom status where the homeserver enables presence; hide them cleanly where it doesn't. | Going idle in Element turns the dot amber here within a minute. |

@@ -83,6 +83,12 @@ the bottom left for **User Settings**. Escape closes menus, dialogs and
 settings. Category headers collapse; a collapsed category still lists unread
 and selected channels.
 
+**Quick switcher:** **Ctrl+K**, also while typing a message, opens a search of
+your rooms, DMs and spaces: type a few letters, move with the arrow keys and
+press **Enter**. Unread rooms come first, mentions before them. Start with `#`
+for text channels, `!` for voice channels, `@` for DMs or `*` for spaces.
+**Escape** or **Ctrl+K** again closes it.
+
 **Selecting text:** Drag across a message to select its text, double-click
 for a word or triple-click for the whole paragraph, then press **Ctrl+C** to
 copy it. A selection stays within one paragraph or code block; clicking
