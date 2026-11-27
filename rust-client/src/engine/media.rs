@@ -324,7 +324,13 @@ async fn video_poster(bytes: &[u8]) -> Option<VideoInfo> {
     rt::blocking(move || {
         let poster = crate::player::poster(&path).ok()?;
         let frame = image::RgbaImage::from_raw(poster.width, poster.height, poster.pixels)?;
-        let small = image::DynamicImage::ImageRgba8(frame).thumbnail(THUMBNAIL.0, THUMBNAIL.1);
+        let frame = image::DynamicImage::ImageRgba8(frame);
+        // Smaller, never larger: `thumbnail` would enlarge a small frame.
+        let small = if frame.width() > THUMBNAIL.0 || frame.height() > THUMBNAIL.1 {
+            frame.thumbnail(THUMBNAIL.0, THUMBNAIL.1)
+        } else {
+            frame
+        };
         let mut jpeg = Vec::new();
         small
             .to_rgb8()

@@ -352,6 +352,9 @@ enum Msg {
     InlineScrub(f32),
     #[cfg(target_os = "linux")]
     InlineTick,
+    /// The pointer moved over the playing video, or left it.
+    #[cfg(target_os = "linux")]
+    InlinePointer(bool),
     /// Collapse or expand a channel category, keyed by section and kind.
     Collapse(String),
     MemberFilter(String),
@@ -1106,6 +1109,8 @@ impl App {
             Msg::InlineScrub(at) => self.inline_scrub(at),
             #[cfg(target_os = "linux")]
             Msg::InlineTick => self.inline_tick(),
+            #[cfg(target_os = "linux")]
+            Msg::InlinePointer(over) => self.inline_pointer(over),
             #[cfg(target_os = "linux")]
             Msg::PlayerScrub(at) => self.player_scrub(at),
             Msg::ShowInline(key) => self.inline.request(key),

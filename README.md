@@ -370,9 +370,12 @@ galleries and in the viewer, and so do stickers and animated profile pictures
 stops, so it costs nothing until it's back (desktop; the browser shows them
 still).
 **Playing in the timeline:** on Linux, a click on a video plays it where it is,
-with play/pause, time, a seek bar, mute and **Open in viewer**; audio files and
-voice messages get a player card with the same controls. One thing plays at a
-time; opening the viewer or another room stops it.
+at its poster's size. Its controls lie over its bottom edge, as on Discord:
+play/pause, time, a seek bar, mute and open in the viewer. They show while it's
+paused and when the pointer moves over it, and hide a moment after the pointer
+stops, so the video just plays; a click on the picture pauses it. Audio files
+and voice messages get a player card with the same controls. One thing plays at
+a time; opening the viewer or another room stops it.
 **Sending video:** a video you send goes with its width, height, duration and
 a poster frame (its first frame, as a JPEG thumbnail), so other clients such
 as Element show a picture before it plays (Linux, through GStreamer).

@@ -716,16 +716,32 @@ impl App {
                 .into()
         };
         if file.kind == Kind::Video {
+            let still = file.preview.as_ref().and_then(|s| self.inline.ready(s));
+            // The poster and the video playing in its place take the same
+            // space, so starting it moves nothing.
+            let size = shown
+                .or_else(|| match still {
+                    Some(iced::widget::image::Handle::Rgba { width, height, .. }) => {
+                        Some(crate::media::fit_inline(*width, *height))
+                    }
+                    _ => None,
+                })
+                .unwrap_or((400., 225.));
             // Linux plays it here, as Discord does (inline_player.rs).
             #[cfg(target_os = "linux")]
             if let Some(event) = event
-                && let Some(playing) = self.inline_video(event, file, shown.unwrap_or((400., 225.)))
+                && let Some(playing) = self.inline_video(event, size, still)
             {
-                return playing;
+                return iced::widget::hover(playing, tools());
             }
-            let poster: El = match file.preview.as_ref().and_then(|s| self.inline.ready(s)) {
-                Some(handle) => picture(handle).into(),
-                None => placeholder(shown.unwrap_or((400., 225.))),
+            let poster: El = match still {
+                Some(handle) => image(handle)
+                    .content_fit(iced::ContentFit::Contain)
+                    .border_radius(8)
+                    .width(size.0)
+                    .height(size.1)
+                    .into(),
+                None => placeholder(size),
             };
             let play = container(
                 container(icon(Icon::Play, 24., Color::WHITE))

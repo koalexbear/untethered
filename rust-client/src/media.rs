@@ -391,19 +391,24 @@ impl Media {
     /// arrives.
     pub fn inline_size(&self) -> Option<(f32, f32)> {
         let (w, h) = self.dims?;
-        let (most_w, most_h) = Fit::Inline.bounds();
-        let scale = (most_w as f32 / w as f32)
-            .min(most_h as f32 / h as f32)
-            .min(1.);
-        Some((
-            (w as f32 * scale).round().max(1.),
-            (h as f32 * scale).round().max(1.),
-        ))
+        Some(fit_inline(w, h))
     }
     /// Shown in the media viewer.
     pub fn viewable(&self) -> bool {
         matches!(self.kind, Kind::Image | Kind::Video)
     }
+}
+/// A picture `w` by `h` as the timeline shows it: within an inline
+/// preview's bounds, never enlarged.
+pub fn fit_inline(w: u32, h: u32) -> (f32, f32) {
+    let (most_w, most_h) = Fit::Inline.bounds();
+    let scale = (most_w as f32 / w.max(1) as f32)
+        .min(most_h as f32 / h.max(1) as f32)
+        .min(1.);
+    (
+        (w as f32 * scale).round().max(1.),
+        (h as f32 * scale).round().max(1.),
+    )
 }
 pub fn media_path(mxc: &str) -> Option<String> {
     let (server, id) = mxc.strip_prefix("mxc://")?.split_once('/')?;
