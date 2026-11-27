@@ -553,6 +553,60 @@ impl Timelines {
             .map_err(|_| Failure::Failed)
     }
 
+    /// Start a poll in `room` (ROADMAP M9), through its timeline like text.
+    pub async fn create_poll(
+        &self,
+        room: &str,
+        draft: &super::polls::Draft,
+    ) -> Result<(), Failure> {
+        self.get(room)
+            .await?
+            .timeline()
+            .send(draft.content()?)
+            .await
+            .map(|_| ())
+            .map_err(|_| Failure::Failed)
+    }
+
+    /// Vote in the poll at `event`: `answers` replace an earlier vote, and
+    /// none takes it back.
+    pub async fn vote(&self, room: &str, event: &str, answers: Vec<String>) -> Result<(), Failure> {
+        let item = Self::item(event)?;
+        let TimelineEventItemId::EventId(id) = &item else {
+            return Err(Failure::Unavailable);
+        };
+        self.owner(room, &item)
+            .await?
+            .send(super::polls::response(id.clone(), answers))
+            .await
+            .map(|_| ())
+            .map_err(|_| Failure::Failed)
+    }
+
+    /// End the poll at `event`, with its result in the fallback text.
+    pub async fn end_poll(&self, room: &str, event: &str) -> Result<(), Failure> {
+        let item = Self::item(event)?;
+        let TimelineEventItemId::EventId(id) = &item else {
+            return Err(Failure::Unavailable);
+        };
+        let timeline = self.owner(room, &item).await?;
+        let found = timeline
+            .item_by_event_id(id)
+            .await
+            .ok_or(Failure::Unavailable)?;
+        let TimelineItemContent::MsgLike(content) = found.content() else {
+            return Err(Failure::Unavailable);
+        };
+        let MsgLikeKind::Poll(state) = &content.kind else {
+            return Err(Failure::Unavailable);
+        };
+        timeline
+            .send(super::polls::end(id.clone(), state))
+            .await
+            .map(|_| ())
+            .map_err(|_| Failure::Failed)
+    }
+
     pub async fn edit(
         &self,
         room: &str,
@@ -905,6 +959,7 @@ fn message(item: &EventTimelineItem, row: i64, me: &str, sources: &Sources) -> O
     let mut mentions = None;
     let mut media = None;
     let mut formatted = None;
+    let mut poll = None;
     let (kind, body, edited) = match &content.kind {
         MsgLikeKind::Message(m) => {
             let kind = match m.msgtype() {
@@ -944,7 +999,15 @@ fn message(item: &EventTimelineItem, row: i64, me: &str, sources: &Sources) -> O
             String::new(),
             false,
         ),
-        // Polls, live locations and custom events have no Post form yet.
+        // The question stands for the poll wherever text does (ROADMAP M9).
+        MsgLikeKind::Poll(state) => {
+            let read = super::polls::Poll::read(state);
+            let question = read.question.clone();
+            let edited = read.edited;
+            poll = Some(read);
+            (Kind::Poll, question, edited)
+        }
+        // Live locations and custom events have no Post form yet.
         _ => return None,
     };
     let reactions = item
@@ -1015,6 +1078,7 @@ fn message(item: &EventTimelineItem, row: i64, me: &str, sources: &Sources) -> O
             .collect(),
         media,
         from: None,
+        poll,
     })
 }
 
@@ -1046,6 +1110,7 @@ mod tests {
             receipts: Vec::new(),
             media: None,
             from: None,
+            poll: None,
         }
     }
 

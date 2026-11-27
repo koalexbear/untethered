@@ -165,6 +165,10 @@ impl App {
                 if !self.forward_sending() {
                     self.forwarding = None;
                 }
+                if !self.poll_sending() {
+                    self.polling = None;
+                }
+                self.composer_menu = false;
                 return operation::focus(SEARCH);
             }
             Input::Close => return self.close_switcher(),

@@ -477,6 +477,7 @@ pub(crate) mod tests {
                 "info": {"w": 4000, "h": 3000, "mimetype": "image/png", "size": 1000}
             })),
             from: None,
+            poll: None,
         }
     }
 

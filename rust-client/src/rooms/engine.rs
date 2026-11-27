@@ -201,7 +201,8 @@ fn post(m: Message, time: i64, previous: Option<&Post>) -> Post {
         .filter(|_| m.kind == Kind::Attachment)
         .and_then(crate::media::Media::parse);
     let mut body = match m.kind {
-        Kind::Text | Kind::Sticker => m.body,
+        // A poll's card shows it; the body is its question.
+        Kind::Text | Kind::Sticker | Kind::Poll => m.body,
         // The file card shows the attachment; the body is its name or caption.
         Kind::Attachment if media.is_some() => m.body,
         Kind::Attachment => format!("Attachment · {}", m.body),
@@ -235,11 +236,15 @@ fn post(m: Message, time: i64, previous: Option<&Post>) -> Post {
         let id = m.edit_id.or_else(|| event_id.clone()).unwrap_or_default();
         std::sync::Arc::new(crate::edits::Revision::applied(body.clone(), id))
     });
-    let message =
-        event_id.is_some() && matches!(m.kind, Kind::Text | Kind::Attachment | Kind::Sticker);
+    let message = event_id.is_some()
+        && matches!(
+            m.kind,
+            Kind::Text | Kind::Attachment | Kind::Sticker | Kind::Poll
+        );
     Post {
         reactable: live && message,
-        forwardable: message,
+        // Element doesn't forward polls either: its votes stay with it.
+        forwardable: message && m.kind != Kind::Poll,
         chips: m
             .reactions
             .into_iter()
@@ -257,6 +262,7 @@ fn post(m: Message, time: i64, previous: Option<&Post>) -> Post {
         event_id,
         reply: m.reply_to.map(|r| r.event_id),
         media,
+        poll: m.poll.filter(|_| m.kind == Kind::Poll),
         sender: m.sender,
         body,
         formatted: m.formatted,
@@ -312,6 +318,7 @@ mod tests {
             receipts: Vec::new(),
             media: None,
             from: None,
+            poll: None,
         }
     }
 
