@@ -8,6 +8,11 @@
      "at": "2026-11-27T20:10:54Z",
      "by": "n9-sounds",
      "text": "[N9] shares README.md, ROADMAP.md, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: N9: main.rs gets 'mod sounds; mod shortcuts;', two Msg variants (Sound(..), Shortcut(..)) with one dispatch arm each, sounds/shortcut fields on App, one 'self.play_sounds()' line in update's tail next to sync_tray(), one shortcuts subscription line, and the Escape listener skips Shift+Escape (it becomes 'mark server read'). The Msg::Escape arm itself is untouched. view.rs: one line adding the SOUNDS section in User Settings and one stack layer for the Ctrl+/ shortcuts list. engine/mod.rs: Alert gains 'highlight: bool' (serde default), set in alerts.rs. README/ROADMAP: N9 row marked done and a Sounds/shortcuts paragraph."
+    },
+    {
+     "at": "2026-11-27T20:12:06Z",
+     "by": "v2-simulcast",
+     "text": "[V2] shares README.md, ROADMAP.md, rust-client/src/main.rs: main.rs: one Msg::CallScroll variant + dispatch arm next to FocusVideo, one post-update line next to sync_tray; ROADMAP/README: call video lines only"
     }
    ],
    "owner": "j4-explore",
@@ -49,6 +54,11 @@
      "at": "2026-11-27T20:12:04Z",
      "by": "claude/v2-simulcast-9158cf",
      "text": "[V2] v2-simulcast will make small shared edits: rust-client/src/main.rs \u2014 one Msg variant (CallScroll) with its dispatch arm next to Msg::FocusVideo, and one line in the post-update hook list next to sync_tray (sync call video visibility); ROADMAP.md / README.md \u2014 the call video lines only (simulcast, per-tile quality, paused hidden video)."
+    },
+    {
+     "at": "2026-11-27T20:12:06Z",
+     "by": "v2-simulcast",
+     "text": "[V2] shares README.md, ROADMAP.md, rust-client/src/main.rs: main.rs: one Msg::CallScroll variant + dispatch arm next to FocusVideo, one post-update line next to sync_tray; ROADMAP/README: call video lines only"
     }
    ],
    "owner": "main-session",
@@ -175,7 +185,13 @@
   "N9": {
    "branch": "claude/n9-sounds-8156ba",
    "claimed": "2026-11-27T20:10:34Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-27T20:12:06Z",
+     "by": "v2-simulcast",
+     "text": "[V2] shares README.md, ROADMAP.md, rust-client/src/main.rs: main.rs: one Msg::CallScroll variant + dispatch arm next to FocusVideo, one post-update line next to sync_tray; ROADMAP/README: call video lines only"
+    }
+   ],
    "owner": "n9-sounds",
    "paths": [
     "README.md",
@@ -197,6 +213,30 @@
    "title": "Sounds and shortcuts",
    "updated": "2026-11-27T20:10:54Z",
    "worktree": ".claude/worktrees/n9-sounds-8156ba"
+  },
+  "V2": {
+   "branch": "claude/v2-simulcast-9158cf",
+   "claimed": "2026-11-27T20:12:06Z",
+   "notes": [],
+   "owner": "v2-simulcast",
+   "paths": [
+    "README.md",
+    "ROADMAP.md",
+    "rust-client/docs/calls-parity-plan.md",
+    "rust-client/src/desktop_call.rs",
+    "rust-client/src/desktop_call/*.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/view/call_controls.rs",
+    "rust-client/src/view/call_stage.rs",
+    "scripts/qa_room_camera.py",
+    "scripts/qa_room_layout.py",
+    "scripts/qa_voice_room.py",
+    "scripts/qa_window_share.py"
+   ],
+   "status": "working",
+   "title": "Simulcast, per-tile quality, pause hidden video",
+   "updated": "2026-11-27T20:12:06Z",
+   "worktree": ".claude/worktrees/v2-simulcast-9158cf"
   }
  },
  "done": [
