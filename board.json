@@ -24,9 +24,9 @@
     "rust-client/src/view/icons.rs",
     "scripts/qa_forward.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Forward messages",
-   "updated": "2026-11-27T17:53:13Z",
+   "updated": "2026-11-27T18:01:15Z",
    "worktree": "."
   },
   "N3": {
