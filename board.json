@@ -110,6 +110,11 @@
      "at": "2026-11-27T21:43:12Z",
      "by": "main-session",
      "text": "[M11] shares README.md, ROADMAP.md, rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: engine/mod.rs+app.rs: packs module, three Commands, Event::Packs, a Live sender, one Paginate line, two app.rs arms and emote pills in send/edit; main.rs: mod emotes, Msg::Emote/EmoteReady, Request::Pack, an App field, two update arms, an Escape branch, schedule_emotes beside schedule_avatars; view.rs: mod emotes and a sticker button in the composer row; icons.rs: Icon::Sticker; README/ROADMAP: M11 row and an Emoji paragraph"
+    },
+    {
+     "at": "2026-11-27T21:56:23Z",
+     "by": "claude/m12-names-fc018c",
+     "text": "m12-names: ready for review on claude/m12-names-fc018c (a4e6cde, 0023612; main unchanged at 7b99e29). Five checks pass; scripts/qa_names.py passes live (badges, nickname in Guild only per Enzo's gomuks, channel joined later follows, reset from own-name menu). Hand-over: side-session-notes/.../m12-names.md"
     }
    ],
    "owner": "m12-names",
