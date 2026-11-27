@@ -70,6 +70,11 @@ the bottom left for **User Settings**. Escape closes menus, dialogs and
 settings. Category headers collapse; a collapsed category still lists unread
 and selected channels.
 
+**Selecting text:** Drag across a message to select its text, double-click
+for a word or triple-click for the whole paragraph, then press **Ctrl+C** to
+copy it. A selection stays within one paragraph or code block; clicking
+anywhere else clears it, and links still open with a click.
+
 **Right-click menus:** Right-click a message for everything its toolbar does
 plus **Copy Text**, **Copy Message Link** (a matrix.to link) and **Mark
 Unread** (Matrix receipts can't move back, so this marks the room unread).
@@ -247,14 +252,23 @@ use standard `m.reaction` events: the reaction key and target ID are visible
 to the homeserver, while the message text remains encrypted.
 
 **Files:** Drop files onto a room or click **+** to stage them, optionally type
-a caption for the first attachment, then press **Send**. A local preview strip
+a caption for the first attachment, then press **Send** or Enter: the
+composer keeps the keyboard through a drop or paste. A local preview strip
 shows image thumbnails or file-type cards; use **×** to remove a file. PNG,
 JPEG, GIF and WebP previews are static. Oversized or unsupported images still
 send as ordinary attachments within the upload limit. Each file is a standard
 Matrix media event. Draft attachments stay in their original room when you switch.
 
+**Images in the timeline:** Every image in the loaded history shows as a
+picture, nearest the scroll position first: from its thumbnail, or else from
+the homeserver's thumbnail of the original (plain rooms) or the original
+itself up to 48 MiB (encrypted rooms). A picture keeps its space while it
+loads, so the timeline doesn't move when it arrives, and a failed one tries
+again on its own before offering **Retry image preview**. Videos show their
+thumbnail.
+
 **Media viewer:** Click an image or video in a room to open it over the
-window. Images load at full size (originals up to 48 MiB); **←** and **→**
+window; closing it leaves the timeline where it was. Images load at full size (originals up to 48 MiB); **←** and **→**
 or the side arrows step through the room's images and videos, loading older
 history past the first. **Escape**, **×** or a click outside closes it, and
 **Download** saves the file. On Linux, videos play in the viewer through

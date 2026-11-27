@@ -7,7 +7,7 @@ use crate::{
 };
 use iced::{
     Border, Color, Fill, Font, Length, Padding, color, font,
-    widget::{Column, button, container, hover, rich_text, row, span, text, text::Span},
+    widget::{Column, button, container, hover, row, span, text, text::Span},
 };
 
 const SANS: Font = Font::with_name("Liberation Sans");
@@ -103,7 +103,7 @@ fn paragraph<'a>(
     if edited {
         spans.push(span(" (edited)").size(11).color(CHANNEL));
     }
-    rich_text(spans)
+    super::selectable::rich(spans)
         .size(size)
         .line_height(1.375)
         .on_link_click(|m: Msg| m)
@@ -210,12 +210,13 @@ fn code<'a>(
             .into();
     }
     let block = container(
-        text(code)
+        super::selectable::rich([span(code)])
             .font(MONO)
             .size(14)
             .line_height(1.375)
             .color(BODY)
-            .wrapping(text::Wrapping::WordOrGlyph),
+            .wrapping(text::Wrapping::WordOrGlyph)
+            .on_link_click(iced::never),
     )
     .padding(Padding {
         top: 8.,

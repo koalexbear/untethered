@@ -15,6 +15,7 @@ mod rich;
 mod room_people;
 mod room_search;
 mod sdk_account;
+mod selectable;
 #[cfg(not(target_arch = "wasm32"))]
 mod tray;
 mod typing;
@@ -24,8 +25,8 @@ use iced::{
     Alignment::Center,
     Border, Color, Element, Fill, Font, Length, Padding, Theme, border, color, font, keyboard,
     widget::{
-        Column, Row, Space, button, column, container, image, mouse_area, opaque, rich_text, row,
-        rule, scrollable, span, stack, text, text_editor, text_input, tooltip,
+        Column, Row, Space, button, column, container, image, mouse_area, opaque, row, rule,
+        scrollable, span, stack, text, text_editor, text_input, tooltip,
     },
 };
 use icons::{ICON, Icon, icon, icon_button, with_tip};
@@ -649,17 +650,29 @@ impl App {
                 None => content,
             }
         };
+        // Known dimensions fix the picture's size before it loads, so the
+        // timeline doesn't move when it arrives.
+        let shown = file.inline_size();
+        let picture = |handle: &'a iced::widget::image::Handle| {
+            let picture = image(handle)
+                .content_fit(iced::ContentFit::Contain)
+                .border_radius(8);
+            match shown {
+                Some((w, h)) => picture.width(w).height(h),
+                None => picture,
+            }
+        };
+        let placeholder = |(w, h): (f32, f32)| -> El<'a> {
+            container(Space::new())
+                .width(w)
+                .height(h)
+                .style(|_| surface(FLOAT, 8.))
+                .into()
+        };
         if file.kind == Kind::Video {
             let poster: El = match file.preview.as_ref().and_then(|s| self.inline.ready(s)) {
-                Some(handle) => image(handle)
-                    .content_fit(iced::ContentFit::Contain)
-                    .border_radius(8)
-                    .into(),
-                None => container(Space::new())
-                    .width(400)
-                    .height(225)
-                    .style(|_| surface(FLOAT, 8.))
-                    .into(),
+                Some(handle) => picture(handle).into(),
+                None => placeholder(shown.unwrap_or((400., 225.))),
             };
             let play = container(
                 container(icon(Icon::Play, 24., Color::WHITE))
@@ -674,28 +687,19 @@ impl App {
         }
         if let Some(source) = &file.preview {
             if let Some(handle) = self.inline.ready(source) {
-                let picture = container(
-                    image(handle)
-                        .content_fit(iced::ContentFit::Contain)
-                        .border_radius(8),
-                )
-                .max_width(400)
-                .max_height(300);
+                let picture = container(picture(handle)).max_width(400).max_height(300);
                 return iced::widget::hover(clickable(picture.into()), tools());
             }
-            let (label, action) = if self.inline.pending(source) {
-                ("Loading image…", None)
-            } else if self.inline.failed(source) {
-                ("Retry image preview", Some(Msg::ShowInline(source.clone())))
-            } else {
-                ("Show image preview", Some(Msg::ShowInline(source.clone())))
-            };
+            if self.inline.pending(source) {
+                let loading = placeholder(shown.unwrap_or((320., 180.)));
+                return iced::widget::hover(clickable(loading), tools());
+            }
             return container(
                 column![
-                    button(text(label).size(14))
+                    button(text("Retry image preview").size(14))
                         .padding(0)
                         .style(plain(LINK, color!(0x5fc5ff)))
-                        .on_press_maybe(action),
+                        .on_press(Msg::ShowInline(source.clone())),
                     button(text(format!("Download {}", file.name)).size(12))
                         .padding(0)
                         .style(plain(CHANNEL, BODY))
@@ -1156,57 +1160,62 @@ impl App {
         if let Some(screen) = self.sdk_screen() {
             return screen;
         }
-        let mut base = self.screen();
-        if let Some(form) = &self.setup
-            && !self.account
-            && (!self.logged_in || self.verified)
-        {
-            let backdrop =
-                mouse_area(container(Space::new()).width(Fill).height(Fill).style(|_| {
-                    container::Style {
-                        background: Some(Color::from_rgba8(0, 0, 0, 0.7).into()),
-                        ..Default::default()
-                    }
-                }));
-            let backdrop = if self.setup_busy() {
-                backdrop
-            } else {
-                backdrop.on_press(Msg::Setup(crate::community::Input::Close))
-            };
-            base = stack![
-                base,
-                opaque(backdrop),
-                container(community::view(self, form)).center(Fill)
-            ]
-            .into();
-        }
-        if let Some(dialog) = self.leave_dialog() {
-            base = stack![base, dialog].into();
-        }
-        if let Some(v) = &self.viewer {
-            return stack![base, viewer::view(self, v)].into();
-        }
-        if !self.server_menu {
-            return base;
-        }
-        let Some(menu) = self.server_menu_view() else {
-            return base;
+        // The screen always sits first in this stack, under one fixed slot
+        // per overlay. Wrapping it in a stack only while an overlay shows
+        // would rebuild it, and the timeline would lose its scroll position
+        // whenever the media viewer, a dialog or the server menu opened or
+        // closed.
+        let none = || -> El<'_> { Space::new().into() };
+        let setup = match &self.setup {
+            Some(form) if !self.account && (!self.logged_in || self.verified) => {
+                let backdrop =
+                    mouse_area(container(Space::new()).width(Fill).height(Fill).style(|_| {
+                        container::Style {
+                            background: Some(Color::from_rgba8(0, 0, 0, 0.7).into()),
+                            ..Default::default()
+                        }
+                    }));
+                let backdrop = if self.setup_busy() {
+                    backdrop
+                } else {
+                    backdrop.on_press(Msg::Setup(crate::community::Input::Close))
+                };
+                stack![
+                    opaque(backdrop),
+                    container(community::view(self, form)).center(Fill)
+                ]
+                .into()
+            }
+            _ => none(),
         };
-        // Clicking anywhere outside the menu only closes it, as in Discord.
-        let dismiss = opaque(
-            mouse_area(container(Space::new()).width(Fill).height(Fill))
-                .on_press(Msg::ServerMenu(false)),
-        );
-        stack![
-            base,
-            dismiss,
-            container(menu).padding(Padding {
-                top: 52.,
-                left: 80.,
-                ..Padding::ZERO
-            })
-        ]
-        .into()
+        let dialog = self.leave_dialog().unwrap_or_else(none);
+        let viewer = self
+            .viewer
+            .as_ref()
+            .map_or_else(none, |v| viewer::view(self, v));
+        let menu = match (self.server_menu && self.viewer.is_none())
+            .then(|| self.server_menu_view())
+            .flatten()
+        {
+            Some(menu) => {
+                // Clicking anywhere outside the menu only closes it, as in Discord.
+                let dismiss = opaque(
+                    mouse_area(container(Space::new()).width(Fill).height(Fill))
+                        .on_press(Msg::ServerMenu(false)),
+                );
+                stack![
+                    dismiss,
+                    container(menu).padding(Padding {
+                        top: 52.,
+                        left: 80.,
+                        ..Padding::ZERO
+                    })
+                ]
+                .into()
+            }
+            _ => none(),
+        };
+        stack![self.screen(), setup, dialog, viewer, menu].into()
     }
     /// Discord's server dropdown: invites, channel creation and notification
     /// defaults for the selected space.
@@ -2680,7 +2689,7 @@ impl App {
                     spans.push(span(" (edited)").size(11).color(CHANNEL));
                 }
                 message = message.push(
-                    rich_text(spans)
+                    selectable::rich(spans)
                         .size(16)
                         .line_height(1.375)
                         .on_link_click(iced::never),
@@ -2871,7 +2880,9 @@ impl App {
                         return Msg::TimelineEdge(false);
                     }
                 }
-                Msg::ReadingScroll(self.selected.clone(), away, far)
+                let travel = (v.content_bounds().height - v.bounds().height).max(1.);
+                let depth = (v.absolute_offset().y / travel).clamp(0., 1.);
+                Msg::ReadingScroll(self.selected.clone(), away, far, depth)
             })
         };
         // The feed always sits in this stack: adding the layer only while
@@ -3238,14 +3249,17 @@ impl App {
                 tooltip::Position::Top,
             )
         };
-        let mut field = Column::new();
-        if let Some(files) = files.filter(|q| !q.is_empty()) {
-            let cards =
-                Row::with_children(files.iter().map(|a| attachment_card(&self.selected, a)))
-                    .spacing(8)
-                    .padding([2, 0]);
-            field = field
-                .push(
+        // The attachments sit in one fixed slot above the editor: inserting
+        // them before it only while files are staged would rebuild the
+        // editor, and a drop or paste would take its focus, so Enter
+        // wouldn't send.
+        let staged: El = match files.filter(|q| !q.is_empty()) {
+            Some(files) => {
+                let cards =
+                    Row::with_children(files.iter().map(|a| attachment_card(&self.selected, a)))
+                        .spacing(8)
+                        .padding([2, 0]);
+                column![
                     container(scrollable(cards).horizontal().width(Fill).height(140)).padding(
                         Padding {
                             top: 12.,
@@ -3254,10 +3268,13 @@ impl App {
                             bottom: 6.,
                         },
                     ),
-                )
-                .push(line_rule(color!(0x2e2f34)));
-        }
-        field = field.push(
+                    line_rule(color!(0x2e2f34))
+                ]
+                .into()
+            }
+            None => Space::new().into(),
+        };
+        let field = column![staged].push(
             row![attach, editor, emoji, send]
                 .spacing(14)
                 .align_y(Center)
@@ -3319,7 +3336,11 @@ impl App {
             container(
                 column![
                     tray,
-                    Column::new().extend(reply.map(Into::into)).push(composer),
+                    // The reply bar's slot stays put too, for the same reason.
+                    column![
+                        reply.map_or_else(|| Space::new().into(), Into::<El>::into),
+                        composer
+                    ],
                     footer
                 ]
                 .spacing(4)
