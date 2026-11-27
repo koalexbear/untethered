@@ -127,9 +127,9 @@
     "scripts/qa_voice_room.py",
     "scripts/test-media-interop.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Fix --room-ptt: open Atrium without joining",
-   "updated": "2026-11-27T22:58:01Z",
+   "updated": "2026-11-27T23:06:15Z",
    "worktree": ".claude/worktrees/great-lamport-46e7ea"
   }
  },
