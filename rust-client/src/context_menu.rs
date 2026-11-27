@@ -132,6 +132,7 @@ pub enum Event {
 pub enum Entry {
     AddReaction,
     Reply,
+    Forward,
     Edit,
     CopyText,
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
@@ -163,6 +164,7 @@ impl Entry {
         match self {
             Self::AddReaction => "Add Reaction",
             Self::Reply => "Reply",
+            Self::Forward => "Forward",
             Self::Edit => "Edit Message",
             Self::CopyText => "Copy Text",
             Self::CopyImage => "Copy Image",
@@ -194,6 +196,7 @@ impl Entry {
         match self {
             Self::AddReaction => Some("Add Reaction"),
             Self::Reply => Some("Reply"),
+            Self::Forward => Some("Forward"),
             Self::Edit => Some("Edit"),
             Self::Report => Some("Report Message"),
             _ => None,
@@ -204,6 +207,7 @@ impl Entry {
         match self {
             Self::AddReaction | Self::Profile | Self::Mention | Self::Message | Self::MarkRead => 0,
             Self::Reply
+            | Self::Forward
             | Self::Edit
             | Self::CopyText
             | Self::CopyImage
@@ -326,6 +330,18 @@ impl App {
         // An older room's message (upgrades.rs) can't be replied to from here.
         if p.from.is_none() {
             items.push(item(Entry::Reply, Some(Msg::Reply(id.clone()))));
+        }
+        // Also an older room's (forward.rs).
+        if p.forwardable && self.verified {
+            items.push(item(
+                Entry::Forward,
+                self.connected.then(|| {
+                    Msg::Forward(crate::forward::Input::Open {
+                        room: room.to_owned(),
+                        event: id.clone(),
+                    })
+                }),
+            ));
         }
         if p.may_edit(&self.matrix_id) && r.has_metadata && r.encrypted == p.encrypted {
             items.push(item(
@@ -888,6 +904,7 @@ mod tests {
             [
                 AddReaction,
                 Reply,
+                Forward,
                 Edit,
                 CopyText,
                 MarkUnread,
@@ -900,6 +917,7 @@ mod tests {
             [
                 AddReaction,
                 Reply,
+                Forward,
                 CopyText,
                 MarkUnread,
                 CopyMessageLink,
@@ -919,11 +937,22 @@ mod tests {
                 .filter(|i| i.entry.toolbar_hint().is_some())
                 .map(|i| i.entry)
                 .collect();
-            // The toolbar is built from this list; it shows what it used to.
+            // The toolbar is built from this list, Forward next to Reply as
+            // on Discord.
             let expected: &[Entry] = if event == "$m2" {
-                &[Entry::AddReaction, Entry::Reply, Entry::Edit]
+                &[
+                    Entry::AddReaction,
+                    Entry::Reply,
+                    Entry::Forward,
+                    Entry::Edit,
+                ]
             } else {
-                &[Entry::AddReaction, Entry::Reply, Entry::Report]
+                &[
+                    Entry::AddReaction,
+                    Entry::Reply,
+                    Entry::Forward,
+                    Entry::Report,
+                ]
             };
             assert_eq!(toolbar, expected);
         }

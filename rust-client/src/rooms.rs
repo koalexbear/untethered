@@ -81,6 +81,9 @@ impl Quote {
 }
 pub struct Post {
     pub reactable: bool,
+    /// A sent message, attachment or sticker, also from an older room:
+    /// what Forward offers (forward.rs).
+    pub forwardable: bool,
     pub chips: crate::reactions::Chips,
     /// The older room this message belongs to, above an upgrade's seam.
     /// Such messages are read-only (upgrades.rs).
@@ -324,6 +327,7 @@ impl Room {
                         e["decrypted_type"].as_str(),
                         Some("m.room.message" | "m.sticker")
                     )),
+            forwardable: false,
             chips: crate::reactions::chips(e),
             from: None,
             text_message: !redacted
@@ -346,6 +350,7 @@ impl Room {
             day_label: stamp.format("%B %-d, %Y").to_string(),
             clock: stamp.format("%H:%M").to_string(),
         };
+        post.forwardable = post.reactable;
         self.edits.apply(&mut post);
         let previous = self.history.insert(row, post);
         if let Some(old_id) = previous.as_ref().and_then(|p| p.event_id.as_ref())

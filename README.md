@@ -134,8 +134,15 @@ a reason. Right-click a channel or DM in the sidebar for **Mark as Read**,
 **Notification Settings**, **Copy Link** and **Leave**, which asks first.
 Shift+F10 or the Menu key opens the menu for whatever is under the pointer,
 or the newest message; arrow keys and Enter choose, Escape or a click
-elsewhere closes it. There's no **Delete** yet: it comes with message
-redaction.
+elsewhere closes it.
+
+**Forward:** Hover a message and click **Forward**, or right-click it, to
+send it on to up to five channels or DMs at once: find them in **Forward
+To**, add a message of your own if you like, and **Send**. Matrix has no
+"forwarded" label, so it arrives as an ordinary message from you, as when
+Element forwards. A file is sent with the same encrypted copy and key, not
+uploaded again, and nobody it mentions is notified again. Forwarding from an
+encrypted room to one that isn't says first that its server can read it.
 
 **Replies:** Hover a message, click **Reply**, type your response, and send.
 The bar above the composer shows who you’re replying to; its **×** (Cancel

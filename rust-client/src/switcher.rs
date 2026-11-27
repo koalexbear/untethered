@@ -138,7 +138,7 @@ impl App {
     }
 
     /// The first space whose channel list has `room`.
-    fn home_space(&self, room: &str) -> Option<&str> {
+    pub(crate) fn home_space(&self, room: &str) -> Option<&str> {
         self.rooms()
             .ordered_spaces
             .iter()
@@ -161,6 +161,9 @@ impl App {
                 }
                 if !self.starting_dm() {
                     self.new_message = None;
+                }
+                if !self.forward_sending() {
+                    self.forwarding = None;
                 }
                 return operation::focus(SEARCH);
             }
