@@ -1,5 +1,26 @@
 {
- "claims": {},
+ "claims": {
+  "N2": {
+   "branch": "n2-remember-place",
+   "claimed": "2026-11-27T14:01:00Z",
+   "notes": [],
+   "owner": "main-session",
+   "paths": [
+    "README.md",
+    "ROADMAP.md",
+    "rust-client/src/drafts.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/paging.rs",
+    "rust-client/src/places.rs",
+    "rust-client/src/view.rs",
+    "scripts/qa_remember_place.py"
+   ],
+   "status": "working",
+   "title": "Remember where you were",
+   "updated": "2026-11-27T14:01:00Z",
+   "worktree": "."
+  }
+ },
  "done": [
   {
    "branch": "main",

@@ -2,7 +2,9 @@
 
 Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 
-Nothing claimed.
+| ID | Title | Agent | Branch | Status | Updated | Paths |
+|---|---|---|---|---|---|---|
+| N2 | Remember where you were | main-session | `n2-remember-place` | working | 2026-11-27T14:01:00Z | `README.md`, `ROADMAP.md`, `rust-client/src/drafts.rs`, `rust-client/src/main.rs`, `rust-client/src/paging.rs`, `rust-client/src/places.rs`, `rust-client/src/view.rs`, `scripts/qa_remember_place.py` |
 
 ## Done
 
