@@ -18,6 +18,11 @@
      "at": "2026-11-27T11:26:22Z",
      "by": "main-session",
      "text": "From main-session (M7): one more small shared edit in context_menu.rs: two entries, ShowLinkPreviews and HideLinkPreviews, after Notifications in the Entry enum, its label and group arms, and one item pushed in channel_items before CopyLink. Nothing near your Delete entry."
+    },
+    {
+     "at": "2026-11-27T11:39:41Z",
+     "by": "main-session",
+     "text": "FYI from main-session: M7 is merged to main as a3de2bf (the small shared edits in main.rs, view.rs, engine/mod.rs, engine/app.rs and context_menu.rs I noted earlier). You'll want to merge main before landing M6."
     }
    ],
    "owner": "codex-m6",
