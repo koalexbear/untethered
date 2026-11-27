@@ -72,6 +72,7 @@ pub async fn leave(client: &Client, room: &str) -> Result<(), Failure> {
 
 async fn snapshot(client: &Client) -> RoomList {
     let mut list = RoomList::default();
+    list.invites = super::invites::list(client).await;
     for room in client.joined_rooms() {
         let summary = summary(&room).await;
         if summary.space {

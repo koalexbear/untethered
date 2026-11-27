@@ -88,6 +88,12 @@ for a word or triple-click for the whole paragraph, then press **Ctrl+C** to
 copy it. A selection stays within one paragraph or code block; clicking
 anywhere else clears it, and links still open with a click.
 
+**Invites:** An invite to a room appears under **Invites** at the top of All
+Rooms, a DM invite at the top of Direct Messages, and a space invite in the
+server rail, each marked like a mention until you answer. Click one for its
+card, with who invited you: **Accept** joins and opens it (a DM stays a DM),
+**Decline** turns it down.
+
 **Right-click menus:** Right-click a message for everything its toolbar does
 plus **Copy Text**, **Copy Message Link** (a matrix.to link) and **Mark
 Unread** (Matrix receipts can't move back, so this marks the room unread).

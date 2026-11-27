@@ -434,6 +434,7 @@ mod tests {
             recovery: Recovery::Enabled,
         }));
         app.engine_event(Event::Rooms(RoomList {
+            invites: Vec::new(),
             rooms: ["!a:x", "!b:x"]
                 .map(|id| RoomSummary {
                     id: id.into(),

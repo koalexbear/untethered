@@ -9,6 +9,7 @@ mod context_menu;
 mod emoji_picker;
 mod hover;
 mod icons;
+mod invites;
 mod link_preview;
 pub(crate) use link_preview::image_source as link_preview_image;
 mod mentions;
@@ -1371,6 +1372,12 @@ impl App {
                 .filter(|r| !r.space)
                 .for_each(|r| mark.add(r)),
         }
+        // Invites waiting count like mentions, as Discord's requests do.
+        let invites = self.invites_in(section);
+        if invites > 0 {
+            mark.unread = true;
+            mark.mentions += invites;
+        }
         mark
     }
     fn channel_row<'a>(&'a self, id: &'a String, r: &'a Room) -> El<'a> {
@@ -1572,6 +1579,7 @@ impl App {
             bottom: 12.,
             ..Padding::ZERO
         });
+        list = list.extend(self.invite_rows(&self.section));
         let groups = [
             (
                 "text",
@@ -1706,7 +1714,7 @@ impl App {
                 "U".into(),
                 None,
                 "Direct Messages",
-                self.section == Section::Direct,
+                self.section == Section::Direct && self.invite_open.is_none(),
                 Msg::Section(Section::Direct),
                 self.rail_mark(&Section::Direct),
             ),
@@ -1714,7 +1722,7 @@ impl App {
                 "#".into(),
                 None,
                 "All Rooms",
-                self.section == Section::All,
+                self.section == Section::All && self.invite_open.is_none(),
                 Msg::Section(Section::All),
                 self.rail_mark(&Section::All),
             ),
@@ -1745,11 +1753,15 @@ impl App {
                     initials,
                     self.avatars.get(r.avatar.as_deref()),
                     &r.name,
-                    self.section == s,
+                    // An open invite's card is what's shown, not the section.
+                    self.section == s && self.invite_open.is_none(),
                     Msg::Section(s),
                     mark,
                 ));
             }
+        }
+        for invite in self.invite_rail() {
+            icons = icons.push(invite);
         }
         if self.logged_in && self.verified {
             let add = button(icons::hover_icon(Icon::Plus, 24., 48., GREEN, Color::WHITE))
@@ -1993,6 +2005,11 @@ impl App {
             ]
             .height(Fill)
             .into();
+        }
+        if let Some(invite) = self.invite_open.as_deref().and_then(|id| self.invite(id)) {
+            return row![rail, side, self.invite_card(invite)]
+                .height(Fill)
+                .into();
         }
         let room = store.list.get(&self.selected);
         #[cfg(target_os = "linux")]

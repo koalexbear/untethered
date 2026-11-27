@@ -29,6 +29,7 @@ mod incoming;
 mod inline;
 #[cfg(not(target_arch = "wasm32"))]
 mod instance;
+mod invites;
 mod link_previews;
 mod media;
 mod mentions;
@@ -215,6 +216,10 @@ enum Msg {
     ReopenTimeline(String),
     /// Turn a room's link previews on or off (link_previews.rs).
     LinkPreviews(String, bool),
+    /// Show an invite's card, and accept or decline it (invites.rs).
+    OpenInvite(String),
+    AcceptInvite(String),
+    DeclineInvite(String),
     /// Scrolled near the top of what's loaded: fetch older messages.
     /// Page Up (true) or Page Down: scroll the timeline by most of a screen.
     PageScroll(bool),
@@ -373,6 +378,9 @@ enum Request {
     /// Saving a room's link preview switch (link_previews.rs).
     LinkPreviews(String, bool),
     LeaveRoom(String),
+    /// Accepting or declining an invite (invites.rs).
+    AcceptInvite(String),
+    DeclineInvite(String),
     FollowUpgrade(String),
 }
 struct App {
@@ -426,6 +434,10 @@ struct App {
     outbox: media::Outbox,
     inline: inline::InlineImages,
     link_previews: link_previews::LinkPreviews,
+    /// The invite whose card the main area shows, and an accepted invite's
+    /// room to open once it's listed (invites.rs).
+    invite_open: Option<String>,
+    joined_invite: Option<String>,
     avatars: avatars::Avatars,
     viewer: Option<viewer::Viewer>,
     /// The account's profile picture (mxc URI).
@@ -539,6 +551,8 @@ impl App {
             outbox: Default::default(),
             inline: Default::default(),
             link_previews: Default::default(),
+            invite_open: None,
+            joined_invite: None,
             avatars: Default::default(),
             viewer: None,
             own_avatar: None,
@@ -1523,6 +1537,7 @@ impl App {
             Msg::Section(s) => {
                 self.cancel_setup_if_idle();
                 self.close_mentions();
+                self.invite_open = None;
                 self.section = s;
                 self.reconcile();
             }
@@ -1531,6 +1546,7 @@ impl App {
                 self.minimize_call();
                 self.cancel_setup_if_idle();
                 self.close_mentions();
+                self.invite_open = None;
                 self.open(id);
             }
             Msg::OpenVoice(id) => {
@@ -1548,6 +1564,9 @@ impl App {
             Msg::CheckReading => return self.check_reading(),
             Msg::ReopenTimeline(room) => self.reopen_timeline(room),
             Msg::LinkPreviews(room, on) => self.set_link_previews(room, on),
+            Msg::OpenInvite(id) => self.open_invite(id),
+            Msg::AcceptInvite(id) => self.accept_invite(id),
+            Msg::DeclineInvite(id) => self.decline_invite(id),
             Msg::ReadingScroll(room, at) if room == self.selected && self.original.is_none() => {
                 if at.away {
                     // Scrolled up: the next return may start over (paging.rs).

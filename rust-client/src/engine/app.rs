@@ -347,6 +347,13 @@ impl App {
                 // A room community setup created opens once it's listed.
                 self.open_created();
                 self.open_profile_dm();
+                self.open_joined_invite();
+                // An invite withdrawn or answered elsewhere closes its card.
+                if let Some(id) = &self.invite_open
+                    && self.invite(id).is_none()
+                {
+                    self.invite_open = None;
+                }
             }
             Event::LinkPreview { url, preview } => self.link_previews.arrived(url, preview),
             Event::Timeline(t) => {
@@ -602,6 +609,10 @@ impl App {
                 self.read_result(room, event, result.is_ok())
             }
             (Request::LeaveRoom(room), result) => self.left_room(&room, result.is_ok()),
+            (Request::AcceptInvite(room), result) => self.invite_answered(room, true, result.is_ok()),
+            (Request::DeclineInvite(room), result) => {
+                self.invite_answered(room, false, result.is_ok())
+            }
             (Request::FollowUpgrade(_), result) => self.followed(result.is_ok()),
             (Request::Context(..), Ok(())) => {}
             (Request::Context(..), Err(_)) => {
@@ -843,6 +854,7 @@ mod tests {
         let (mut app, rx) = app();
         app.engine_event(signed_in(false));
         app.engine_event(Event::Rooms(RoomList {
+            invites: Vec::new(),
             rooms: vec![RoomSummary {
                 id: "!r:example".into(),
                 name: "general".into(),
@@ -904,6 +916,7 @@ mod tests {
             ..Default::default()
         };
         app.engine_event(Event::Rooms(RoomList {
+            invites: Vec::new(),
             rooms: vec![room("!a:example"), room("!b:example")],
             children: Default::default(),
         }));
@@ -1042,6 +1055,7 @@ mod tests {
         });
         assert_eq!(app.media_limit, 1024);
         app.engine_event(Event::Rooms(RoomList {
+            invites: Vec::new(),
             rooms: vec![RoomSummary {
                 id: "!r:example".into(),
                 name: "general".into(),
@@ -1222,6 +1236,7 @@ mod tests {
             }
         }
         app.engine_event(Event::Rooms(RoomList {
+            invites: Vec::new(),
             rooms: vec![RoomSummary {
                 id: "!r:example".into(),
                 name: "general".into(),
@@ -1311,6 +1326,7 @@ mod tests {
         let (mut app, rx) = app();
         app.engine_event(signed_in(true));
         app.engine_event(Event::Rooms(RoomList {
+            invites: Vec::new(),
             rooms: vec![RoomSummary {
                 id: "!r:example".into(),
                 name: "general".into(),

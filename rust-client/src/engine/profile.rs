@@ -448,6 +448,7 @@ mod tests {
         };
         app.selected = source.id.clone();
         app.live.apply_engine(RoomList {
+            invites: Vec::new(),
             rooms: vec![source.clone()],
             ..RoomList::default()
         });
@@ -477,6 +478,7 @@ mod tests {
         assert!(rx.try_recv().is_err());
 
         app.live.apply_engine(RoomList {
+            invites: Vec::new(),
             rooms: vec![source.clone(), dm.clone()],
             ..RoomList::default()
         });

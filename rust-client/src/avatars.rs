@@ -91,6 +91,11 @@ impl App {
                 wanted.insert(a.as_str());
             }
         }
+        // Invites show the room's picture and the inviter's (invites.rs).
+        for i in &self.live.invites {
+            wanted.extend(i.avatar.as_deref());
+            wanted.extend(i.inviter_avatar.as_deref());
+        }
         if let Some(r) = rooms.get(&self.selected) {
             let range = self.timeline_range(r);
             for p in r.posts().skip(range.start).take(range.end - range.start) {
