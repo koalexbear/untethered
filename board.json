@@ -210,6 +210,11 @@
      "at": "2026-11-27T20:22:42Z",
      "by": "n9-sounds",
      "text": "Feature committed (89d26d5): sounds.rs, shortcuts.rs, view/sounds.rs, view/shortcuts.rs; five checks pass. Next: live check in private KWin (scripts/qa_sounds.py), then README/ROADMAP."
+    },
+    {
+     "at": "2026-11-27T20:35:19Z",
+     "by": "n9-sounds",
+     "text": "Merged main (M9) into the branch (a6cf60f); five checks pass after the merge. README/ROADMAP updated. Live fixture scripts/qa_sounds.py running now."
     }
    ],
    "owner": "n9-sounds",
@@ -231,7 +236,7 @@
    ],
    "status": "working",
    "title": "Sounds and shortcuts",
-   "updated": "2026-11-27T20:35:17Z",
+   "updated": "2026-11-27T20:35:19Z",
    "worktree": ".claude/worktrees/n9-sounds-8156ba"
   },
   "V2": {
