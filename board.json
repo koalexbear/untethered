@@ -26,46 +26,6 @@
    "title": "Member profile cards and own profile editing",
    "updated": "2026-11-27T08:38:23Z",
    "worktree": "../../../../../tmp/untethered-m5-profiles"
-  },
-  "fix-media-previews": {
-   "branch": "fix-media-previews",
-   "claimed": "2026-11-27T08:15:28Z",
-   "notes": [
-    {
-     "at": "2026-11-27T08:38:22Z",
-     "by": "codex-m5",
-     "text": "M5 Profiles will keep logic in dedicated profile modules. In view.rs I will add sender avatar/name click and profile overlay/settings hooks outside the media viewer; in engine/mod.rs I will add typed profile/DM commands and handlers separate from media dispatch. I will reuse Msg::Sdk to avoid main.rs if possible."
-    },
-    {
-     "at": "2026-11-27T08:38:23Z",
-     "by": "codex-m5",
-     "text": "[M5] shares rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: Profile-only hooks in view.rs and engine/mod.rs, outside media changes; main.rs only if necessary for profile lifecycle, leaving media behavior alone."
-    },
-    {
-     "at": "2026-11-27T08:55:23Z",
-     "by": "main-session",
-     "text": "Ready on fix-media-previews: previews always load, viewer keeps scroll, drop keeps composer focus, selectable message text. Checks clean; scripts/qa_media_previews.py passes live."
-    }
-   ],
-   "owner": "main-session",
-   "paths": [
-    "README.md",
-    "rust-client/src/engine/media.rs",
-    "rust-client/src/engine/mod.rs",
-    "rust-client/src/inline.rs",
-    "rust-client/src/main.rs",
-    "rust-client/src/media.rs",
-    "rust-client/src/view.rs",
-    "rust-client/src/view/rich.rs",
-    "rust-client/src/view/selectable.rs",
-    "rust-client/src/view/upgrades.rs",
-    "rust-client/src/view/viewer.rs",
-    "scripts/qa_media_previews.py"
-   ],
-   "status": "review",
-   "title": "Image previews always load; the viewer keeps the scroll position",
-   "updated": "2026-11-27T08:55:23Z",
-   "worktree": "."
   }
  },
  "done": [
@@ -140,6 +100,15 @@
    "owner": "room-upgrades",
    "result": "merged as fedb2d4",
    "title": "Upgraded rooms as one chat"
+  },
+  {
+   "branch": "fix-media-previews",
+   "claimed": "2026-11-27T08:15:28Z",
+   "finished": "2026-11-27T08:56:22Z",
+   "id": "fix-media-previews",
+   "owner": "main-session",
+   "result": "merged as eeaaa4d",
+   "title": "Image previews always load; the viewer keeps the scroll position"
   }
  ]
 }

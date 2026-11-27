@@ -5,10 +5,10 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
 | M5 | Member profile cards and own profile editing | codex-m5 | `codex/m5-profiles` | working | 2026-11-27T08:38:23Z | `rust-client/src/account.rs`, `rust-client/src/context_menu.rs`, `rust-client/src/engine/account_ui.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/profile.rs`, `rust-client/src/main.rs`, `rust-client/src/permissions.rs`, `rust-client/src/rooms.rs`, `rust-client/src/rooms/engine.rs`, `rust-client/src/view.rs`, `rust-client/src/view/profile.rs`, `rust-client/src/view/room_people.rs`, `rust-client/src/web_files.rs`, `rust-client/web/files.js` |
-| fix-media-previews | Image previews always load; the viewer keeps the scroll position | main-session | `fix-media-previews` | review | 2026-11-27T08:55:23Z | `README.md`, `rust-client/src/engine/media.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/inline.rs`, `rust-client/src/main.rs`, `rust-client/src/media.rs`, `rust-client/src/view.rs`, `rust-client/src/view/rich.rs`, `rust-client/src/view/selectable.rs`, `rust-client/src/view/upgrades.rs`, `rust-client/src/view/viewer.rs`, `scripts/qa_media_previews.py` |
 
 ## Done
 
+- 2026-11-27 **fix-media-previews** Image previews always load; the viewer keeps the scroll position (main-session): merged as eeaaa4d
 - 2026-11-27 **room-upgrades** Upgraded rooms as one chat (room-upgrades): merged as fedb2d4
 - 2026-11-27 **M3** Typing indicators (m3-typing): merged as a9422b5
 - 2026-11-26 **single-instance** Single instance: a second launch shows the running window (main-session): merged as 2d29437
