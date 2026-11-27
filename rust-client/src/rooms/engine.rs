@@ -11,6 +11,7 @@ impl Rooms {
     /// Replace the joined-room list. Returns rooms that are no longer joined,
     /// or were replaced by a joined room in an upgrade (upgrades.rs).
     pub fn apply_engine(&mut self, mut list: RoomList) -> Vec<String> {
+        self.invites = std::mem::take(&mut list.invites);
         let mut order_changed = false;
         let replaced = crate::upgrades::replaced(&list.rooms);
         list.rooms.retain(|r| !replaced.contains_key(&r.id));
@@ -420,6 +421,7 @@ mod tests {
             ..Default::default()
         };
         let left = rooms.apply_engine(RoomList {
+            invites: Vec::new(),
             rooms: vec![
                 room("!a", "Zulu"),
                 RoomSummary {
@@ -447,6 +449,7 @@ mod tests {
         assert!(!rooms.list["!a"].unread);
 
         let left = rooms.apply_engine(RoomList {
+            invites: Vec::new(),
             rooms: vec![room("!b", "bravo"), room("!s", "Space")],
             children: BTreeMap::from([("!s".into(), ["!a".into(), "!b".into()].into())]),
         });
@@ -468,6 +471,7 @@ mod tests {
                 "device_id":device,"focus_active":{"type":"livekit"}})
         };
         let voice = |members: Vec<serde_json::Value>| RoomList {
+            invites: Vec::new(),
             rooms: vec![RoomSummary {
                 id: "!v".into(),
                 name: "Lounge".into(),

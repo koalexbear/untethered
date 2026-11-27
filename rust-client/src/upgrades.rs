@@ -186,6 +186,7 @@ mod tests {
 
     fn list(rooms: Vec<RoomSummary>, children: &[(&str, &[&str])]) -> RoomList {
         RoomList {
+            invites: Vec::new(),
             rooms,
             children: children
                 .iter()

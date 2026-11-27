@@ -17,6 +17,7 @@ pub mod browser;
 #[cfg(target_os = "linux")]
 mod calls;
 mod compose;
+mod invites;
 #[cfg(not(target_arch = "wasm32"))]
 mod keyring;
 #[cfg(test)]
@@ -221,6 +222,12 @@ pub enum Command {
     Typing {
         room: String,
         typing: bool,
+    },
+    /// Join a room this account is invited to (invites.rs). Declining is
+    /// `LeaveRoom`.
+    AcceptInvite {
+        id: i64,
+        room: String,
     },
     /// The App no longer shows this room: drop its timeline (timeline.rs).
     CloseTimeline {
@@ -582,6 +589,24 @@ pub struct RoomList {
     pub rooms: Vec<RoomSummary>,
     /// Current `m.space.child` edges (non-empty `via`) of joined spaces.
     pub children: BTreeMap<String, BTreeSet<String>>,
+    /// Rooms, spaces and DMs this account is invited to (invites.rs).
+    #[serde(default)]
+    pub invites: Vec<Invite>,
+}
+
+/// An invite, as its stripped state and the invite event tell it.
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Invite {
+    pub id: String,
+    /// The room's name; a DM's is the person who invited.
+    pub name: String,
+    pub topic: String,
+    pub avatar: Option<String>,
+    pub space: bool,
+    pub dm: bool,
+    pub inviter: Option<String>,
+    pub inviter_name: Option<String>,
+    pub inviter_avatar: Option<String>,
 }
 
 #[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -1267,6 +1292,12 @@ impl Engine {
             Command::MarkRoomRead { id, room, public } => {
                 self.job(id, move |client, _, _| async move {
                     rooms::mark_latest_read(&client, &room, public).await
+                })
+                .await
+            }
+            Command::AcceptInvite { id, room } => {
+                self.job(id, move |client, _, _| async move {
+                    invites::accept(&client, &room).await
                 })
                 .await
             }

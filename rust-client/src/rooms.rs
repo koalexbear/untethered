@@ -25,6 +25,8 @@ pub struct Rooms {
     /// Old rooms and the joined rooms that replaced them in an upgrade; the
     /// old ones aren't in `list` (upgrades.rs).
     pub(crate) replaced: BTreeMap<String, String>,
+    /// Rooms, spaces and DMs this account is invited to (invites.rs).
+    pub invites: Vec<crate::engine::Invite>,
 }
 #[derive(Default)]
 pub struct Room {
