@@ -28,6 +28,7 @@ pub(super) enum Icon {
     Gear,
     Plus,
     Reply,
+    Forward,
     Smile,
     Pencil,
     Flag,
@@ -179,6 +180,13 @@ fn outline(icon: Icon) -> Path {
             poly(b, &[(20., 18.), (20., 16.)]);
             arc(b, 16., 16., 4., 0., -90.);
             b.line_to(p(4., 12.));
+        }
+        // Reply's arrow, turned to the right.
+        Icon::Forward => {
+            poly(b, &[(15., 17.), (20., 12.), (15., 7.)]);
+            poly(b, &[(4., 18.), (4., 16.)]);
+            arc(b, 8., 16., 4., 180., 270.);
+            b.line_to(p(20., 12.));
         }
         Icon::Smile => {
             b.circle(p(11., 13.), 8.5);

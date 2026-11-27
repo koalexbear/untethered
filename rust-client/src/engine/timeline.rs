@@ -19,13 +19,16 @@ use matrix_sdk::{
     Client,
     room::edit::EditedContent,
     ruma::{
-        EventId, OwnedEventId, OwnedRoomId, RoomId,
-        events::room::message::{
-            FormattedBody, MessageFormat, MessageType, RoomMessageEventContent,
-            RoomMessageEventContentWithoutRelation,
+        EventId, OwnedEventId, OwnedRoomId, OwnedTransactionId, RoomId,
+        events::{
+            AnyMessageLikeEventContent, Mentions,
+            room::message::{
+                FormattedBody, MessageFormat, MessageType, RoomMessageEventContent,
+                RoomMessageEventContentWithoutRelation,
+            },
         },
     },
-    send_queue::RoomSendQueueUpdate,
+    send_queue::{RoomSendQueue, RoomSendQueueUpdate, SendHandle},
 };
 use matrix_sdk_crypto::types::events::UtdCause;
 use matrix_sdk_ui::{
@@ -485,32 +488,53 @@ impl Timelines {
             None => timeline.send(content.into()).await,
         }
         .map_err(|_| Failure::Failed)?;
-        let ours = handle.transaction_id().to_owned();
-        loop {
-            let update = match updates.recv().await {
-                Ok(update) => update,
-                Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                Err(broadcast::error::RecvError::Closed) => return Err(Failure::Failed),
-            };
-            match update {
-                RoomSendQueueUpdate::SentEvent { transaction_id, .. } if transaction_id == ours => {
-                    return Ok(());
+        sent(&queue, &mut updates, vec![handle]).await
+    }
+
+    /// Forward `event`, a message `room` shows, to the room `to` (ROADMAP
+    /// M8), as Element does: its content sent again with no reply or
+    /// thread, so an attachment reuses its file, and its key, rather than
+    /// uploading it again. Nobody it mentions is notified again, as on
+    /// Discord. `note` follows as a message of its own.
+    pub async fn forward(
+        &self,
+        room: &str,
+        event: &str,
+        to: &str,
+        note: Option<String>,
+    ) -> Result<(), Failure> {
+        let item = Self::item(event)?;
+        let TimelineEventItemId::EventId(id) = &item else {
+            return Err(Failure::Unavailable);
+        };
+        let found = self
+            .owner(room, &item)
+            .await?
+            .item_by_event_id(id)
+            .await
+            .ok_or(Failure::Unavailable)?;
+        let content = forwarded(found.content()).ok_or(Failure::Failed)?;
+        let target = RoomId::parse(to)
+            .ok()
+            .and_then(|id| self.client.get_room(&id))
+            .ok_or(Failure::Unavailable)?;
+        // Through the room's send queue rather than a Timeline, so a room
+        // nobody has open doesn't start showing; one that's open shows it
+        // as a local echo meanwhile.
+        let queue = target.send_queue();
+        let (_, mut updates) = queue.subscribe().await.map_err(|_| Failure::Failed)?;
+        let mut handles = vec![queue.send(content).await.map_err(|_| Failure::Failed)?];
+        if let Some(note) = note.filter(|n| !n.trim().is_empty()) {
+            let note = RoomMessageEventContent::from(super::compose::markdown(note, &[]));
+            match queue.send(note.into()).await {
+                Ok(handle) => handles.push(handle),
+                Err(_) => {
+                    let _ = handles[0].abort().await;
+                    return Err(Failure::Failed);
                 }
-                RoomSendQueueUpdate::SendError { transaction_id, .. } if transaction_id == ours => {
-                    let _ = handle.abort().await;
-                    // Any error disables the room's queue; nothing of ours
-                    // is left in it now.
-                    queue.set_enabled(true);
-                    return Err(Failure::Unreachable);
-                }
-                RoomSendQueueUpdate::CancelledLocalEvent { transaction_id }
-                    if transaction_id == ours =>
-                {
-                    return Err(Failure::Cancelled);
-                }
-                _ => {}
             }
         }
+        sent(&queue, &mut updates, handles).await
     }
 
     fn item(event: &str) -> Result<TimelineEventItemId, Failure> {
@@ -575,6 +599,83 @@ pub(super) fn html_body(msgtype: &MessageType) -> Option<String> {
     }
     .filter(|f: &&FormattedBody| f.format == MessageFormat::Html)
     .map(|f| f.body.clone())
+}
+
+/// Wait for the homeserver to accept what `handles` queued, in one room. On
+/// a failure, what's still queued leaves the queue and the queue starts
+/// again: the App offers the retry.
+async fn sent(
+    queue: &RoomSendQueue,
+    updates: &mut broadcast::Receiver<RoomSendQueueUpdate>,
+    handles: Vec<SendHandle>,
+) -> Result<(), Failure> {
+    let mut waiting: Vec<OwnedTransactionId> = handles
+        .iter()
+        .map(|h| h.transaction_id().to_owned())
+        .collect();
+    while !waiting.is_empty() {
+        let update = match updates.recv().await {
+            Ok(update) => update,
+            Err(broadcast::error::RecvError::Lagged(_)) => continue,
+            Err(broadcast::error::RecvError::Closed) => return Err(Failure::Failed),
+        };
+        match update {
+            RoomSendQueueUpdate::SentEvent { transaction_id, .. } => {
+                waiting.retain(|t| *t != transaction_id);
+            }
+            RoomSendQueueUpdate::SendError { transaction_id, .. }
+                if waiting.contains(&transaction_id) =>
+            {
+                for handle in &handles {
+                    let _ = handle.abort().await;
+                }
+                // Any error disables the room's queue; nothing of ours is
+                // left in it now.
+                queue.set_enabled(true);
+                return Err(Failure::Unreachable);
+            }
+            RoomSendQueueUpdate::CancelledLocalEvent { transaction_id }
+                if waiting.contains(&transaction_id) =>
+            {
+                return Err(Failure::Cancelled);
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// What forwarding a timeline item sends: a message's content without its
+/// reply, thread or mentions, or a sticker as it is. Polls, locations
+/// shared live and the like aren't shown here, so they can't be forwarded.
+fn forwarded(content: &TimelineItemContent) -> Option<AnyMessageLikeEventContent> {
+    let TimelineItemContent::MsgLike(like) = content else {
+        return None;
+    };
+    match &like.kind {
+        MsgLikeKind::Message(m) => {
+            let msgtype = m.msgtype();
+            if !matches!(
+                msgtype,
+                MessageType::Text(_)
+                    | MessageType::Notice(_)
+                    | MessageType::Emote(_)
+                    | MessageType::Location(_)
+            ) && !is_attachment(msgtype)
+            {
+                return None;
+            }
+            let mut content = RoomMessageEventContent::new(msgtype.clone());
+            content.mentions = Some(Mentions::new());
+            Some(content.into())
+        }
+        MsgLikeKind::Sticker(s) => {
+            let mut sticker = s.content().clone();
+            sticker.relates_to = None;
+            Some(sticker.into())
+        }
+        _ => None,
+    }
 }
 
 fn is_attachment(msgtype: &MessageType) -> bool {

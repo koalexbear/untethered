@@ -608,6 +608,7 @@ impl App {
             (Request::Redact(..), Err(_)) => {
                 self.status = "Could not delete this message. Try again.".into();
             }
+            (Request::Forward(to), result) => self.forwarded(to, result.is_ok()),
             (Request::Report, result) => self.report_result(result.is_ok()),
             (Request::ReadState(room, event), result) => {
                 self.read_result(room, event, result.is_ok())

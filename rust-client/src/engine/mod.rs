@@ -179,6 +179,15 @@ pub enum Command {
         room: String,
         event: String,
     },
+    /// Send a message `room` shows again in the room `to` (ROADMAP M8),
+    /// with `note` after it.
+    Forward {
+        id: i64,
+        room: String,
+        event: String,
+        to: String,
+        note: Option<String>,
+    },
     Report {
         id: i64,
         room: String,
@@ -1342,6 +1351,18 @@ impl Engine {
             Command::Redact { id, room, event } => {
                 self.job(id, move |client, _, _| async move {
                     messaging::redact(&client, &room, &event).await
+                })
+                .await
+            }
+            Command::Forward {
+                id,
+                room,
+                event,
+                to,
+                note,
+            } => {
+                self.job(id, move |_, timelines, _| async move {
+                    timelines.forward(&room, &event, &to, note).await
                 })
                 .await
             }

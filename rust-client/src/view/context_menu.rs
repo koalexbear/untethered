@@ -212,6 +212,7 @@ fn glyph(entry: Entry) -> Option<Icon> {
     match entry {
         Entry::AddReaction => Some(Icon::Smile),
         Entry::Reply => Some(Icon::Reply),
+        Entry::Forward => Some(Icon::Forward),
         Entry::Edit => Some(Icon::Pencil),
         Entry::CopyText | Entry::CopyImage => Some(Icon::Copy),
         Entry::Mention => Some(Icon::At),

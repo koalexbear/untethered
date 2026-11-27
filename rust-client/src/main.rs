@@ -25,6 +25,7 @@ mod emoji;
 mod engine;
 #[cfg(not(target_arch = "wasm32"))]
 mod fonts;
+mod forward;
 #[cfg(target_os = "linux")]
 mod hotkeys;
 #[cfg(target_os = "linux")]
@@ -236,6 +237,8 @@ enum Msg {
     JoinAddress,
     /// New message (dms.rs).
     Dm(dms::Input),
+    /// Forwarding a message (forward.rs).
+    Forward(forward::Input),
     /// The quick switcher (switcher.rs).
     Switcher(switcher::Input),
     /// Note where the open room is scrolled to, and what was measured;
@@ -444,6 +447,8 @@ enum Request {
     StartDm,
     Block(String, bool),
     FollowUpgrade(String),
+    /// Forwarding a message to this room (forward.rs).
+    Forward(String),
 }
 struct App {
     setup: Option<community::Form>,
@@ -509,6 +514,8 @@ struct App {
     /// New message, a DM it started to open once listed, and who this
     /// account blocks (dms.rs).
     new_message: Option<dms::NewMessage>,
+    /// Forward To, for a message (forward.rs).
+    forwarding: Option<forward::Form>,
     started_dm: Option<String>,
     /// Ctrl+K's quick switcher (switcher.rs).
     switcher: Option<switcher::Switcher>,
@@ -649,6 +656,7 @@ impl App {
             room_preview: None,
             join_address: String::new(),
             new_message: None,
+            forwarding: None,
             started_dm: None,
             switcher: None,
             copy_note: None,
@@ -1712,6 +1720,7 @@ impl App {
             Msg::JoinAddressInput(s) => self.join_address = s,
             Msg::JoinAddress => self.join_address(),
             Msg::Dm(input) => return self.new_message(input),
+            Msg::Forward(input) => return self.forward(input),
             Msg::Switcher(input) => return self.switcher(input),
             Msg::NotePlace => return self.note_place(),
             Msg::PlaceNoted(room, hit) => self.place_noted(room, hit),
@@ -1772,6 +1781,8 @@ impl App {
                     self.close_viewer();
                 } else if self.new_message.is_some() {
                     return self.new_message(dms::Input::Close);
+                } else if self.forwarding.is_some() {
+                    return self.forward(forward::Input::Close);
                 } else if self.server_menu {
                     self.server_menu = false;
                 } else if self.setup.is_some() && !self.setup_busy() {

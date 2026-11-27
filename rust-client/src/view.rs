@@ -9,6 +9,7 @@ mod community;
 mod context_menu;
 mod dms;
 mod emoji_picker;
+mod forward;
 mod gallery;
 mod hover;
 mod icons;
@@ -1273,6 +1274,7 @@ impl App {
             .or_else(|| self.leave_dialog())
             .or_else(|| self.block_dialog())
             .or_else(|| self.new_message_dialog())
+            .or_else(|| self.forward_dialog())
             .unwrap_or_else(none);
         let viewer = self
             .viewer

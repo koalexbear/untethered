@@ -23,11 +23,12 @@ plan ([calls-parity-plan.md](rust-client/docs/calls-parity-plan.md)).
 - **Messaging:** formatted messages (code blocks, quotes, lists, spoilers),
   `@`, `#` and `:` autocomplete with real mentions, typing indicators,
   right-click menus, profile cards and editing your own profile, replies
-  with jump-to-original, edits, deleting messages, drafts that survive a
-  restart, link previews, reactions with a floating picker, selectable and
-  copyable text, mentions inbox, search across a space or all rooms with
-  Discord's filters (the homeserver's for unencrypted rooms), read markers and unread
-  divider, reports, moderation, permissions, space and room alerts.
+  with jump-to-original, edits, deleting and forwarding messages, drafts
+  that survive a restart, link previews, reactions with a floating picker,
+  selectable and copyable text, mentions inbox, search across a space or all
+  rooms with Discord's filters (the homeserver's for unencrypted rooms), read
+  markers and unread divider, reports, moderation, permissions, space and
+  room alerts.
 - **Getting in:** invites to spaces, rooms and DMs with Accept and Decline;
   `matrix.to` links and `#room:server` addresses open in the app with a
   preview and Join, also from Join a Server; New message finds people in
@@ -103,7 +104,7 @@ doesn't:
 | **M5. Profiles** · done | Spec (profiles; extra fields since v1.16) | Click an avatar or name for a profile card (picture, name, user ID, power level, Message button); edit your own display name and picture in User Settings. | Changing your picture here updates it in Element and in this client's member list. |
 | **M6. Delete and drafts** · done | Spec (redactions); drafts per device | Delete (redact) your own messages and, with permission, others'; drafts and staged-file captions survive a restart; a "N new messages since 14:02" bar at the top with Mark as read. | A redaction from either client removes the message in both; a draft typed before quitting is still there after restarting. |
 | **M7. Link previews** · done | Spec (the server's `preview_url`); opt-in where encrypted | URL embeds through the homeserver's `preview_url`, off by default in encrypted rooms, with a per-room switch; image links show inline. | A link to a page with Open Graph tags shows its title, description and image; turning previews off stops the request. |
-| **M8. Forward** | Spec (content sent again) | Forward a message, attachments included, to another room or DM from its toolbar and right-click menu. Encrypted attachments are sent again with the same file and key, not uploaded again. | A message and an image forwarded from an encrypted room show in Element's DM as ordinary messages from you, and no new upload happens. |
+| **M8. Forward** · done | Spec (content sent again) | Forward a message, attachments included, to another room or DM from its toolbar and right-click menu. Encrypted attachments are sent again with the same file and key, not uploaded again. | A message and an image forwarded from an encrypted room show in Element's DM as ordinary messages from you, and no new upload happens. |
 | **M9. Polls** | Accepted MSC3381 (stable `m.poll.*`) | Show, vote in and end polls (MSC3381, as Element does), with live results; create one from the composer's **+**. | A poll started in Element shows here; a vote here moves Element's count; ending it shows the same final tally in both. |
 | **M10. Voice messages** | Unstable MSC3245, as Element sends it | Record and send a voice message (MSC3245) from the composer, with a waveform; playing received ones is P2. | A voice message recorded here plays in Element with its waveform and length. |
 | **M11. Custom emoji and stickers** | Spec v1.19 (MSC2545 image packs) | Image packs (MSC2545) for a space and for your account, in the emoji picker, autocomplete and reactions, with a sticker picker. Packs work anywhere, as Discord sells with Nitro: your own packs, and packs from rooms you choose to use everywhere (`m.image_pack.rooms`). Animated ones play (P1). Cinny, FluffyChat, Nheko and SchildiChat show them; check Element before relying on it, and send the `:shortcode:` as fallback text. | An emoji pack added to a space appears in its rooms' picker, and in every room once you choose to use it everywhere; a custom emoji sent here renders in Cinny, and a client without image packs shows its `:shortcode:`. |
@@ -181,7 +182,8 @@ source's resolution, with no tier to pay for.
   investigated (seen with `anchor_bottom` in Iced 0.14).
 - With the tiny-skia renderer, switching images in the viewer can leave a
   one-pixel line from the previous image (partial redraw); wgpu redraws fully.
-- Video playback is Linux-only and depends on the system's GStreamer codecs.
+- Video plays on Linux, where it depends on the system's GStreamer codecs,
+  and in the browser; not yet on Windows (P4).
 - Profile pictures of members who never posted come from their membership
   event, so they appear once the member list has loaded.
 - A text selection stays within one paragraph (M14).

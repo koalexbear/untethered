@@ -235,10 +235,11 @@ fn post(m: Message, time: i64, previous: Option<&Post>) -> Post {
         let id = m.edit_id.or_else(|| event_id.clone()).unwrap_or_default();
         std::sync::Arc::new(crate::edits::Revision::applied(body.clone(), id))
     });
+    let message =
+        event_id.is_some() && matches!(m.kind, Kind::Text | Kind::Attachment | Kind::Sticker);
     Post {
-        reactable: live
-            && event_id.is_some()
-            && matches!(m.kind, Kind::Text | Kind::Attachment | Kind::Sticker),
+        reactable: live && message,
+        forwardable: message,
         chips: m
             .reactions
             .into_iter()
