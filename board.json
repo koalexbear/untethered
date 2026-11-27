@@ -41,7 +41,13 @@
   "room-upgrades": {
    "branch": "claude/room-upgrades",
    "claimed": "2026-11-26T23:53:45Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-27T00:09:51Z",
+     "by": "room-upgrades",
+     "text": "Progress: engine chain timelines, list hiding, seams, join offer, permalinks committed (5cb8666); unit tests pass; fmt/clippy/wasm/windows clean. Next: live Synapse test (engine live_test + scripts/qa_room_upgrades.py)."
+    }
+   ],
    "owner": "room-upgrades",
    "paths": [
     "README.md",
@@ -69,7 +75,7 @@
    ],
    "status": "working",
    "title": "Upgraded rooms as one chat",
-   "updated": "2026-11-27T00:09:48Z",
+   "updated": "2026-11-27T00:09:51Z",
    "worktree": ".claude/worktrees/room-upgrades"
   }
  },
