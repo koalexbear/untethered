@@ -235,6 +235,46 @@ After one leaves, the remaining two must exchange newly injected tones on
 their original participant and track IDs. Final leave must clear call
 memberships and release all capture/playback streams.
 
+Every call fixture starts its clients from a saved `voice.json` with voice
+processing off and the gate at −70 dB, below the test tones
+(`scripts/qa_events.py`, `RAW_VOICE`; set `QA_VOICE` to a JSON object to run
+with other settings, `'{}'` for the defaults). The fixtures measure routes
+with steady tones, which is what processing removes: noise suppression holds
+a steady tone about 13 dB down, a loud steady tone from the far end makes the
+echo canceller suppress the near end even with no echo path between them, and
+the automatic gate learns any steady sound as noise.
+
+### Verify voice processing
+
+Run `sh experiments/rtc-audio/run_element.sh --voice-processing`. It runs the
+three-client voice room above, then switches Alice's processing on one switch
+at a time in her call's **Devices** panel, checks that her `voice.json`
+follows each click, and measures the result at the other clients' speakers
+with speech-like signals (tone syllables, voiced ones with harmonics):
+
+- **Echo:** PulseAudio's `module-loopback` plays Alice's speaker into her
+  microphone (60 ms, −6 dB) while Bruno talks in voiced 670 Hz syllables.
+  With processing off Bruno hears himself come back; with **Echo
+  cancellation** on, his returned 670 Hz must drop by at least 25 dB for
+  twelve consecutive 100 ms windows while Alice's 410 Hz still reaches him:
+  at half its level or more in the median window and never more than 26 dB
+  down, since the canceller ducks the near end while the far end talks.
+- **Noise:** pink noise under 410 Hz syllables. **Noise suppression** must
+  lower the noise between syllables at Bruno by 10 dB or more and keep the
+  syllables within 3 dB.
+- **Gate:** the threshold slider is moved to −40 dB with the arrow keys.
+  Quiet noise must reach Bruno and Clara as silence, their rosters must not
+  show Alice speaking, the SFU must still list her microphone unmuted, and
+  her meter must stay below the threshold. A loud tone must pass and light
+  her ring; its onset may arrive at most 100 ms later than through an open
+  gate (medians of five onsets each).
+- **Gain control:** with all three switches on and the gate open, a steady
+  tone must hold within 3 dB over 10 s.
+- **Defaults:** with automatic sensitivity on as well, steady noise must be
+  learned and gated, and syllables over it must pass and light Alice's ring on
+  all three rosters (hers from her own gate). Every switch then goes back off
+  from the panel, and `voice.json` must match the fixtures' settings again.
+
 ### Verify push-to-talk
 
 Run `sh experiments/rtc-audio/run_element.sh --room-ptt` with the three-client

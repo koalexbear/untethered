@@ -107,7 +107,7 @@ bottom-left of the stage.
 | Adaptive bitrate | Simulcast plus per-viewer layer choice. Streams are opt-in | None. Full-quality auto-subscribe | `RoomOptions { dynacast, adaptive_stream }`, `RemoteTrackPublication::{set_video_quality, set_enabled, set_subscribed}`. Server-side congestion control |
 | Full-monitor capture | Yes | No | Portal `SourceType::Monitor` and restore tokens (ashpd 0.11.1). libwebrtc `DesktopCapturer` (Screen/Window, Generic = portal on Linux) |
 | Stream audio | Windows per-app. Linux Wayland: **whole system or nothing**; per-app is waiting on upstream portal work | **Per-app** sink-input capture (ahead of Discord on Linux). No whole-system option | `parec --monitor-stream`. A PipeWire graph helper process (same pattern as `untethered-cameras`) for "everything except the call" |
-| Voice processing | AEC, Krisp NS, AGC, VAD sensitivity | None | `libwebrtc::native::apm::AudioProcessingModule` (AEC/AGC/HPF/NS, `process_reverse_stream`), `audio_mixer`, `audio_resampler`. RNNoise in pure Rust (`nnnoiseless`) as a stronger NS option |
+| Voice processing | AEC, Krisp NS, AGC, VAD sensitivity | AEC, NS, AGC and the sensitivity gate since A2 (libwebrtc's APM) | `libwebrtc::native::apm::AudioProcessingModule` (AEC/AGC/HPF/NS, `process_reverse_stream`), `audio_mixer`, `audio_resampler`. RNNoise in pure Rust (`nnnoiseless`) as a stronger NS option |
 | Global PTT | Windows/X11/Wayland portal | Focused window | ashpd 0.11.1 `desktop::global_shortcuts` (`bind_shortcuts`, `receive_activated`/`receive_deactivated`). X11 key grab fallback |
 | Reconnection | Automatic with visible RTC states and rejoin | DM short outages only. Voice rooms none | DM `LeaseWatch` / `encrypted_tracks` logic, SDK `Reconnecting`/`Reconnected` events |
 | Windows | Native | Cross-builds without calls | LiveKit Rust SDK supports Windows. libwebrtc `DesktopCapturer` (WGC/DXGI). WASAPI process loopback for app audio |
@@ -371,6 +371,40 @@ during an Element tab share. A DM run sets Element's volume to 25 % and checks t
 960 Hz level drop at the desktop speaker, as the voice-room mixer test does.
 
 ### A2 — Voice processing and input sensitivity (Phase 1, M)
+
+> **Done** on branch `claude/a2-voice-a94df8` (2026-11-27), not merged yet.
+> `desktop_call/voice.rs`: one libwebrtc `AudioProcessingModule` per call
+> session (AEC3, NS, AGC2, HPF), fed the mixer's played frames as the
+> reference; every 10 ms mic frame is processed, metered and gated before
+> `capture_frame`. A module's settings are fixed when built, so a switch
+> builds a new one. The gate: **Auto** follows a noise floor that falls
+> within frames and rises 5 dB/s, opening 12 dB above it (no ceiling: any
+> steady sound is learned in seconds); **manual** is a threshold, −100 dB
+> sending everything. 200 ms hangover, a one-frame ramp at each edge,
+> silence below it with the publication unmuted; push-to-talk replaces it
+> while armed. The gate's verdict is the local Speaking state (voice rooms)
+> and, with the level, a `watch` for the meter. Settings live in
+> `call_settings.rs`, saved per computer as `voice.json` in the profile
+> (Discord's defaults: everything on, sensitivity automatic), and apply to
+> the call at once. The controls (`view/voice_settings.rs`: Input
+> sensitivity with the meter under the threshold slider, and the three
+> Voice processing switches) sit in the dock's Devices panel until U2.
+> Found on the way: the timer-paced mixer could leave up to 680 ms queued
+> in the pipe to `pacat`, which kept AEC3 from converging for 20 s or more;
+> that pipe is now one page (≈43 ms), so `pacat` paces the mixer. With all
+> three modules on, AGC2 lifts steady noise back up for the first ≈10 s of
+> a module, which is why the automatic gate has no ceiling.
+> `--voice-processing` (release builds) measures, switching Alice's
+> settings in her Devices panel: echo 26–29 dB down with Alice's talker at
+> a median within 3 dB (ducked up to 10 dB under Bruno's syllables); noise
+> 13–14 dB down with syllables within 1 dB; quiet noise below a −40 dB
+> threshold decoded as silence at both peers, no ring, microphone unmuted
+> at the SFU; the gate adds 10 ms to a loud onset; steady noise learned and
+> silenced under the defaults while syllables over it pass. All call
+> fixtures now start from unprocessed settings (`qa_events.RAW_VOICE`):
+> steady tones are what the processing removes (NS holds one 13 dB down; a
+> loud steady far-end tone makes AEC3 suppress the near end even without an
+> echo path, and keep suppressing it for 20 s or more after it stops).
 
 **Files:** `desktop_call/audio.rs` (APM and VAD), `desktop_call.rs`
 (`controlled_capture`, `AudioMode` gains `processing: {aec, ns, agc}` and
@@ -711,8 +745,8 @@ pattern checks.
 |---|---|---|
 | **Raw frames through a pipe at 1080p** (≈93 MB/s at 30 fps, 186 MB/s at 60, plus copies into `I420Buffer`) | V1, C1 | Measure CPU first. Alternatives: GStreamer `shmsink`, or libwebrtc's `DesktopCapturer` (its own portal and PipeWire, so no symbol clash, but a second picker flow and unknown DMA-BUF support). In-process gstreamer-rs would load system libpipewire next to libwebrtc's copy, the same clash `cameras.rs` works around |
 | **Iced image path at 30 fps per tile** (new texture per frame) | V1 | Profile with the render-rate probe. V1b moves to a wgpu `shader` widget. tiny-skia keeps the CPU fallback |
-| **AEC quality with pacat buffering**: the reference and actual output are offset by an unknown 40–80 ms | A2 | The APM delay estimator handles hundreds of ms. The echo fixture measures real suppression. In-process libpulse could follow if needed |
-| **AGC/NS distort the tone fixtures** | A2, all audio tests | Keep a QA override to turn processing off, or move fixtures to speech-like signals |
+| **AEC quality with pacat buffering**: the reference and actual output are offset by an unknown 40–80 ms | A2 | Found in A2: the timer-paced mixer could leave up to 680 ms queued in the 64 KiB pipe to `pacat` (whatever it wrote while `pacat` started or after a stall), and AEC3 then needed 20 s or more to converge. The playback pipe is now one page (≈43 ms), so `pacat` paces the mixer; the echo fixture measures real suppression. In-process libpulse could follow if needed |
+| **AGC/NS distort the tone fixtures** | A2, all audio tests | Confirmed in A2: NS holds a steady tone ≈13 dB down, and a loud steady far-end tone makes AEC3 suppress the near end even with no echo path, and keep it suppressed long after (speech-like far ends don't). The voice-room fixtures save processing off (`qa_voice_room.RAW`); `--voice-processing` measures processing with syllables |
 | **GlobalShortcuts portal UX**: a compositor dialog, binding may swallow the key (one user report about Discord), GNOME support only since 48 | K1 | X11 grab fallback. In-window fallback. README note. Test KDE in the private KWin with kglobalaccel; it currently runs with `--no-global-shortcuts` |
 | **Simulcast + E2EE + Element** | V2 | livekit-client supports E2EE simulcast. `--element-video` must pass before shipping. If it fails, keep simulcast between native peers only and gate by peer |
 | **Hardware encoders in the prebuilt webrtc-sys** (VAAPI/NVENC may not be compiled in; H.264 with E2EE needs NAL-aware encryption) | C1 | Read the backend from stats. Fall back to software. Test H.264 E2EE against Element before offering it |

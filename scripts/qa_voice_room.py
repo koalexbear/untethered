@@ -37,7 +37,7 @@ def client_cores(i):
 
 
 class Desktop:
-    def __init__(self,stack,root,env,i,kde=None,*,prefix=(),room="Atrium",log=None):
+    def __init__(self,stack,root,env,i,kde=None,*,prefix=(),room="Atrium",log=None,pipe=None):
         self.env=env
         self.i=i
         self.kde=kde
@@ -49,6 +49,10 @@ class Desktop:
         self.windows=deque(maxlen=12)
         self.audit=None
         self.stats=None  # UNTETHERED_QA_VIDEO_STATS log, when enabled
+        # When a list: (monotonic time read, 12 kHz samples) per 100 ms window.
+        self.capture=None
+        # When the current input signal started feeding (qa_voice_processing).
+        self.fed=0.0
         pcm=["--raw","--rate=48000","--channels=1","--format=s16le","--latency-msec=40"]
         def process(args,**kw):
             proc=sp.Popen(args,env=env,stderr=sp.DEVNULL,**kw)
@@ -57,14 +61,30 @@ class Desktop:
             stack.callback(stop)
             return proc
         source=process(["pacat","--playback",f"--device=Mic{i}",*pcm],stdin=sp.PIPE,bufsize=0)
+        if pipe:
+            # Less queued input, so a new signal reaches the client sooner.
+            import fcntl
+            fcntl.fcntl(source.stdin.fileno(),1031,pipe)  # F_SETPIPE_SZ
         speaker=process(["pacat","--record",f"--device=Out{i}.monitor",*pcm],stdout=sp.PIPE)
         def feed():
+            # `tone` is an index into PCM or a signal of whole 100 ms pieces,
+            # fed 100 ms at a time so a new signal starts within one.
+            fed,at=None,0
             try:
-                while True:source.stdin.write(PCM[self.tone])
+                while True:
+                    tone=self.tone
+                    signal=tone if isinstance(tone,bytes) else PCM[tone]
+                    if tone is not fed:fed,at,self.fed=tone,0,time.monotonic()
+                    source.stdin.write(signal[at:at+9600])
+                    at=(at+9600)%len(signal)
             except (BrokenPipeError,ValueError):pass
         def listen():
             while data:=speaker.stdout.read(9600):
                 samples=array.array("h");samples.frombytes(data)
+                if (capture:=self.capture) is not None:
+                    # A 4-sample average before decimating keeps most of
+                    # the band above 6 kHz from folding into the analysis.
+                    capture.append((time.monotonic(),[sum(samples[n:n+4])/4 for n in range(0,len(samples),4)]))
                 samples=samples[::4]
                 amps=[2*abs(sum(v*c for v,c in zip(samples,b)))/len(samples) for b in BINS]
                 self.windows.append(amps)
@@ -246,24 +266,28 @@ class Desktop:
                                         for amps in windows)
 
 
+def highlights(peer,names):
+    """Who `peer`'s voice roster shows speaking (indices into `names`), or
+    None until every name is read."""
+    # A speaking participant's avatar gets a green ring in the voice roster.
+    # Skip your own name in the user panel: its Online dot is green too.
+    # Above that, take each name's topmost row.
+    im=peer.image()
+    panel=peer.ui.oy+peer.ui.height-USER_PANEL
+    rows={}
+    for word,x,y in peer.words():
+        for i,name in enumerate(names):
+            if word==name.lower() and 70<x<CHAT_X and y<min(panel,rows.get(i,panel)):rows[i]=y
+    active={i for i,y in rows.items() if peer.ui.speaking(im,y)}
+    return active if len(rows)==len(names) else None
+
+
 def check_speaking(desks,names):
-    def highlights(peer):
-        # A speaking participant's avatar gets a green ring in the voice roster.
-        # Skip your own name in the user panel: its Online dot is green too.
-        # Above that, take each name's topmost row.
-        im=peer.image()
-        panel=peer.ui.oy+peer.ui.height-USER_PANEL
-        rows={}
-        for word,x,y in peer.words():
-            for i,name in enumerate(names):
-                if word==name.lower() and 70<x<CHAT_X and y<min(panel,rows.get(i,panel)):rows[i]=y
-        active={i for i,y in rows.items() if peer.ui.speaking(im,y)}
-        return active if len(rows)==len(names) else None
     def verify(active):
         wait_for("decoded sound matches selected inputs",lambda:all(
             d.hears({TONES[j] for j in active if j!=i}) for i,d in enumerate(desks)),12)
         expected=", ".join(names[i] for i in sorted(active)) or "silence"
-        wait_for(f"all three speaking rosters: {expected}",lambda:all(highlights(d)==active for d in desks),12)
+        wait_for(f"all three speaking rosters: {expected}",lambda:all(highlights(d,names)==active for d in desks),12)
         print(f"Speaking indicators: {expected}; all 3 rendered rosters matched, with decoded audio checked at each client.",flush=True)
     def stage(active):
         for i,d in enumerate(desks):d.tone=i if i in active else SILENCE
@@ -284,7 +308,7 @@ def check_speaking(desks,names):
     stage(set())
 
 
-def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=False,ptt=False,layout=False,reconnect=False,jwt=None):
+def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=False,ptt=False,layout=False,reconnect=False,processing=False,jwt=None):
     dirs=[tmp/f"p{i}" for i in range(3)]
     for p in dirs:p.mkdir()
     credentials=[seed(p,hs) for p in dirs]
@@ -368,7 +392,7 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
                 kde=KWin(stack,d,root,backend,env=env,screencast=ptt!="wayland",native_log=log,
                          global_shortcuts=ptt=="wayland")
             prefix=link.prefix if reconnect and i==1 else ()
-            desks.append(Desktop(stack,root,env,i,kde,prefix=prefix,log=log))
+            desks.append(Desktop(stack,root,env,i,kde,prefix=prefix,log=log,pipe=16384 if processing and i==0 else None))
             if log:desks[-1].stats=logs
         try:
             def audio_counts():
@@ -423,6 +447,10 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
             elif layout:
                 from qa_room_layout import check_layout
                 check_layout(stack,desks,users,secret,tracks,publications)
+            elif processing:
+                from qa_voice_processing import check_processing
+                check_processing(desks,names,secret,users,dirs)
+                assert publications(3)==tracks and audio_counts()==[(1,1)]*3
             elif reconnect:
                 from qa_room_reconnect import check_reconnect
                 tracks=check_reconnect(desks,users,names,link,logs,member_events,members,publications,audio_counts)

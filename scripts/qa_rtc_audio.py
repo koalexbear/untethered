@@ -81,12 +81,12 @@ rtc:
         yield secret
 
 
-def test(tmp, hs, name, jwt, root, backend, seed, http, service, *, desktop=False,incoming=False,controls=False,devices=False,reconnect=None,turn=False,group=False,share=False,camera=False,ptt=False,layout=False,room_reconnect=False,multi_ring=False,dnd_ring=False,muted_peer=False,native_dm=False,unsupported_dm=False,dm_video=False,element_video=False,switch_camera=False,tray=None):
+def test(tmp, hs, name, jwt, root, backend, seed, http, service, *, desktop=False,incoming=False,controls=False,devices=False,reconnect=None,turn=False,group=False,share=False,camera=False,ptt=False,layout=False,room_reconnect=False,processing=False,multi_ring=False,dnd_ring=False,muted_peer=False,native_dm=False,unsupported_dm=False,dm_video=False,element_video=False,switch_camera=False,tray=None):
     if group:
         from qa_voice_room import test_group
         with call_services(tmp,name,jwt,service) as secret:
             test_group(tmp,hs,name,root,backend,seed,http,secret,share=share,camera=camera,ptt=ptt,layout=layout,
-                       reconnect=room_reconnect,jwt=jwt)
+                       reconnect=room_reconnect,processing=processing,jwt=jwt)
         return
     native,hdr=seed(tmp,hs)
     peer_dir=tmp/"peer";peer_dir.mkdir()

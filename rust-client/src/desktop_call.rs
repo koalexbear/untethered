@@ -34,10 +34,13 @@ mod channel;
 mod recovery;
 mod room_video;
 mod share_audio;
+mod voice;
 use audio::{AudioIo, Kind, Mixer};
 pub(crate) use cameras::{CameraChoice, list_cameras};
 use recovery::{LeaseWatch, Lost, Rejoin, Step, close, encrypted_tracks, select_key, select_one};
 pub(super) use room_video::{Feed, Layer, Previews, VideoInput};
+pub(crate) use voice::InputLevel;
+use voice::Voice;
 
 /// The microphones, speakers and shareable app streams of this platform.
 pub(super) fn list_devices() -> futures_util::future::BoxFuture<'static, Result<Catalog>> {
@@ -98,6 +101,8 @@ pub struct AudioMode {
     // SID. Replacement microphones inherit the same setting for this call.
     volumes: std::collections::BTreeMap<String, u8>,
     pub video: [Option<uuid::Uuid>; 2],
+    /// Microphone processing and the voice-activity gate (call_settings.rs).
+    pub voice: crate::call_settings::Voice,
 }
 impl AudioMode {
     pub(super) fn volume(&self, user: &str) -> u8 {
@@ -177,6 +182,9 @@ pub struct ActiveCall {
     pub stage_open: bool,
     pub theater: bool,
     pub speaking: watch::Receiver<std::collections::BTreeSet<String>>,
+    /// The microphone's processed level and the gate's verdict, for the
+    /// input sensitivity meter.
+    pub input: watch::Receiver<InputLevel>,
     /// The stage's scrolling thumbnail strip and grid: tiles scrolled
     /// away get no video.
     pub stage_scroll: [Scroll; 2],
@@ -204,6 +212,7 @@ pub enum Scrolled {
 struct GroupViews {
     previews: Previews,
     speakers: watch::Sender<std::collections::BTreeSet<String>>,
+    level: watch::Sender<InputLevel>,
 }
 pub struct Controls {
     cancel: Receiver<()>,
@@ -322,16 +331,19 @@ impl crate::App {
                 .then(uuid::Uuid::new_v4),
             ],
             talk: TalkGate::from_ptt(group && self.room_ptt),
+            voice: self.voice.voice,
             ..AudioMode::default()
         });
         let previews = Previews::default();
         let (speakers, speaking) = watch::channel(Default::default());
+        let (level, input) = watch::channel(InputLevel::default());
         let controls = Controls {
             cancel: rx,
             audio: mode,
             views: GroupViews {
                 previews: previews.clone(),
                 speakers,
+                level,
             },
         };
         if self
@@ -370,6 +382,7 @@ impl crate::App {
                 stage_open: false,
                 theater: false,
                 speaking,
+                input,
                 stage_scroll: Default::default(),
             });
         } else {
@@ -730,6 +743,7 @@ pub async fn run_with<S: CallSignal>(
                         mode: audio,
                         video,
                         previews: views.previews,
+                        level: views.level,
                     },
                 )
                 .await
@@ -762,6 +776,7 @@ struct DmMedia<'a> {
     mode: watch::Receiver<AudioMode>,
     video: bool,
     previews: Previews,
+    level: watch::Sender<InputLevel>,
 }
 /// Our sender key for this DM, and the provider holding both devices' keys.
 struct DmKeys {
@@ -1021,6 +1036,8 @@ async fn talk<S: CallSignal>(
     let devices = mode.clone();
     let io = audio::platform();
     let mixer = Mixer::start(io.clone(), mode.clone(), notices.clone());
+    let voice = Voice::new(dm.level.clone());
+    mixer.far_end(voice.reference());
     let capture = |publication| {
         controlled_capture(
             io.clone(),
@@ -1028,6 +1045,7 @@ async fn talk<S: CallSignal>(
             publication,
             devices.clone(),
             notices.clone(),
+            voice.clone(),
         )
     };
     let playback = |track| mixer.play(track, Kind::Voice, Some(dm_peer.to_owned()));
@@ -1494,9 +1512,12 @@ async fn controlled_capture(
     publication: LocalTrackPublication,
     mut mode: watch::Receiver<AudioMode>,
     notices: DeviceNotices,
+    voice: Voice,
 ) -> Result<()> {
+    let settings = mode.clone();
     loop {
         if mode.borrow_and_update().mic_off() {
+            voice.closed();
             if !publication.is_muted() {
                 publication.mute();
             }
@@ -1512,8 +1533,9 @@ async fn controlled_capture(
         tokio::select! {
             biased;
             change=mode.wait_for(changed)=>{change.map_err(|_| ENDED)?;continue;}
-            result=capture(&*io,&src,&publication,&route,&notices)=>result?,
+            result=capture(&*io,&src,&publication,&route,&notices,&settings,&voice)=>result?,
         }
+        voice.closed();
         if !publication.is_muted() {
             publication.mute();
         }
@@ -1530,12 +1552,15 @@ async fn capture(
     publication: &LocalTrackPublication,
     route: &Route,
     notices: &DeviceNotices,
+    settings: &watch::Receiver<AudioMode>,
+    voice: &Voice,
 ) -> Result<()> {
     let Ok(mut input) = io.open_input(route.name.as_deref()) else {
         return Ok(());
     };
     let mut frame = [0; audio::SAMPLES];
     let mut first = true;
+    let mut processing = voice.capture();
     while input.read(&mut frame).await {
         if first {
             first = false;
@@ -1543,6 +1568,10 @@ async fn capture(
                 publication.unmute();
             }
             notices.report(Port::Mic, route.revision, false).await;
+        }
+        {
+            let mode = settings.borrow();
+            processing.frame(&mut frame, &mode.voice, mode.talk != TalkGate::Open);
         }
         src.capture_frame(&AudioFrame {
             data: frame.as_slice().into(),
