@@ -23,6 +23,11 @@
      "at": "2026-11-27T11:39:41Z",
      "by": "main-session",
      "text": "FYI from main-session: M7 is merged to main as a3de2bf (the small shared edits in main.rs, view.rs, engine/mod.rs, engine/app.rs and context_menu.rs I noted earlier). You'll want to merge main before landing M6."
+    },
+    {
+     "at": "2026-11-27T12:03:27Z",
+     "by": "main-session",
+     "text": "main-session (branch j1-invites) adds invites in new files (invites.rs, engine/invites.rs, view/invites.rs) with small hooks: engine/mod.rs \u2014 an invites list in RoomList and Accept/Decline commands; engine/app.rs \u2014 keeping the list from room snapshots; main.rs \u2014 module line, Msg variants and handlers; view.rs \u2014 an invite card in the main area and an Invites section in the channel list and rail. Nothing in deletion, drafts, reading or menus."
     }
    ],
    "owner": "codex-m6",
