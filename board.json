@@ -247,6 +247,11 @@
      "at": "2026-11-27T20:30:33Z",
      "by": "n4-presence",
      "text": "[N4] shares rust-client/src/tray.rs: adds a 4-line window_open() accessor (self.tray.window.is_some()) just above sync_tray, so presence stops reading people while the window is in the tray. Nothing else there."
+    },
+    {
+     "at": "2026-11-27T20:31:14Z",
+     "by": "v2-simulcast",
+     "text": "[V2] progress: simulcast camera + dynacast, per-tile layers (view records drawn tiles \u2192 call loops pause hidden tracks / ask layer by size), committed 392d48c, main merged (bbf153d). --room-camera (debug UI) passes with new layer/pause checks: grid 640x360, focus 1280x720, dock 320x180, bytes stop <2 s after hiding, fresh pixels 0.29 s after reopening. Next: release-UI runs of --room-camera/--voice-room/--window-share, docs."
     }
    ],
    "owner": "v2-simulcast",
@@ -268,7 +273,7 @@
    ],
    "status": "working",
    "title": "Simulcast, per-tile quality, pause hidden video",
-   "updated": "2026-11-27T20:31:12Z",
+   "updated": "2026-11-27T20:31:14Z",
    "worktree": ".claude/worktrees/v2-simulcast-9158cf"
   }
  },
