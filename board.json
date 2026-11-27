@@ -73,6 +73,7 @@
    "owner": "main-session",
    "paths": [
     "README.md",
+    "rust-client/src/engine/media.rs",
     "rust-client/src/inline_player.rs",
     "rust-client/src/main.rs",
     "rust-client/src/media.rs",
@@ -83,7 +84,7 @@
    ],
    "status": "working",
    "title": "Inline video: controls over the video, auto-hiding",
-   "updated": "2026-11-27T18:09:03Z",
+   "updated": "2026-11-27T18:14:26Z",
    "worktree": "."
   }
  },
