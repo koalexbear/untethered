@@ -860,6 +860,122 @@ async fn matrix_sdk_login_restore_and_encrypted_round_trip() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
+#[ignore = "run UNTETHERED_QA_ONLY=profiles scripts/qa_matrix_sdk.py with disposable Synapse"]
+async fn matrix_sdk_profile_interop() {
+    use super::profile::Action as ProfileAction;
+    let fixture: Value =
+        serde_json::from_slice(&std::fs::read(env::var("UNTETHERED_QA_FIXTURE").unwrap()).unwrap())
+            .unwrap();
+    let base = PathBuf::from(env::var_os("UNTETHERED_QA_PROFILES").unwrap());
+    let server = fixture["server"].as_str().unwrap();
+    let room = fixture["room"].as_str().unwrap();
+    let dm = fixture["dm"].as_str().unwrap();
+    let peer = fixture["peer"].as_str().unwrap();
+    let (mut owner, owner_events, owner_engine) = sign_in(
+        &base.join("profile-owner"),
+        server,
+        fixture["username"].as_str().unwrap(),
+        fixture["password"].as_str().unwrap(),
+    )
+    .await;
+    owner.recovery = rooms::string(&fixture["key"]);
+    let _ = owner.update(Msg::Verify);
+    let (mut observer, observer_events, observer_engine) = sign_in(
+        &base.join("profile-observer"),
+        server,
+        peer,
+        fixture["peer_password"].as_str().unwrap(),
+    )
+    .await;
+    wait2(
+        &mut owner,
+        &owner_events,
+        &mut observer,
+        &observer_events,
+        "verified owner and both joined room lists",
+        |a, b| {
+            a.verified
+                && a.live.list.contains_key(room)
+                && a.live.list.contains_key(dm)
+                && b.live.list.contains_key(room)
+        },
+    )
+    .await;
+    let owner_id = owner.matrix_id.clone();
+    let profile = |action| Msg::Sdk(Action::Profile(action));
+    owner.account = true;
+    let _ = owner.update(profile(ProfileAction::Name("Profile QA".into())));
+    let _ = owner.update(profile(ProfileAction::SaveName));
+    wait2(
+        &mut owner,
+        &owner_events,
+        &mut observer,
+        &observer_events,
+        "saved display name arrives in the other device's member list",
+        |a, b| {
+            a.profile == "Profile QA"
+                && b.live.list[room]
+                    .members
+                    .get(&owner_id)
+                    .is_some_and(|name| name == "Profile QA")
+        },
+    )
+    .await;
+
+    let mut png = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::new_rgba8(2, 2)
+        .write_to(&mut png, image::ImageFormat::Png)
+        .unwrap();
+    // Supply the picker's result without requiring a desktop file dialog.
+    owner.sdk_ui.profile.picking = true;
+    let _ = owner.update(profile(ProfileAction::Picked(
+        0,
+        Ok(Some(png.into_inner())),
+    )));
+    wait2(
+        &mut owner,
+        &owner_events,
+        &mut observer,
+        &observer_events,
+        "uploaded avatar arrives in the other device's member list",
+        |a, b| {
+            a.own_avatar
+                .as_ref()
+                .is_some_and(|uri| b.live.list[room].avatars.get(&owner_id) == Some(uri))
+        },
+    )
+    .await;
+    let _ = owner.update(profile(ProfileAction::RemoveAvatar));
+    wait2(
+        &mut owner,
+        &owner_events,
+        &mut observer,
+        &observer_events,
+        "removed avatar clears on both devices",
+        |a, b| a.own_avatar.is_none() && !b.live.list[room].avatars.contains_key(&owner_id),
+    )
+    .await;
+
+    owner.account = false;
+    let dm_count = owner.live.list.values().filter(|room| room.dm).count();
+    for _ in 0..2 {
+        let _ = owner.update(profile(ProfileAction::Open {
+            room: room.into(),
+            user: peer.into(),
+        }));
+        let _ = owner.update(profile(ProfileAction::Message));
+        assert_eq!(owner.selected, dm);
+        assert!(!owner.sdk_ui.profile.opening_dm());
+    }
+    assert_eq!(
+        owner.live.list.values().filter(|room| room.dm).count(),
+        dm_count
+    );
+    stop(owner, owner_engine).await;
+    stop(observer, observer_engine).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 6)]
 #[ignore = "run scripts/qa_matrix_sdk.py (disposable Synapse)"]
 async fn matrix_sdk_account_flows() {
     let fixture: Value =

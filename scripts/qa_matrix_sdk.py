@@ -381,6 +381,14 @@ sso:
             isolated.update(UNTETHERED_KEYRING="off")
             isolated.pop("DBUS_SESSION_BUS_ADDRESS", None)
             print("gnome-keyring-daemon not found; testing the file fallback only", flush=True)
+        if os.environ.get("UNTETHERED_QA_ONLY") == "profiles":
+            flows = {**isolated, "UNTETHERED_KEYRING": "off", "UNTETHERED_QA_PROFILES": str(tmp / "profiles")}
+            flows.pop("UNTETHERED_QA_KEYRING", None)
+            subprocess.run(["cargo", "test", "--locked", "--manifest-path", "rust-client/Cargo.toml",
+                            "matrix_sdk_profile_interop", "--", "--ignored", "--nocapture"],
+                           cwd=ROOT, env=flows, check=True)
+            print("PASS profile interoperability", flush=True)
+            return
         if os.environ.get("UNTETHERED_QA_ONLY") == "call":
             flows = {**isolated, "UNTETHERED_KEYRING": "off", "UNTETHERED_QA_PROFILES": str(tmp / "profiles")}
             flows.pop("UNTETHERED_QA_KEYRING", None)
@@ -480,7 +488,7 @@ sso:
                            "matrix_sdk_account_flows", "--", "--ignored", "--nocapture"],
                           cwd=ROOT, env=flows).returncode:
             failed.append("matrix_sdk_account_flows")
-        for name in ("matrix_sdk_rooms_spaces_and_moderation", "matrix_sdk_call_signaling"):
+        for name in ("matrix_sdk_rooms_spaces_and_moderation", "matrix_sdk_call_signaling", "matrix_sdk_profile_interop"):
             if subprocess.run(["cargo", "test", "--locked", "--manifest-path", "rust-client/Cargo.toml",
                                name, "--", "--ignored", "--nocapture"], cwd=ROOT, env=flows).returncode:
                 failed.append(name)

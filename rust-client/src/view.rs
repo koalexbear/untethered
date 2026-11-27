@@ -11,6 +11,7 @@ mod hover;
 mod icons;
 mod mentions;
 mod popover;
+mod profile;
 mod reaction_bar;
 mod rich;
 mod room_people;
@@ -1226,7 +1227,8 @@ impl App {
             .viewer
             .as_ref()
             .map_or_else(none, |v| viewer::view(self, v));
-        let menu = match (self.server_menu && self.viewer.is_none())
+        let profile = self.viewer.is_none().then(|| profile::card(self)).flatten();
+        let menu = match (self.server_menu && self.viewer.is_none() && profile.is_none())
             .then(|| self.server_menu_view())
             .flatten()
         {
@@ -1248,7 +1250,15 @@ impl App {
             }
             _ => none(),
         };
-        stack![self.screen(), setup, dialog, viewer, menu].into()
+        stack![
+            self.screen(),
+            setup,
+            dialog,
+            viewer,
+            menu,
+            profile.unwrap_or_else(none)
+        ]
+        .into()
     }
     /// Discord's server dropdown: invites, channel creation and notification
     /// defaults for the selected space.
@@ -2788,11 +2798,15 @@ impl App {
                     self.user_area(
                         &p.sender,
                         format!("name {place}"),
-                        text(name)
-                            .size(16)
-                            .font(BOLD)
-                            .color(TEXT)
-                            .wrapping(text::Wrapping::None)
+                        profile::link(
+                            self,
+                            &p.sender,
+                            text(name)
+                                .size(16)
+                                .font(BOLD)
+                                .color(TEXT)
+                                .wrapping(text::Wrapping::None),
+                        )
                     ),
                     text(stamp(p)).size(12).color(CHANNEL)
                 ]
@@ -2802,7 +2816,11 @@ impl App {
                     container(self.user_area(
                         &p.sender,
                         format!("picture {place}"),
-                        face(name, self.user_picture(r, &p.sender), 40.)
+                        profile::link(
+                            self,
+                            &p.sender,
+                            face(name, self.user_picture(r, &p.sender), 40.)
+                        )
                     ))
                     .padding(Padding {
                         top: 2.,
@@ -3659,7 +3677,9 @@ impl App {
             )
             .padding(16)
         ];
-        page = page.push(container(profile).width(Fill).style(|_| surface(TRAY, 8.)));
+        page = page
+            .push(container(profile).width(Fill).style(|_| surface(TRAY, 8.)))
+            .push(profile::settings(self));
         let group = |heading: &'static str, rows: Vec<El<'static>>| -> El<'static> {
             column![
                 label(heading),

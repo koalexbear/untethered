@@ -53,11 +53,9 @@ impl Rooms {
             room.voice = s.voice;
             room.encrypted = s.encrypted;
             room.successor = s.successor;
+            room.dm_peer = s.dm_peer;
             #[cfg(target_os = "linux")]
-            {
-                room.dm_peer = s.dm_peer;
-                room.replace_voice_members(&s.call_members);
-            }
+            room.replace_voice_members(&s.call_members);
             room.posting.store_snapshot(s.create, s.power);
             #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
             {
@@ -144,11 +142,13 @@ impl Room {
         // origin_server_ts goes backwards by never letting the key decrease.
         let mut floor = i64::MIN;
         for m in messages {
-            if let Some(name) = &m.sender_name {
-                self.members.insert(m.sender.clone(), name.clone());
-            }
-            if let Some(avatar) = &m.sender_avatar {
-                self.avatars.insert(m.sender.clone(), avatar.clone());
+            if !self.profile_members.contains(&m.sender) {
+                if let Some(name) = &m.sender_name {
+                    self.members.insert(m.sender.clone(), name.clone());
+                }
+                if let Some(avatar) = &m.sender_avatar {
+                    self.avatars.insert(m.sender.clone(), avatar.clone());
+                }
             }
             if let Some((sender, body)) = m.reply_to.as_ref().and_then(|r| r.quoted.clone()) {
                 let id = m.reply_to.as_ref().unwrap().event_id.clone();

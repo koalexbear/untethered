@@ -9,6 +9,7 @@ use web_sys::FileList;
 extern "C" {
     fn install_files(files: JsValue, hover: JsValue);
     pub fn pick(room: &str);
+    pub fn pick_avatar(request: &str);
     #[wasm_bindgen(catch)]
     pub async fn thumbnail(
         file: &web_sys::Blob,

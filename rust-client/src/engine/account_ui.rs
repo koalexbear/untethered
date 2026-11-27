@@ -43,6 +43,7 @@ pub struct AccountUi {
     pub browser: bool,
     pub note: String,
     pub jobs: BTreeMap<i64, Job>,
+    pub profile: super::profile::Ui,
 }
 
 impl AccountUi {
@@ -53,6 +54,7 @@ impl AccountUi {
 
 #[derive(Clone)]
 pub enum Action {
+    Profile(super::profile::Action),
     VerifyWithDevice,
     AcceptVerification,
     EmojiMatch(bool),
@@ -111,6 +113,7 @@ impl App {
 
     pub(crate) fn sdk_action(&mut self, action: Action) -> Task<Msg> {
         match action {
+            Action::Profile(action) => return self.profile_action(action),
             Action::VerifyWithDevice if self.logged_in && !self.verified => {
                 self.job(Job::VerifyDevice, |id| Command::VerifyDevice { id })
             }

@@ -23,6 +23,7 @@ mod keyring;
 mod live_test;
 mod media;
 mod messaging;
+pub mod profile;
 #[cfg(debug_assertions)]
 pub mod qa;
 mod rooms;
@@ -79,6 +80,14 @@ pub enum Command {
     Recover {
         id: i64,
         secret: String,
+    },
+    SaveProfile {
+        id: i64,
+        edit: profile::Edit,
+    },
+    DirectProfile {
+        id: i64,
+        user: String,
     },
     /// Open the room's timeline if needed, then load older messages.
     Paginate {
@@ -326,6 +335,14 @@ pub enum BrowserMethod {
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub enum Event {
     Account(Account),
+    ProfileSaved {
+        id: i64,
+        result: Result<profile::Saved, Failure>,
+    },
+    ProfileDirect {
+        id: i64,
+        result: Result<String, Failure>,
+    },
     Rooms(RoomList),
     Timeline(TimelineSnapshot),
     Done {
@@ -557,8 +574,7 @@ pub struct RoomSummary {
     pub topic: String,
     pub space: bool,
     pub dm: bool,
-    /// Direct-call target; only the Linux call UI reads it today.
-    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    /// The other user in a direct-message room.
     pub dm_peer: Option<String>,
     pub voice: bool,
     /// A voice room's call member state events from the store, in
@@ -831,6 +847,7 @@ struct Live {
     verifier: Arc<verify::Verifier>,
     /// Typing notices for `typing::notices`, in order.
     typing: Sender<(String, bool)>,
+    profile: tokio::sync::watch::Sender<profile::Changes>,
     tasks: Tasks,
 }
 
@@ -890,7 +907,12 @@ impl Engine {
         ));
         let verifier = verify::Verifier::new(client.clone(), self.events.clone());
         let mut tasks = Tasks::default();
-        tasks.spawn(account_updates(client.clone(), self.events.clone()));
+        let (profile, changes) = tokio::sync::watch::channel(profile::Changes::default());
+        tasks.spawn(account_updates(
+            client.clone(),
+            self.events.clone(),
+            changes,
+        ));
         tasks.spawn(rooms::updates(client.clone(), self.events.clone()));
         tasks.spawn(messaging::account_data(client.clone(), self.events.clone()));
         state::member_changes(&client, self.events.clone());
@@ -915,6 +937,7 @@ impl Engine {
             timelines,
             verifier,
             typing,
+            profile,
             tasks,
         });
     }
@@ -963,6 +986,43 @@ impl Engine {
                     }
                     let _ = events.send(Event::Done { id, result }).await;
                 });
+            }
+            Command::SaveProfile { id, edit } => {
+                let Some(live) = &self.live else {
+                    return self
+                        .emit(Event::ProfileSaved {
+                            id,
+                            result: Err(Failure::Unavailable),
+                        })
+                        .await;
+                };
+                let (client, changes, events) = (
+                    live.client.clone(),
+                    live.profile.clone(),
+                    self.events.clone(),
+                );
+                rt::spawn(async move {
+                    let result = profile::save(&client, edit).await;
+                    if let Ok(saved) = &result {
+                        changes.send_modify(|state| state.record(saved));
+                    }
+                    let _ = events.send(Event::ProfileSaved { id, result }).await;
+                });
+            }
+            Command::DirectProfile { id, user } => {
+                self.answer(
+                    Event::ProfileDirect {
+                        id,
+                        result: Err(Failure::Unavailable),
+                    },
+                    move |client| async move {
+                        Event::ProfileDirect {
+                            id,
+                            result: profile::direct(&client, &user).await,
+                        }
+                    },
+                )
+                .await
             }
             Command::Paginate { id, room } => {
                 let Some(live) = &self.live else {
@@ -1686,7 +1746,11 @@ pub(super) async fn account(
 }
 
 /// Report sign-in, device verification and recovery changes.
-async fn account_updates(client: Client, events: Sender<Event>) {
+async fn account_updates(
+    client: Client,
+    events: Sender<Event>,
+    mut changes: tokio::sync::watch::Receiver<profile::Changes>,
+) {
     use futures_util::StreamExt;
     let mut verification = client.encryption().verification_state();
     let mut recovery = client.encryption().recovery().state_stream();
@@ -1703,14 +1767,19 @@ async fn account_updates(client: Client, events: Sender<Event>) {
         .await;
     }
     loop {
-        if name.is_none() {
+        let saved = changes.borrow_and_update().clone();
+        if let Some(value) = saved.name {
+            name = value;
+        } else if name.is_none() {
             name = rt::timeout(Duration::from_secs(10), client.account().get_display_name())
                 .await
                 .ok()
                 .and_then(Result::ok)
                 .flatten();
         }
-        if avatar.is_none() {
+        if let Some(value) = saved.avatar {
+            avatar = value;
+        } else if avatar.is_none() {
             avatar = rt::timeout(Duration::from_secs(10), client.account().get_avatar_url())
                 .await
                 .ok()
@@ -1719,6 +1788,9 @@ async fn account_updates(client: Client, events: Sender<Event>) {
                 .map(|u| u.to_string());
         }
         let now = account(&client, name.clone(), avatar.clone()).await;
+        if changes.has_changed().unwrap_or(false) {
+            continue;
+        }
         if last.as_ref() != Some(&now) {
             if events.send(Event::Account(now.clone())).await.is_err() {
                 return;
@@ -1726,6 +1798,7 @@ async fn account_updates(client: Client, events: Sender<Event>) {
             last = Some(now);
         }
         tokio::select! {
+            c = changes.changed() => if c.is_err() { return },
             v = verification.next() => if v.is_none() { return },
             r = recovery.next() => if r.is_none() { return },
             // Own-device signatures can land without a state transition.
