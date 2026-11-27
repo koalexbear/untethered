@@ -150,7 +150,13 @@
   "N4": {
    "branch": "claude/n4-presence-13e26f",
    "claimed": "2026-11-27T20:12:43Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-27T20:17:49Z",
+     "by": "main-session",
+     "text": "main-session: M9 (polls) is merged to main as 76cfdc8. It touches main.rs (Msg::Poll, Msg::ComposerMenu, Request::Poll, App fields polling/composer_menu, an Escape branch), view.rs (the composer's + is now a popover menu, a poll card branch, two dialog slots), engine/mod.rs (Kind::Poll, Message.poll, three Commands) and context_menu.rs. Merge main into your branch before handing over."
+    }
+   ],
    "owner": "n4-presence",
    "paths": [
     "README.md",
