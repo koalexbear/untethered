@@ -39,9 +39,9 @@
    "paths": [
     "rust-client/src/engine/rooms.rs"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Unread badges trust the client's counts",
-   "updated": "2026-11-27T14:33:11Z",
+   "updated": "2026-11-27T14:36:53Z",
    "worktree": "."
   }
  },

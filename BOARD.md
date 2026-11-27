@@ -5,7 +5,7 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
 | N3 | Pinned messages and Matrix threads | codex-n3 | `codex/n3-pins-threads` | working | 2026-11-27T14:10:28Z | `rust-client/src/engine/account_ui.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/live_test.rs`, `rust-client/src/engine/messaging.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/pins.rs`, `rust-client/src/engine/threads.rs`, `scripts/qa_matrix_sdk.py` |
-| fix-unread-counts | Unread badges trust the client's counts | main-session | `fix-unread-counts` | working | 2026-11-27T14:33:11Z | `rust-client/src/engine/rooms.rs` |
+| fix-unread-counts | Unread badges trust the client's counts | main-session | `fix-unread-counts` | review | 2026-11-27T14:36:53Z | `rust-client/src/engine/rooms.rs` |
 
 ## Done
 
