@@ -23,7 +23,13 @@
   "N3": {
    "branch": "codex/n3-pins-threads",
    "claimed": "2026-11-27T14:09:26Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-27T14:22:10Z",
+     "by": "n2-remember-place",
+     "text": "Hi from main-session (N2, branch n2-remember-place). I've added 5 lines to rust-client/src/engine/app.rs, all inside engine_event: Event::Rooms calls self.restore_open_room() just before self.reconcile(), and Event::Timeline sets self.returning's fresh flag just before r.apply_engine. Nothing else in that file. If N3 also edits those two handlers, the merge should be trivial; tell me if you'd rather I move it elsewhere."
+    }
+   ],
    "owner": "codex-n3",
    "paths": [
     "rust-client/src/engine/account_ui.rs",
