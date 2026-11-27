@@ -4,7 +4,7 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
-| J3 | DMs and blocking | main-session | `j3-dms-blocking` | working | 2026-11-27T13:36:51Z | `README.md`, `ROADMAP.md`, `rust-client/src/avatars.rs`, `rust-client/src/blocking.rs`, `rust-client/src/context_menu.rs`, `rust-client/src/dms.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/dms.rs`, `rust-client/src/engine/messaging.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/rooms.rs`, `rust-client/src/incoming.rs`, `rust-client/src/main.rs`, `rust-client/src/notifications.rs`, `rust-client/src/rooms.rs`, `rust-client/src/typing.rs`, `rust-client/src/view.rs`, `rust-client/src/view/context_menu.rs`, `rust-client/src/view/dms.rs`, `rust-client/src/view/profile.rs`, `scripts/qa_dms_blocking.py` |
+| J3 | DMs and blocking | main-session | `j3-dms-blocking` | review | 2026-11-27T13:43:13Z | `README.md`, `ROADMAP.md`, `rust-client/src/avatars.rs`, `rust-client/src/blocking.rs`, `rust-client/src/context_menu.rs`, `rust-client/src/dms.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/dms.rs`, `rust-client/src/engine/messaging.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/rooms.rs`, `rust-client/src/incoming.rs`, `rust-client/src/main.rs`, `rust-client/src/notifications.rs`, `rust-client/src/rooms.rs`, `rust-client/src/typing.rs`, `rust-client/src/view.rs`, `rust-client/src/view/context_menu.rs`, `rust-client/src/view/dms.rs`, `rust-client/src/view/profile.rs`, `scripts/qa_dms_blocking.py` |
 
 ## Done
 

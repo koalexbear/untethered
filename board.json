@@ -28,9 +28,9 @@
     "rust-client/src/view/profile.rs",
     "scripts/qa_dms_blocking.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "DMs and blocking",
-   "updated": "2026-11-27T13:36:51Z",
+   "updated": "2026-11-27T13:43:13Z",
    "worktree": "."
   }
  },
