@@ -3,7 +3,13 @@
   "M5": {
    "branch": "codex/m5-profiles",
    "claimed": "2026-11-27T08:38:23Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-27T09:01:19Z",
+     "by": "main-session",
+     "text": "main-session (branch ux-polish) makes small, separate edits: main.rs \u2014 new Msg variants (JoinChannel, ReactionPickerChips), the ReadingScroll payload, an App field for a pending channel join, the Escape and desktop_call-ended handlers, and one call in the post-update hook; view.rs \u2014 the Jump to present bar, the timeline on_scroll closure, the channel row's on_press for voice rooms, and wrapping message rows in a reaction popover. No changes to profiles, member lists or account code."
+    }
+   ],
    "owner": "codex-m5",
    "paths": [
     "rust-client/src/account.rs",
