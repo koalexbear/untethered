@@ -38,9 +38,9 @@
     "scripts/replies-element.md",
     "scripts/test-media-interop.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Typing indicators",
-   "updated": "2026-11-27T00:12:16Z",
+   "updated": "2026-11-27T00:27:19Z",
    "worktree": ".claude/worktrees/m3-typing"
   },
   "room-upgrades": {
