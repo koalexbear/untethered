@@ -1,29 +1,5 @@
 {
  "claims": {
-  "N2": {
-   "branch": "n2-remember-place",
-   "claimed": "2026-11-27T14:01:00Z",
-   "notes": [],
-   "owner": "main-session",
-   "paths": [
-    "README.md",
-    "ROADMAP.md",
-    "rust-client/src/account.rs",
-    "rust-client/src/drafts.rs",
-    "rust-client/src/engine/app.rs",
-    "rust-client/src/main.rs",
-    "rust-client/src/paging.rs",
-    "rust-client/src/places.rs",
-    "rust-client/src/rooms.rs",
-    "rust-client/src/search/bookmark.rs",
-    "rust-client/src/view.rs",
-    "scripts/qa_remember_place.py"
-   ],
-   "status": "review",
-   "title": "Remember where you were",
-   "updated": "2026-11-27T14:22:38Z",
-   "worktree": "."
-  },
   "N3": {
    "branch": "codex/n3-pins-threads",
    "claimed": "2026-11-27T14:09:26Z",
@@ -249,6 +225,15 @@
    "owner": "main-session",
    "result": "merged as 5d1ff40",
    "title": "Quick switcher"
+  },
+  {
+   "branch": "n2-remember-place",
+   "claimed": "2026-11-27T14:01:00Z",
+   "finished": "2026-11-27T14:25:32Z",
+   "id": "N2",
+   "owner": "main-session",
+   "result": "merged as 3777467",
+   "title": "Remember where you were"
   }
  ]
 }
