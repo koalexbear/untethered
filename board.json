@@ -87,9 +87,9 @@
     "rust-client/src/view/selectable.rs",
     "scripts/qa_emotes.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Custom emoji and stickers (image packs)",
-   "updated": "2026-11-27T21:43:12Z",
+   "updated": "2026-11-27T21:57:55Z",
    "worktree": "."
   },
   "M12": {
