@@ -1,26 +1,5 @@
 {
- "claims": {
-  "N1": {
-   "branch": "n1-quick-switcher",
-   "claimed": "2026-11-27T13:44:37Z",
-   "notes": [],
-   "owner": "main-session",
-   "paths": [
-    "README.md",
-    "ROADMAP.md",
-    "rust-client/src/hotkeys.rs",
-    "rust-client/src/main.rs",
-    "rust-client/src/switcher.rs",
-    "rust-client/src/view.rs",
-    "rust-client/src/view/switcher.rs",
-    "scripts/qa_quick_switcher.py"
-   ],
-   "status": "review",
-   "title": "Quick switcher",
-   "updated": "2026-11-27T13:51:03Z",
-   "worktree": "."
-  }
- },
+ "claims": {},
  "done": [
   {
    "branch": "main",
@@ -210,6 +189,15 @@
    "owner": "main-session",
    "result": "merged as 5679235",
    "title": "DMs and blocking"
+  },
+  {
+   "branch": "n1-quick-switcher",
+   "claimed": "2026-11-27T13:44:37Z",
+   "finished": "2026-11-27T13:59:19Z",
+   "id": "N1",
+   "owner": "main-session",
+   "result": "merged as 5d1ff40",
+   "title": "Quick switcher"
   }
  ]
 }

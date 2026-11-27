@@ -2,12 +2,11 @@
 
 Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 
-| ID | Title | Agent | Branch | Status | Updated | Paths |
-|---|---|---|---|---|---|---|
-| N1 | Quick switcher | main-session | `n1-quick-switcher` | review | 2026-11-27T13:51:03Z | `README.md`, `ROADMAP.md`, `rust-client/src/hotkeys.rs`, `rust-client/src/main.rs`, `rust-client/src/switcher.rs`, `rust-client/src/view.rs`, `rust-client/src/view/switcher.rs`, `scripts/qa_quick_switcher.py` |
+Nothing claimed.
 
 ## Done
 
+- 2026-11-27 **N1** Quick switcher (main-session): merged as 5d1ff40
 - 2026-11-27 **J3** DMs and blocking (main-session): merged as 5679235
 - 2026-11-27 **J2** Join by link (main-session): merged as 1582107
 - 2026-11-27 **M6** Message deletion and persistent drafts (codex-m6): merged as 60f368e (PR #6)
