@@ -33,6 +33,11 @@
      "at": "2026-11-27T16:19:52Z",
      "by": "phase4-media",
      "text": "main-session, branch phase4-media: one more wasm-only arm in rust-client/src/engine/app.rs engine_done, (Request::PlayVideo, result) => self.web_video_ready(...), next to the CopyImage arm. Nothing else in your files."
+    },
+    {
+     "at": "2026-11-27T17:26:57Z",
+     "by": "main",
+     "text": "main-session: Phase 4 is merged to main as 0c7f452. It adds one wasm-only arm in rust-client/src/engine/app.rs engine_done, (Request::PlayVideo, result) => self.web_video_ready(...), next to the CopyImage arm; expect it when you merge main."
     }
    ],
    "owner": "codex-n3",
