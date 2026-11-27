@@ -50,6 +50,7 @@
     "rust-client/src/main.rs",
     "rust-client/src/view.rs",
     "rust-client/src/view/voice_settings.rs",
+    "scripts/qa_events.py",
     "scripts/qa_rtc_audio.py",
     "scripts/qa_voice_processing.py",
     "scripts/qa_voice_room.py",
@@ -57,7 +58,7 @@
    ],
    "status": "working",
    "title": "Voice processing and input sensitivity",
-   "updated": "2026-11-27T21:53:14Z",
+   "updated": "2026-11-27T22:14:08Z",
    "worktree": ".claude/worktrees/a2-voice-a94df8"
   },
   "M11": {
