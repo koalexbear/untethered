@@ -8,16 +8,19 @@
    "paths": [
     "README.md",
     "ROADMAP.md",
+    "rust-client/src/account.rs",
     "rust-client/src/drafts.rs",
     "rust-client/src/main.rs",
     "rust-client/src/paging.rs",
     "rust-client/src/places.rs",
+    "rust-client/src/rooms.rs",
+    "rust-client/src/search/bookmark.rs",
     "rust-client/src/view.rs",
     "scripts/qa_remember_place.py"
    ],
    "status": "working",
    "title": "Remember where you were",
-   "updated": "2026-11-27T14:01:00Z",
+   "updated": "2026-11-27T14:22:12Z",
    "worktree": "."
   },
   "N3": {
