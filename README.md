@@ -89,6 +89,12 @@ press **Enter**. Unread rooms come first, mentions before them. Start with `#`
 for text channels, `!` for voice channels, `@` for DMs or `*` for spaces.
 **Escape** or **Ctrl+K** again closes it.
 
+**Where you were:** a room you leave scrolled up into its history opens at
+the same message when you come back, also after restarting Untethered; Jump to
+present, or scrolling down to the newest messages, makes it open at the newest
+again. Each server opens the channel you last had open there, and Untethered
+starts in the room it closed on. This is remembered on each device.
+
 **Selecting text:** Drag across a message to select its text, double-click
 for a word or triple-click for the whole paragraph, then press **Ctrl+C** to
 copy it. A selection stays within one paragraph or code block; clicking

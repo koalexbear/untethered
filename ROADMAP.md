@@ -2,11 +2,12 @@
 
 **2026-11-27 · `main`**
 
-**Next: the rest of navigation (N2, N3), then search across a space (N7).**
+**Next: pins and threads (N3), then search across a space (N7).**
 Messages feel like Discord, and people can get in: invites show with
 Accept and Decline, Matrix links open in the app, and New message starts
-DMs and group DMs. Ctrl+K switches rooms. What a community misses next is
-finding its way around: coming back to where you were, pins and threads. Explore
+DMs and group DMs. Ctrl+K switches rooms, and every room and server opens
+where you left it. What a community misses next is pinned messages and
+threads, then finding old messages anywhere in a space. Explore
 (J4) and sign-in everywhere (J5) finish Phase 2 after that, and the rest of
 Phase 1 (M8 onwards) fills in around them. Calls continue in their own
 plan ([calls-parity-plan.md](rust-client/docs/calls-parity-plan.md)).
@@ -33,8 +34,11 @@ plan ([calls-parity-plan.md](rust-client/docs/calls-parity-plan.md)).
   someone keeps their messages, invites and calls away.
 - **History:** older messages keep loading as you scroll up, rooms open at
   their newest messages with a screenful, Page Up/Down, and a Jump to
-  present bar. Rooms you leave let go of the history you loaded. A room
-  upgraded in Element reads as one channel with its older rooms' history.
+  present bar. A room you left scrolled up opens at the same message when
+  you come back, also after a restart; each server opens its last channel,
+  and the app the room it closed on. Rooms you leave let go of the history
+  you loaded. A room upgraded in Element reads as one channel with its
+  older rooms' history.
 - **People:** profile pictures in messages, DMs, the member list, calls and
   the user panel.
 - **Files and media:** drop, paste and pick files with progress, cancel and
@@ -119,7 +123,7 @@ doesn't:
 | Step | Matrix | Deliverable | Done when |
 |---|---|---|---|
 | **N1. Quick switcher** · done | Client | Ctrl+K: fuzzy search over rooms, DMs and spaces, unread first. | Ctrl+K, three letters and Enter opens a room without the mouse. |
-| **N2. Remember where you were** | Client | Last room per space and scroll position per room, restored on switch and restart. | Leave a room mid-history, visit two others, come back to the same message. |
+| **N2. Remember where you were** · done | Client | Last room per space and scroll position per room, restored on switch and restart. | Leave a room mid-history, visit two others, come back to the same message. |
 | **N3. Pins and threads** | Spec (pinned events; threads since v1.4) | Pinned messages panel (`m.room.pinned_events`); Matrix threads in a side panel with a thread list per channel. | A thread started in Element shows its replies in the panel; pinning here shows in Element. |
 | **N4. Presence** | Spec, often off on large servers | Online/idle/offline dots and custom status where the homeserver enables presence; hide them cleanly where it doesn't. | Going idle in Element turns the dot amber here within a minute. |
 | **N5. Channel order** | Spec (`m.space.child` `order`) | Drag to reorder channels and categories, writing `m.space.child` `order`. | The order made here appears in Element's space view. |

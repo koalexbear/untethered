@@ -95,6 +95,7 @@ impl App {
             || self.search.is_some()
             || self.editing.is_some()
             || self.timeline_restoring
+            || self.returning.is_some()
             || self.paging(&room)
             || self
                 .live
