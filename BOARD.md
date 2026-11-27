@@ -5,7 +5,7 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
 | N3 | Pinned messages and Matrix threads | codex-n3 | `codex/n3-pins-threads` | working | 2026-11-27T15:03:37Z | `rust-client/src/engine/account_ui.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/live_test.rs`, `rust-client/src/engine/messaging.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/pins.rs`, `rust-client/src/engine/threads.rs`, `scripts/qa_matrix_sdk.py` |
-| fix-call-video | Fix call video: share corruption at odd widths, low-fps own preview | fix-call-video | `claude/fix-call-video` | working | 2026-11-27T18:33:17Z | `rust-client/src/desktop_call/room_video.rs`, `scripts/qa_voice_room.py`, `scripts/qa_window_pattern.py`, `scripts/qa_window_share.py` |
+| fix-call-video | Fix call video: share corruption at odd widths, low-fps own preview | fix-call-video | `claude/fix-call-video` | working | 2026-11-27T19:04:28Z | `rust-client/src/desktop_call.rs`, `rust-client/src/desktop_call/room_video.rs`, `rust-client/src/main.rs`, `rust-client/src/view/call_stage.rs`, `scripts/qa_voice_room.py`, `scripts/qa_window_pattern.py`, `scripts/qa_window_share.py` |
 
 ## Done
 
