@@ -3,7 +3,13 @@
   "M6": {
    "branch": "codex/m6-delete-drafts",
    "claimed": "2026-11-27T10:07:23Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-27T11:19:35Z",
+     "by": "main-session",
+     "text": "main-session (branch m7-link-previews) adds link previews in new files (link_previews.rs, engine/previews.rs, view/link_preview.rs) with small hooks: engine/mod.rs \u2014 a LinkPreview command and event; main.rs \u2014 module line, a Msg variant and its handler; view.rs \u2014 one call that puts a preview card under a message's body; engine/app.rs \u2014 routing the event. No changes to deletion, drafts, reading or context menus."
+    }
+   ],
    "owner": "codex-m6",
    "paths": [
     "rust-client/src/account.rs",
