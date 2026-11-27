@@ -30,6 +30,7 @@ mod inline;
 #[cfg(not(target_arch = "wasm32"))]
 mod instance;
 mod invites;
+mod joining;
 mod link_previews;
 mod media;
 mod mentions;
@@ -220,6 +221,12 @@ enum Msg {
     OpenInvite(String),
     AcceptInvite(String),
     DeclineInvite(String),
+    /// A linked room's preview: join it or close it; and Join a Server's
+    /// field (joining.rs).
+    JoinPreviewed,
+    ClosePreview,
+    JoinAddressInput(String),
+    JoinAddress,
     /// Scrolled near the top of what's loaded: fetch older messages.
     /// Page Up (true) or Page Down: scroll the timeline by most of a screen.
     PageScroll(bool),
@@ -381,6 +388,8 @@ enum Request {
     /// Accepting or declining an invite (invites.rs).
     AcceptInvite(String),
     DeclineInvite(String),
+    /// Joining a room by link or address (joining.rs).
+    JoinRoom(String),
     FollowUpgrade(String),
 }
 struct App {
@@ -438,6 +447,12 @@ struct App {
     /// room to open once it's listed (invites.rs).
     invite_open: Option<String>,
     joined_invite: Option<String>,
+    /// The message a link pointed at, to show once its room opens.
+    joined_event: Option<String>,
+    /// A linked room's preview in the main area, and Join a Server's field
+    /// (joining.rs).
+    room_preview: Option<joining::Preview>,
+    join_address: String,
     avatars: avatars::Avatars,
     viewer: Option<viewer::Viewer>,
     /// The account's profile picture (mxc URI).
@@ -553,6 +568,9 @@ impl App {
             link_previews: Default::default(),
             invite_open: None,
             joined_invite: None,
+            joined_event: None,
+            room_preview: None,
+            join_address: String::new(),
             avatars: Default::default(),
             viewer: None,
             own_avatar: None,
@@ -1538,6 +1556,7 @@ impl App {
                 self.cancel_setup_if_idle();
                 self.close_mentions();
                 self.invite_open = None;
+                self.room_preview = None;
                 self.section = s;
                 self.reconcile();
             }
@@ -1547,6 +1566,7 @@ impl App {
                 self.cancel_setup_if_idle();
                 self.close_mentions();
                 self.invite_open = None;
+                self.room_preview = None;
                 self.open(id);
             }
             Msg::OpenVoice(id) => {
@@ -1564,7 +1584,14 @@ impl App {
             Msg::CheckReading => return self.check_reading(),
             Msg::ReopenTimeline(room) => self.reopen_timeline(room),
             Msg::LinkPreviews(room, on) => self.set_link_previews(room, on),
-            Msg::OpenInvite(id) => self.open_invite(id),
+            Msg::OpenInvite(id) => {
+                self.room_preview = None;
+                self.open_invite(id);
+            }
+            Msg::JoinPreviewed => self.join_previewed(),
+            Msg::ClosePreview => self.close_preview(),
+            Msg::JoinAddressInput(s) => self.join_address = s,
+            Msg::JoinAddress => self.join_address(),
             Msg::AcceptInvite(id) => self.accept_invite(id),
             Msg::DeclineInvite(id) => self.decline_invite(id),
             Msg::ReadingScroll(room, at) if room == self.selected && self.original.is_none() => {
@@ -1895,7 +1922,7 @@ impl App {
                 return context_menu::copy(code);
             }
             Msg::OpenLink(url) => {
-                if !self.open_permalink(&url) {
+                if !self.open_permalink(&url) && !self.open_room_link(&url) {
                     rich::open(&url)
                 } else if self.original.is_some() {
                     return self.anchor_history();

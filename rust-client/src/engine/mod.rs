@@ -18,6 +18,7 @@ pub mod browser;
 mod calls;
 mod compose;
 mod invites;
+mod joining;
 #[cfg(not(target_arch = "wasm32"))]
 mod keyring;
 #[cfg(test)]
@@ -228,6 +229,18 @@ pub enum Command {
         room: String,
         typing: bool,
     },
+    /// What the homeserver says about a room by ID or address, answered
+    /// with `Event::RoomPreview` (joining.rs).
+    PreviewRoom {
+        target: String,
+        via: Vec<String>,
+    },
+    /// Join a room by ID or address.
+    JoinRoom {
+        id: i64,
+        target: String,
+        via: Vec<String>,
+    },
     /// Join a room this account is invited to (invites.rs). Declining is
     /// `LeaveRoom`.
     AcceptInvite {
@@ -400,6 +413,11 @@ pub enum Event {
     },
     /// The account's "Send typing indicators" preference.
     TypingSharing(bool),
+    /// A room's preview for a link or address.
+    RoomPreview {
+        target: String,
+        result: Result<RoomPreview, Failure>,
+    },
     /// A link's preview, or None when the homeserver has none.
     LinkPreview {
         url: String,
@@ -597,6 +615,34 @@ pub struct RoomList {
     /// Rooms, spaces and DMs this account is invited to (invites.rs).
     #[serde(default)]
     pub invites: Vec<Invite>,
+}
+
+/// A room reached by a link or address, before joining (joining.rs).
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RoomPreview {
+    pub room_id: String,
+    pub alias: Option<String>,
+    pub name: Option<String>,
+    pub topic: Option<String>,
+    pub avatar: Option<String>,
+    pub members: u64,
+    pub space: bool,
+    /// This account is in it already.
+    pub joined: bool,
+    pub join: JoinRule,
+}
+
+/// Who may join a previewed room.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum JoinRule {
+    /// Anyone.
+    Open,
+    /// Members of certain spaces or rooms (restricted).
+    Members,
+    /// By asking first (knocking).
+    Knock,
+    /// By invitation only.
+    Invite,
 }
 
 /// An invite, as its stripped state and the invite event tell it.
@@ -1303,6 +1349,21 @@ impl Engine {
             Command::MarkRoomRead { id, room, public } => {
                 self.job(id, move |client, _, _| async move {
                     rooms::mark_latest_read(&client, &room, public).await
+                })
+                .await
+            }
+            Command::PreviewRoom { target, via } => {
+                if let Some(live) = &self.live {
+                    let (client, events) = (live.client.clone(), self.events.clone());
+                    rt::spawn(async move {
+                        let result = joining::preview(&client, &target, &via).await;
+                        let _ = events.send(Event::RoomPreview { target, result }).await;
+                    });
+                }
+            }
+            Command::JoinRoom { id, target, via } => {
+                self.job(id, move |client, _, _| async move {
+                    joining::join(&client, &target, &via).await
                 })
                 .await
             }

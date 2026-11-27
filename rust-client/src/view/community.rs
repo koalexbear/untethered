@@ -248,6 +248,36 @@ pub(super) fn view<'a>(app: &'a App, f: &'a Form) -> El<'a> {
             .spacing(8),
         );
     }
+    // As Discord's create window ends: joining with an invite instead.
+    if f.parent.is_none() && f.kind == Kind::Space && f.created.is_none() {
+        let address = text_input("https://matrix.to/#/#room:example.org", &app.join_address)
+            .id("join-address")
+            .on_input_maybe((!busy).then_some(Msg::JoinAddressInput))
+            .on_submit(Msg::JoinAddress)
+            .size(16)
+            .padding(10)
+            .style(input_style);
+        let join = button(text("Join a Server").size(14).font(BOLD))
+            .padding([10, 14])
+            .style(primary)
+            .on_press_maybe(
+                (app.connected && !busy && !app.join_address.trim().is_empty())
+                    .then_some(Msg::JoinAddress),
+            );
+        body = body.push(
+            column![
+                text("Have an invite already?")
+                    .size(16)
+                    .font(BOLD)
+                    .color(TEXT),
+                row![address, join].spacing(8).align_y(Center),
+                text("A Matrix room link or address, like #room:example.org.")
+                    .size(12)
+                    .color(CHANNEL),
+            ]
+            .spacing(8),
+        );
+    }
     if !f.note.is_empty() {
         body = body.push(text(&f.note).size(14).color(color!(0xffc785)));
     }

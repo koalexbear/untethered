@@ -10,6 +10,7 @@ mod emoji_picker;
 mod hover;
 mod icons;
 mod invites;
+mod joining;
 mod link_preview;
 pub(crate) use link_preview::image_source as link_preview_image;
 mod mentions;
@@ -2005,6 +2006,11 @@ impl App {
             ]
             .height(Fill)
             .into();
+        }
+        if let Some(preview) = &self.room_preview {
+            return row![rail, side, self.preview_card(preview)]
+                .height(Fill)
+                .into();
         }
         if let Some(invite) = self.invite_open.as_deref().and_then(|id| self.invite(id)) {
             return row![rail, side, self.invite_card(invite)]

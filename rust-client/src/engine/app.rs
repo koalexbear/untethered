@@ -356,6 +356,7 @@ impl App {
                 }
             }
             Event::LinkPreview { url, preview } => self.link_previews.arrived(url, preview),
+            Event::RoomPreview { target, result } => self.room_previewed(target, result),
             Event::Timeline(t) => {
                 if let Some(r) = self.live.list.get_mut(&t.room) {
                     r.apply_engine(t.messages, t.start_reached);
@@ -610,6 +611,7 @@ impl App {
             }
             (Request::LeaveRoom(room), result) => self.left_room(&room, result.is_ok()),
             (Request::AcceptInvite(room), result) => self.invite_answered(room, true, result.is_ok()),
+            (Request::JoinRoom(target), result) => self.room_joined(target, result.is_ok()),
             (Request::DeclineInvite(room), result) => {
                 self.invite_answered(room, false, result.is_ok())
             }
