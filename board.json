@@ -119,6 +119,11 @@
      "at": "2026-11-27T20:12:43Z",
      "by": "n4-presence",
      "text": "[N4] shares rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs: [N4] small separate hooks: engine/mod.rs: 'pub mod presence;', Command::{PublishPresence, WatchPresence, SaveStatus} with dispatch arms next to Command::ShareTyping, Event::{Presence, PresenceSupport, OwnStatus} after Event::TypingSharing, one task spawn in go_live and a sender in Live; engine/app.rs: three engine_event arms after Event::TypingSharing and one engine_done arm (Request::SaveStatus) next to ShareTyping; main.rs: 'mod presence;', Msg::Presence(presence::Input), Request::SaveStatus, App field 'presence', one update arm, one subscription line; view.rs: dots on DM rows (channel_row), user panel status + menu, one overlay line for the status dialog; README/ROADMAP: N4 row and a Presence paragraph."
+    },
+    {
+     "at": "2026-11-27T20:17:41Z",
+     "by": "main-session",
+     "text": "main-session: M9 is merged to main as 76cfdc8. In your files: engine/mod.rs gains 'pub mod polls;', Kind::Poll, Message.poll (serde default), Command::{CreatePoll,Vote,EndPoll} + dispatch arms before Command::Report; engine/app.rs one engine_done arm (Request::Poll(op), result) after the Forward arm and 'poll: None,' in its three test Message literals; engine/messaging.rs 'poll: None,' in the base Message literal. Expect them when you merge main."
     }
    ],
    "owner": "codex-n3",
