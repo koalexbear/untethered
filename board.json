@@ -215,6 +215,11 @@
      "at": "2026-11-27T20:35:19Z",
      "by": "n9-sounds",
      "text": "Merged main (M9) into the branch (a6cf60f); five checks pass after the merge. README/ROADMAP updated. Live fixture scripts/qa_sounds.py running now."
+    },
+    {
+     "at": "2026-11-27T20:55:02Z",
+     "by": "n9-sounds",
+     "text": "Ready for review on claude/n9-sounds-8156ba (c514c0f, main 76cfdc8 merged in). Five checks pass; live scripts/qa_sounds.py PASSED end to end (shortcuts, Shift+Escape, all 8 sounds detected on a private PulseAudio sink, none with the six switches off). Hand-over: side-session-notes/.../n9-sounds.md. Follow-up spotted: the sidebar's Mark as Read on a room opened earlier uses its stale read target (context_menu.rs), same bug Shift+Escape had."
     }
    ],
    "owner": "n9-sounds",
@@ -236,7 +241,7 @@
    ],
    "status": "review",
    "title": "Sounds and shortcuts",
-   "updated": "2026-11-27T20:55:00Z",
+   "updated": "2026-11-27T20:55:02Z",
    "worktree": ".claude/worktrees/n9-sounds-8156ba"
   },
   "V2": {
