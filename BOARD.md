@@ -5,10 +5,10 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
 | N3 | Pinned messages and Matrix threads | codex-n3 | `codex/n3-pins-threads` | working | 2026-11-27T15:03:37Z | `rust-client/src/engine/account_ui.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/live_test.rs`, `rust-client/src/engine/messaging.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/pins.rs`, `rust-client/src/engine/threads.rs`, `scripts/qa_matrix_sdk.py` |
-| inline-video-overlay | Inline video: controls over the video, auto-hiding | main-session | `inline-video-overlay` | review | 2026-11-27T18:16:42Z | `README.md`, `rust-client/src/engine/media.rs`, `rust-client/src/inline_player.rs`, `rust-client/src/main.rs`, `rust-client/src/media.rs`, `rust-client/src/view.rs`, `rust-client/src/view/icons.rs`, `rust-client/src/view/players.rs`, `scripts/qa_phase4.py` |
 
 ## Done
 
+- 2026-11-27 **inline-video-overlay** Inline video: controls over the video, auto-hiding (main-session): merged as d2c2530
 - 2026-11-27 **M8** Forward messages (main-session): merged as 52398c0
 - 2026-11-27 **P4** Video in the browser (Windows playback stays open) (main-session): released: browser half merged as 0c7f452; Windows video playback is still open
 - 2026-11-27 **P5** Sending video (main-session): merged as 0c7f452
@@ -38,4 +38,3 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 - 2026-11-26 **single-instance** Single instance: a second launch shows the running window (main-session): merged as 2d29437
 - 2026-11-26 **N6** System tray (n6-system-tray): merged as 4145624
 - 2026-11-26 **M1** Rich text in received messages (m1-rich-text): merged as 62d12ae
-- 2026-11-26 **M4** Right-click menus (m4-context-menus): merged as a1e37d5 (right-click Mention now uses M2's App::mention)
