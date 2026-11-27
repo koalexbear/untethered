@@ -34,6 +34,7 @@
    "paths": [
     "README.md",
     "ROADMAP.md",
+    "experiments/rtc-audio/README.md",
     "experiments/rtc-audio/run_element.sh",
     "rust-client/docs/calls-parity-plan.md",
     "rust-client/src/call_settings.rs",
@@ -51,7 +52,7 @@
    ],
    "status": "working",
    "title": "Voice processing and input sensitivity",
-   "updated": "2026-11-27T21:51:28Z",
+   "updated": "2026-11-27T21:53:14Z",
    "worktree": ".claude/worktrees/a2-voice-a94df8"
   },
   "M11": {
