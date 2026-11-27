@@ -44,9 +44,9 @@
     "rust-client/src/view/joining.rs",
     "scripts/qa_explore.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Explore public rooms and spaces",
-   "updated": "2026-11-27T20:32:19Z",
+   "updated": "2026-11-27T20:34:14Z",
    "worktree": ".claude/worktrees/j4-explore-c19f11"
   },
   "N3": {
