@@ -22,17 +22,27 @@ const STEP: f32 = 1.25;
 /// A press that moves less than this is a click, not a drag.
 const CLICK: f32 = 4.;
 
-pub struct Zoom {
+pub struct Zoom<Message> {
     handle: Handle,
     natural: Size,
     key: u64,
+    /// Sent when the picture is first zoomed into.
+    on_zoom: Option<Message>,
 }
 
-pub fn zoom(handle: Handle, natural: Size, key: u64) -> Zoom {
+pub fn zoom<Message>(handle: Handle, natural: Size, key: u64) -> Zoom<Message> {
     Zoom {
         handle,
         natural,
         key,
+        on_zoom: None,
+    }
+}
+
+impl<Message> Zoom<Message> {
+    pub fn on_zoom(mut self, message: Message) -> Self {
+        self.on_zoom = Some(message);
+        self
     }
 }
 
@@ -83,7 +93,7 @@ fn rescale(state: &mut State, scale: f32, at: Point, bounds: Rectangle, fit: Siz
     state.offset = clamp(state.offset, fit * scale, bounds.size());
 }
 
-impl Zoom {
+impl<Message> Zoom<Message> {
     fn sync(&self, tree: &mut Tree) {
         let state = tree.state.downcast_mut::<State>();
         if state.key != self.key {
@@ -109,7 +119,7 @@ impl Zoom {
     }
 }
 
-impl<Message, Theme> Widget<Message, Theme, iced::Renderer> for Zoom {
+impl<Message: Clone, Theme> Widget<Message, Theme, iced::Renderer> for Zoom<Message> {
     fn tag(&self) -> tree::Tag {
         tree::Tag::of::<State>()
     }
@@ -149,6 +159,7 @@ impl<Message, Theme> Widget<Message, Theme, iced::Renderer> for Zoom {
         let bounds = layout.bounds();
         let fit = fitted(self.natural, bounds.size());
         let state = tree.state.downcast_mut::<State>();
+        let was = state.scale();
         let over = cursor
             .position_over(bounds)
             .filter(|p| self.shown(state, bounds).contains(*p));
@@ -205,6 +216,12 @@ impl<Message, Theme> Widget<Message, Theme, iced::Renderer> for Zoom {
                 shell.capture_event();
             }
             _ => {}
+        }
+        if was <= 1.
+            && state.scale() > 1.
+            && let Some(message) = &self.on_zoom
+        {
+            shell.publish(message.clone());
         }
     }
 
@@ -264,8 +281,10 @@ impl<Message, Theme> Widget<Message, Theme, iced::Renderer> for Zoom {
     }
 }
 
-impl<'a, Message: 'a, Theme: 'a> From<Zoom> for Element<'a, Message, Theme, iced::Renderer> {
-    fn from(zoom: Zoom) -> Self {
+impl<'a, Message: Clone + 'a, Theme: 'a> From<Zoom<Message>>
+    for Element<'a, Message, Theme, iced::Renderer>
+{
+    fn from(zoom: Zoom<Message>) -> Self {
         Element::new(zoom)
     }
 }

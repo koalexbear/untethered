@@ -337,13 +337,18 @@ again on its own before offering **Retry image preview**. Videos show their
 thumbnail.
 
 **Media viewer:** Click an image or video in a room to open it over the
-window; closing it leaves the timeline where it was. Images load at full size (originals up to 48 MiB); **←** and **→**
-or the side arrows step through the room's images and videos, loading older
-history past the first. **Escape**, **×** or a click outside closes it, and
+window; closing it leaves the timeline where it was. Images load at full size (originals up to 48 MiB); **←** and **→**,
+the side arrows or the strip of thumbnails along the bottom step through the
+room's images and videos, loading older history past the first. The pictures
+either side load ahead, so stepping through screenshots doesn't wait. **Escape**, **×** or a click outside closes it, and
 **Download** saves the file. Click a picture to zoom in on that spot (to twice
 its size, or to its own pixels if it was shrunk to fit) and again to fit it;
 the mouse wheel zooms in and out around the pointer, up to eight times, and a
-drag moves a zoomed picture around.
+drag moves a zoomed picture around. Zooming into a picture larger than
+2560×1600 loads it sharper, up to 4096 pixels across.
+**Galleries:** pictures sent together (one sender, a minute apart at most,
+without captions) lay out as a grid under one header, as Discord shows a
+message's attachments; each still has its own menu and opens in the viewer.
 **Copy Image** puts a picture's original on the clipboard as a PNG, ready to
 paste elsewhere: in a message's right-click menu, and as the copy button in the
 viewer (desktop only). On Linux, videos play in the viewer through

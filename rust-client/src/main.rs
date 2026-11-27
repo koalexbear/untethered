@@ -322,7 +322,10 @@ enum Msg {
     CopyImage(media::Media),
     #[cfg(not(target_arch = "wasm32"))]
     ImageCopied(Result<(), &'static str>),
-    ViewerImage(u64, Option<iced::widget::image::Handle>),
+    /// A viewer original (or a sharper one) decoded, or not; and the shown
+    /// picture zoomed into (viewer.rs).
+    Original(media::PreviewRef, Option<iced::widget::image::Handle>),
+    ViewerZoomed,
     #[cfg(target_os = "linux")]
     ViewerVideo(u64, bool),
     #[cfg(target_os = "linux")]
@@ -507,6 +510,7 @@ struct App {
     blocked: BTreeSet<String>,
     avatars: avatars::Avatars,
     viewer: Option<viewer::Viewer>,
+    originals: viewer::Originals,
     /// The account's profile picture (mxc URI).
     own_avatar: Option<String>,
     batch: Option<transfers::Batch>,
@@ -637,6 +641,7 @@ impl App {
             blocked: BTreeSet::new(),
             avatars: Default::default(),
             viewer: None,
+            originals: Default::default(),
             own_avatar: None,
             batch: None,
             hover_files: false,
@@ -1048,7 +1053,8 @@ impl App {
             Msg::CopyImage(media) => self.copy_image(media),
             #[cfg(not(target_arch = "wasm32"))]
             Msg::ImageCopied(result) => self.image_copied(result),
-            Msg::ViewerImage(epoch, img) => self.viewer_image(epoch, img),
+            Msg::Original(source, img) => self.original_loaded(source, img),
+            Msg::ViewerZoomed => return self.viewer_zoomed(),
             #[cfg(target_os = "linux")]
             Msg::ViewerVideo(epoch, fetched) => self.viewer_video(epoch, fetched),
             #[cfg(target_os = "linux")]

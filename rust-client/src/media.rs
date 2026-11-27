@@ -251,6 +251,8 @@ pub enum Fit {
     Avatar,
     /// The original, for the media viewer.
     Full,
+    /// The original sharper, for zooming into a large picture in the viewer.
+    Zoom,
 }
 impl Fit {
     /// The largest decoded size.
@@ -259,6 +261,7 @@ impl Fit {
             Self::Inline => (crate::preview::INLINE_WIDTH, crate::preview::INLINE_HEIGHT),
             Self::Avatar => (160, 160),
             Self::Full => (2560, 1600),
+            Self::Zoom => (4096, 4096),
         }
     }
 }
@@ -359,6 +362,18 @@ impl Media {
             kind,
             dims,
         })
+    }
+    /// The original sharper than `full`, for zooming in, when the picture
+    /// is larger than `full` decodes it (or its size isn't known).
+    pub fn sharp(&self) -> Option<PreviewRef> {
+        let (w, h) = Fit::Full.bounds();
+        let full = self.full()?;
+        self.dims
+            .is_none_or(|(width, height)| width > w || height > h)
+            .then_some(PreviewRef {
+                fit: Fit::Zoom,
+                ..full
+            })
     }
     /// The original image, as the media viewer shows it.
     pub fn full(&self) -> Option<PreviewRef> {

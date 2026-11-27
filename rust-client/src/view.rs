@@ -8,6 +8,7 @@ mod community;
 mod context_menu;
 mod dms;
 mod emoji_picker;
+mod gallery;
 mod hover;
 mod icons;
 mod invites;
@@ -2644,16 +2645,29 @@ impl App {
             None
         };
         let seen = r.read.seen(&self.matrix_id);
-        for (index, cached) in range.clone().zip(history.posts_in(range)) {
-            let p = if original.is_some() {
-                cached
-                    .event_id
-                    .as_deref()
-                    .and_then(|id| r.by_id(id))
-                    .unwrap_or(cached)
-            } else {
-                cached
-            };
+        let posts: Vec<(usize, &crate::rooms::Post)> = range
+            .clone()
+            .zip(history.posts_in(range))
+            .map(|(index, cached)| {
+                let p = if original.is_some() {
+                    cached
+                        .event_id
+                        .as_deref()
+                        .and_then(|id| r.by_id(id))
+                        .unwrap_or(cached)
+                } else {
+                    cached
+                };
+                (index, p)
+            })
+            .collect();
+        // Messages a gallery (gallery.rs) already shows.
+        let mut shown_in_gallery = 0;
+        for (k, &(index, p)) in posts.iter().enumerate() {
+            if shown_in_gallery > 0 {
+                shown_in_gallery -= 1;
+                continue;
+            }
             let date_change = prev.is_none_or(|(_, _, day)| day != p.day);
             // An upgraded room's history meets the older room's (upgrades.rs).
             let seam = self.seams(history, index);
@@ -2702,6 +2716,21 @@ impl App {
                         right: 16.,
                     }),
                 );
+            }
+            // Pictures sent together lay out as a gallery, each still its
+            // own message; a divider, a seam or the message jumped to ends one.
+            let run = self.gallery_run(&posts[k..], |i, q| {
+                (divider.is_some() && q.event_id.as_deref() == divider)
+                    || self.seams(history, i).is_some()
+                    || original.is_some_and(|c| Some(&c.event) == q.event_id.as_ref())
+            });
+            if !original.is_some_and(|c| Some(&c.event) == p.event_id.as_ref())
+                && let Some(last) = run.last()
+            {
+                feed = feed.push(self.gallery_row(r, &run, group, stamp(p)));
+                prev = Some((last.sender.as_str(), last.time, last.day));
+                shown_in_gallery = run.len() - 1;
+                continue;
             }
             let name = r.display(&p.sender);
             let editing = self

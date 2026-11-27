@@ -149,8 +149,25 @@ impl App {
             }
         }
         shown.sort_by_key(|(i, _)| i.abs_diff(focus));
+        // The viewer's strip of thumbnails first, while it's open (viewer.rs).
+        let strip: Vec<PreviewRef> = self
+            .viewer
+            .as_ref()
+            .filter(|v| v.room == self.selected)
+            .map(|v| {
+                v.strip(room)
+                    .into_iter()
+                    .filter_map(|(_, m)| m.preview.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
         let images = &mut self.inline;
         let mut wanted: Vec<PreviewRef> = images.manual.iter().cloned().collect();
+        for key in strip {
+            if !wanted.contains(&key) {
+                wanted.push(key);
+            }
+        }
         for (_, key) in shown {
             if !wanted.contains(&key) {
                 wanted.push(key);

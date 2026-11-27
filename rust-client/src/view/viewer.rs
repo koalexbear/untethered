@@ -1,12 +1,13 @@
 //! The media viewer overlay (`crate::viewer`): the picture or video fitted
 //! to the window over a dark backdrop, the sender and date at the top left,
 //! Copy (pictures), Download and Close at the top right, and arrows to the
-//! room's previous and next images and videos. A loaded picture zooms with
-//! the mouse wheel and a click (zoom.rs).
-use super::{App, BOLD, CHANNEL, El, Icon, Msg, TEXT, face, icon};
+//! room's previous and next images and videos, with a strip of them along the
+//! bottom. A loaded picture zooms with the mouse wheel and a click (zoom.rs),
+//! and loads sharper once zoomed into.
+use super::{App, BOLD, CHANNEL, El, Icon, Msg, TEXT, face, icon, surface};
 use crate::{
     media::{Kind, Media},
-    rooms::Room,
+    rooms::{Post, Room},
     viewer::Viewer,
 };
 use chrono::{DateTime, Local};
@@ -96,8 +97,9 @@ fn note<'a>(line: &'a str, media: &Media) -> El<'a> {
 fn image_stage<'a>(app: &'a App, v: &'a Viewer, media: &'a Media, room: Size) -> El<'a> {
     // While the original loads, show the timeline's preview at its size.
     let shown = v
-        .image
+        .sharp
         .as_ref()
+        .or(v.image.as_ref())
         .or_else(|| media.preview.as_ref().and_then(|p| app.inline.ready(p)));
     match shown {
         Some(h) => {
@@ -111,7 +113,9 @@ fn image_stage<'a>(app: &'a App, v: &'a Viewer, media: &'a Media, room: Size) ->
             };
             if v.image.is_some() {
                 let (w, h2) = natural.unwrap_or((room.width, room.height));
-                return super::zoom::zoom(h.clone(), Size::new(w, h2), key(&v.event)).into();
+                return super::zoom::zoom(h.clone(), Size::new(w, h2), key(&v.event))
+                    .on_zoom(Msg::ViewerZoomed)
+                    .into();
             }
             let size = fit(natural.unwrap_or((room.width, room.height)), room);
             picture(h, size)
@@ -234,6 +238,75 @@ fn video_stage<'a>(app: &'a App, _: &'a Viewer, media: &'a Media, room: Size) ->
     }
 }
 
+/// One of the strip's thumbnails; the shown one framed.
+fn thumb<'a>(app: &'a App, p: &'a Post, m: &'a Media, current: bool) -> Option<El<'a>> {
+    const SIZE: f32 = 52.;
+    let event = p.event_id.clone()?;
+    let picture: El = match m.preview.as_ref().and_then(|s| app.inline.ready(s)) {
+        Some(h) => image(h.clone())
+            .width(SIZE)
+            .height(SIZE)
+            .content_fit(iced::ContentFit::Cover)
+            .border_radius(4)
+            .into(),
+        None => container(Space::new())
+            .width(SIZE)
+            .height(SIZE)
+            .style(|_| surface(KNOB, 4.))
+            .into(),
+    };
+    let picture: El = if m.kind == Kind::Video {
+        stack![
+            picture,
+            container(icon(Icon::Play, 16., Color::WHITE)).center(SIZE)
+        ]
+        .into()
+    } else {
+        picture
+    };
+    Some(
+        button(picture)
+            .padding(2)
+            .on_press(Msg::OpenViewer(event))
+            .style(move |_: &Theme, s| button::Style {
+                border: Border {
+                    color: if current {
+                        Color::WHITE
+                    } else if s == button::Status::Hovered {
+                        Color::from_rgba(1., 1., 1., 0.4)
+                    } else {
+                        Color::TRANSPARENT
+                    },
+                    width: 2.,
+                    radius: 6.0.into(),
+                },
+                ..Default::default()
+            })
+            .into(),
+    )
+}
+
+/// The room's images and videos around the shown one, to jump to.
+fn strip<'a>(app: &'a App, v: &'a Viewer, r: &'a Room) -> Option<El<'a>> {
+    let items = v.strip(r);
+    if items.len() < 2 {
+        return None;
+    }
+    let mut thumbs = row![].spacing(4).align_y(Center);
+    for (p, m) in items {
+        let current = p.event_id.as_deref() == Some(v.event.as_str());
+        if let Some(t) = thumb(app, p, m, current) {
+            thumbs = thumbs.push(t);
+        }
+    }
+    Some(
+        container(opaque(thumbs))
+            .center_x(Fill)
+            .padding([6, 16])
+            .into(),
+    )
+}
+
 fn header<'a>(app: &'a App, r: &'a Room, post: &'a crate::rooms::Post, media: &'a Media) -> El<'a> {
     let name = r.display(&post.sender);
     let date = DateTime::from_timestamp_millis(post.time)
@@ -323,11 +396,13 @@ pub(super) fn view<'a>(app: &'a App, v: &'a Viewer) -> El<'a> {
     )
     .center_x(Fill)
     .padding([10, 16]);
+    let mut layers = column![header(app, r, post, media), middle];
+    if let Some(strip) = strip(app, v, r) {
+        layers = layers.push(strip);
+    }
     stack![
         opaque(backdrop),
-        column![header(app, r, post, media), middle, caption]
-            .width(Fill)
-            .height(Fill)
+        layers.push(caption).width(Fill).height(Fill)
     ]
     .into()
 }
