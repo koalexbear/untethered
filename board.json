@@ -23,6 +23,11 @@
      "at": "2026-11-27T20:17:45Z",
      "by": "main-session",
      "text": "main-session: M9 (polls) is merged to main as 76cfdc8. It touches main.rs (Msg::Poll, Msg::ComposerMenu, Request::Poll, App fields polling/composer_menu, an Escape branch), view.rs (the composer's + is now a popover menu, a poll card branch, two dialog slots), engine/mod.rs (Kind::Poll, Message.poll, three Commands) and context_menu.rs. Merge main into your branch before handing over."
+    },
+    {
+     "at": "2026-11-27T20:34:16Z",
+     "by": "j4-explore",
+     "text": "[J4] ready for review on claude/j4-explore-c19f11 (916ddcf, 4f48f3d, merge of main a95bdad incl. M9). fmt/clippy (rooms.rs only)/test (232)/wasm32/windows-gnu pass; scripts/qa_explore.py passes on the merged tree. Hand-over: side-session-notes/<group>/j4-explore.md."
     }
    ],
    "owner": "j4-explore",
@@ -46,7 +51,7 @@
    ],
    "status": "review",
    "title": "Explore public rooms and spaces",
-   "updated": "2026-11-27T20:34:14Z",
+   "updated": "2026-11-27T20:34:16Z",
    "worktree": ".claude/worktrees/j4-explore-c19f11"
   },
   "N3": {
