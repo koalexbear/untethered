@@ -94,6 +94,14 @@ server rail, each marked like a mention until you answer. Click one for its
 card, with who invited you: **Accept** joins and opens it (a DM stays a DM),
 **Decline** turns it down.
 
+**Joining by link:** Matrix links (`matrix.to` and `matrix:`) and room
+addresses like `#room:example.org` open in Untethered, never the browser. A
+room you're in opens, at the linked message if there is one; any other shows
+its picture, name, topic and member count with **Join**, which joins and
+opens it. To use a link someone gave you, click **+** at the bottom of the
+server rail and paste it under **Have an invite already?**, then **Join a
+Server**.
+
 **Right-click menus:** Right-click a message for everything its toolbar does
 plus **Copy Text**, **Copy Message Link** (a matrix.to link) and **Mark
 Unread** (Matrix receipts can't move back, so this marks the room unread).

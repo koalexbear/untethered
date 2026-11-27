@@ -82,7 +82,8 @@ impl App {
         }
     }
 
-    /// The room an accepted invite joined, once the room list has it.
+    /// The room an accepted invite (or a link, joining.rs) joined, once the
+    /// room list has it.
     pub fn open_joined_invite(&mut self) {
         let Some(id) = &self.joined_invite else {
             return;
@@ -101,6 +102,9 @@ impl App {
         };
         if !room.space {
             self.open(id);
+            if let Some(event) = self.joined_event.take() {
+                self.jump(event);
+            }
         }
         self.reconcile();
     }

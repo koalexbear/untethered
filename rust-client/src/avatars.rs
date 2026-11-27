@@ -96,6 +96,12 @@ impl App {
             wanted.extend(i.avatar.as_deref());
             wanted.extend(i.inviter_avatar.as_deref());
         }
+        // A linked room's preview shows its picture (joining.rs).
+        if let Some(crate::joining::PreviewState::Ready(p)) =
+            self.room_preview.as_ref().map(|p| &p.state)
+        {
+            wanted.extend(p.avatar.as_deref());
+        }
         if let Some(r) = rooms.get(&self.selected) {
             let range = self.timeline_range(r);
             for p in r.posts().skip(range.start).take(range.end - range.start) {

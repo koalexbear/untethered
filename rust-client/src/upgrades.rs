@@ -93,7 +93,7 @@ pub fn permalink(link: &str) -> Option<(String, Option<String>)> {
 }
 
 /// `%XX` escapes, which matrix.to links use for `!`, `$`, `:` and `#`.
-fn decode(part: &str) -> String {
+pub(crate) fn decode(part: &str) -> String {
     let bytes = part.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
