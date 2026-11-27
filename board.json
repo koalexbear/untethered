@@ -232,11 +232,12 @@
    "owner": "fix-room-ptt",
    "paths": [
     "scripts/qa_room_ptt.py",
-    "scripts/qa_voice_room.py"
+    "scripts/qa_voice_room.py",
+    "scripts/test-media-interop.py"
    ],
    "status": "working",
    "title": "Fix --room-ptt: open Atrium without joining",
-   "updated": "2026-11-27T22:54:17Z",
+   "updated": "2026-11-27T22:58:01Z",
    "worktree": ".claude/worktrees/great-lamport-46e7ea"
   }
  },
