@@ -5,7 +5,7 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
 | N2 | Remember where you were | main-session | `n2-remember-place` | working | 2026-11-27T14:01:00Z | `README.md`, `ROADMAP.md`, `rust-client/src/drafts.rs`, `rust-client/src/main.rs`, `rust-client/src/paging.rs`, `rust-client/src/places.rs`, `rust-client/src/view.rs`, `scripts/qa_remember_place.py` |
-| N3 | Pinned messages and Matrix threads | codex-n3 | `codex/n3-pins-threads` | working | 2026-11-27T14:09:26Z | `rust-client/src/engine/mod.rs`, `rust-client/src/engine/pins.rs`, `rust-client/src/engine/threads.rs` |
+| N3 | Pinned messages and Matrix threads | codex-n3 | `codex/n3-pins-threads` | working | 2026-11-27T14:10:28Z | `rust-client/src/engine/account_ui.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/live_test.rs`, `rust-client/src/engine/messaging.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/pins.rs`, `rust-client/src/engine/threads.rs`, `scripts/qa_matrix_sdk.py` |
 
 ## Done
 

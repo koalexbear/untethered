@@ -26,13 +26,18 @@
    "notes": [],
    "owner": "codex-n3",
    "paths": [
+    "rust-client/src/engine/account_ui.rs",
+    "rust-client/src/engine/app.rs",
+    "rust-client/src/engine/live_test.rs",
+    "rust-client/src/engine/messaging.rs",
     "rust-client/src/engine/mod.rs",
     "rust-client/src/engine/pins.rs",
-    "rust-client/src/engine/threads.rs"
+    "rust-client/src/engine/threads.rs",
+    "scripts/qa_matrix_sdk.py"
    ],
    "status": "working",
    "title": "Pinned messages and Matrix threads",
-   "updated": "2026-11-27T14:09:26Z",
+   "updated": "2026-11-27T14:10:28Z",
    "worktree": "../../../../../tmp/untethered-n3"
   }
  },
