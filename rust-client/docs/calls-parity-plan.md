@@ -413,6 +413,35 @@ behind `--voice-room`:
 
 ### V2 — Simulcast, per-tile quality, pause hidden video (Phase 1, S-M)
 
+> **Done** on branch `claude/v2-simulcast-9158cf` (2026-11-27), not merged yet.
+> Cameras publish 320×180 / 640×360 / 1280×720, all at 30 fps, with dynacast.
+> While the window's view is built, each call tile notes the feed it draws and
+> the layer it needs (`Previews::draws`): the focused tile the top layer, a grid
+> of up to six the middle one, thumbnails, larger grids and the dock preview the
+> low one. Feeds it doesn't draw are hidden: the stage collapsed with the preview
+> off, tiles scrolled out of the strip or grid (`sensor` and `on_scroll`), the
+> media viewer open, the window closed to the tray. The call loops pause hidden
+> remote tracks with `set_enabled(false)` and pick layers by **dimension**
+> (`update_video_dimensions`), not `set_video_quality`: every ask replaces the
+> track's subscriber settings at the SFU, `set_video_quality` sends
+> `disabled: false` (unpausing) and `set_enabled` sends the publication's full
+> size (the top layer); only a dimension ask carries both. The SDK sends each ask
+> from its own task, so they can arrive out of order; one complete ask 300 ms
+> after the last change has the last word (`room_video::Viewer`).
+> `--room-camera` checks it with the debug build's stats: grid tiles receive
+> 640×360 and the sender stops its unwatched top layer (dynacast, after about
+> 8 s); a focused tile receives 1280×720 and the layer resumes while the other
+> peer keeps 640×360; the dock preview receives 320×180; hiding it stops inbound
+> bytes within 2 s; the reopened stage shows a pattern changed meanwhile in a
+> screenshot started 0.10 s after the click began. Release builds check the SFU's
+> three layers and the reopened stage. `--room-layout` (fixed: it never opened
+> Alice's stage once calls started docked) asserts three GCM layers per camera
+> and passes its grid and focus checks; `--element-video` passes, so Element
+> decodes the encrypted simulcast camera. Untethered rendering Element's own
+> simulcast camera isn't covered: the fixture's browser camera is 320×180, too
+> small for livekit-client to add layers. `--voice-room` and `--window-share`
+> (debug and release) still pass; shares hold 1596×928 at 30 fps.
+
 **Files:** `room_video.rs` (publish options), `channel.rs` and `desktop_call.rs`
 (`publish_mic` sets `RoomOptions { dynacast: true, .. }`, subscription quality),
 `Previews` (feeds report their display size class).

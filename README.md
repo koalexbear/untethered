@@ -587,7 +587,8 @@ In the voice-room call bar, click **Share screen** and pick a screen or a
 window in your desktop's chooser. Other participants see it live; **Open call
 view** puts it on the stage. Shares keep their source size up to 1920×1080 and
 send up to 30 fps (2.5 Mbps cap); the pointer is included when the portal
-offers it. Cameras send 1280×720 at up to 30 fps (1.7 Mbps cap). A 1600×900
+offers it. Cameras send 1280×720 at up to 30 fps (1.7 Mbps cap), in three
+simulcast layers (320×180, 640×360 and 1280×720, all at 30 fps). A 1600×900
 test window arrived at 1600×928 and 30 fps on both receivers
 ([measurements](experiments/rtc-audio/README.md#verify-portal-window-sharing)).
 You can browse another channel and use **Stop sharing** there without
@@ -604,6 +605,14 @@ Incoming video appears in a grid in the voice room. Click any tile to
 enlarge it; the other feeds stay live as thumbnails. Click a thumbnail to
 switch focus, or **Back to grid** to see everyone at equal size. Your choice
 only changes your view. If the focused feed ends, the grid returns automatically.
+
+Each tile receives the camera layer its size needs: the focused tile
+1280×720, a grid of up to six 640×360, thumbnails, larger grids and the call
+dock's preview 320×180. Video you can't see is paused at the SFU and costs no
+bandwidth: the stage collapsed with the preview hidden, tiles scrolled out of
+the thumbnail strip or grid, the media viewer open, or the window closed to the
+tray. It comes back within a second when shown again. Senders stop encoding
+layers nobody watches.
 
 ![Untethered room preview in the Rust frontend](rust-client/docs/preview.png)
 

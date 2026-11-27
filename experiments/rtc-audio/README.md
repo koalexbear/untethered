@@ -311,8 +311,9 @@ because KWin only sends frames when the window changes. The receivers open
 pink/teal fields at video-tile scale.
 
 Debug builds started with `UNTETHERED_QA_VIDEO_STATS=1` print one line per video
-track on every 4 s heartbeat, from `Room::get_stats()`: direction, source,
-frame size, frame rate and bytes. They contain no addresses, keys or SDP. The test requires
+track (and per simulcast layer) every second in voice rooms and on every 4 s
+heartbeat in DMs, from `Room::get_stats()`: direction, source, frame size,
+frame rate and bytes. They contain no addresses, keys or SDP. The test requires
 the sender's outbound screen share to be at least 1280 px wide at 24 fps or more,
 and both receivers' inbound tracks to reach 24 fps. Each client gets its own four cores, as if
 on separate machines. Measured on 2026-11-25 (KWin 6.8.3, libvpx VP8,
@@ -353,10 +354,23 @@ reach the camera only through the real Camera portal's file descriptor.
 The test starts with no camera, then cancels a pending permission request and
 checks that no capture process, PipeWire link or SFU video track exists. On a
 fresh grant it verifies an active link to the virtual camera and a GCM
-`CAMERA` publication. The sender's video stats must show the camera sent at
-1280×720; on 2026-11-25 it was sent at 1280×720 and 12.0 fps, the virtual
-camera's own rate. Screenshots of both peers must show the green/magenta
-test fields, then fresh orange/blue fields on the same video track. **Stop
+`CAMERA` publication. Screenshots of both peers must show the green/magenta
+test fields.
+
+Then simulcast and paused video (V2). The SFU must list the camera track with
+320×180, 640×360 and 1280×720 layers. With debug builds' video stats, both
+peers' grid tiles (three tiles) must receive 640×360, and the sender must stop
+encoding the 1280×720 layer nobody watches (dynacast). Bruno clicks Alice's
+tile: his focused tile must receive 1280×720 and the sender must resume that
+layer, while Clara keeps 640×360. Back in the grid, Bruno clicks **Open chat**:
+the dock's preview must receive 320×180. **Hide video preview** must stop
+Bruno's inbound camera bytes within 2 s (a stats sample printed after 2 s, then
+no new bytes for 3 s) while Clara's keep flowing. The camera then changes to
+orange/blue; Clara must render it while Bruno's bytes stay unchanged, and
+Bruno's reopened stage must show the new fields in a screenshot started within
+1 s of the click. Release builds print no stats, so they check only the SFU's
+layers and the reopened stage. Both peers end on the orange/blue fields on the
+same video track. **Stop
 camera** must remove the capture process, camera links, SFU video track and
 both remote tiles while leaving the virtual camera available. Changing mic
 tones verifies all six audio paths both during video and after stopping it.
@@ -371,7 +385,8 @@ the actual tiles and measures two adjacent color fields per camera in **one
 screenshot per observation**. Both patterns change in the grid and again in
 each focus view. The selected feed must be visibly larger and the thumbnail
 must show the other camera's fresh pixels. Both GCM camera track IDs and all
-three original microphone IDs must survive switching.
+three original microphone IDs must survive switching, and the SFU must list
+both camera tracks with three simulcast layers.
 
 All three speaker monitors are checked in consecutive 100 ms windows for the
 whole layout-switch sequence. Clara then leaves with her camera still focused.
