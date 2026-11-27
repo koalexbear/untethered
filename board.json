@@ -163,6 +163,11 @@
      "at": "2026-11-27T20:17:49Z",
      "by": "main-session",
      "text": "main-session: M9 (polls) is merged to main as 76cfdc8. It touches main.rs (Msg::Poll, Msg::ComposerMenu, Request::Poll, App fields polling/composer_menu, an Escape branch), view.rs (the composer's + is now a popover menu, a poll card branch, two dialog slots), engine/mod.rs (Kind::Poll, Message.poll, three Commands) and context_menu.rs. Merge main into your branch before handing over."
+    },
+    {
+     "at": "2026-11-27T20:59:02Z",
+     "by": "n4-presence",
+     "text": "[N4] ready for review: branch claude/n4-presence-13e26f rebased on main 76cfdc8 (94e6a7a, 26a990b). Five checks + 239 tests pass; scripts/qa_presence.py passes with presence on and --off. Hand-over: side-session-notes/\u2026/n4-presence.md"
     }
    ],
    "owner": "n4-presence",
@@ -184,7 +189,7 @@
    ],
    "status": "review",
    "title": "Presence and custom status",
-   "updated": "2026-11-27T20:59:00Z",
+   "updated": "2026-11-27T20:59:02Z",
    "worktree": ".claude/worktrees/n4-presence-13e26f"
   },
   "N9": {
