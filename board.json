@@ -20,7 +20,9 @@
     "rust-client/src/polls.rs",
     "rust-client/src/rooms.rs",
     "rust-client/src/rooms/engine.rs",
+    "rust-client/src/switcher.rs",
     "rust-client/src/view.rs",
+    "rust-client/src/view/context_menu.rs",
     "rust-client/src/view/icons.rs",
     "rust-client/src/view/polls.rs",
     "rust-client/src/viewer.rs",
@@ -29,7 +31,7 @@
    ],
    "status": "working",
    "title": "Polls (MSC3381): show, vote, end, create",
-   "updated": "2026-11-27T19:52:49Z",
+   "updated": "2026-11-27T20:02:43Z",
    "worktree": "."
   },
   "N3": {
