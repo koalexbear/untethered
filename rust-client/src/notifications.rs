@@ -279,9 +279,9 @@ impl App {
         {
             return;
         }
-        let Some(room) = self.live.list.get(&notice.room) else {
+        if !self.live.list.contains_key(&notice.room) {
             return;
-        };
+        }
         self.alerts.recent.push_back(notice.event_id.clone());
         if self.alerts.recent.len() > 512 {
             self.alerts.recent.pop_front();
@@ -289,6 +289,18 @@ impl App {
         if self.reading_room(&notice.room) {
             return;
         }
+        // Untethered plays its own sound (sounds.rs), with its own switches;
+        // the desktop's would come on top of it.
+        #[cfg(target_os = "linux")]
+        let sound = {
+            self.notice_sound(notice.highlight, notice.sound);
+            false
+        };
+        #[cfg(target_arch = "wasm32")]
+        let sound = notice.sound;
+        let Some(room) = self.live.list.get(&notice.room) else {
+            return;
+        };
         let title = format!(
             "{} · {}",
             single_line(room.display(&notice.sender), 64),
@@ -297,7 +309,7 @@ impl App {
         self.alerts.outgoing.push(Notice {
             title,
             body: single_line(&notice.body, 240),
-            sound: notice.sound,
+            sound,
             #[cfg(target_arch = "wasm32")]
             room: notice.room,
             #[cfg(target_arch = "wasm32")]
@@ -426,6 +438,7 @@ mod tests {
             sender: sender.into(),
             body: "hello\nthere".into(),
             sound: true,
+            highlight: false,
         };
         app.engine_notice(alert("$1", "@bob:h"));
         app.engine_notice(alert("$1", "@bob:h"));
@@ -434,7 +447,9 @@ mod tests {
         let n = &app.alerts.outgoing[0];
         assert_eq!(n.title, "bob · general");
         assert_eq!(n.body, "hello there");
-        assert!(n.sound);
+        // The App chimes itself (sounds.rs), so the popup stays silent.
+        assert!(!n.sound);
+        assert_eq!(app.sounds.queued(), [crate::sounds::Sound::Message]);
         // The account's rules as Matrix defines them, with DND on.
         app.engine_push_rules(
             &json!({"global":{"override":[{"rule_id":MASTER,"default":true,

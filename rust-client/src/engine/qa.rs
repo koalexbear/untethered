@@ -163,8 +163,17 @@ fn entry(
 pub fn alert(alert: &Alert) {
     if let Some(path) = sink() {
         let line = json!({"kind": "alert", "room_id": alert.room, "event_id": alert.event_id,
-            "sender": alert.sender, "body": alert.body, "sound": alert.sound});
+            "sender": alert.sender, "body": alert.body, "sound": alert.sound,
+            "highlight": alert.highlight});
         append(&path, line);
+    }
+}
+
+/// Log a sound the App plays (sounds.rs): `{"kind":"sound","sound":name}`.
+#[cfg(target_os = "linux")]
+pub fn sound(name: &str) {
+    if let Some(path) = sink() {
+        append(&path, json!({"kind": "sound", "sound": name}));
     }
 }
 
