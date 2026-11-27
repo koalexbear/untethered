@@ -40,6 +40,10 @@ class Desktop:
         self.env=env
         self.i=i
         self.kde=kde
+        self.room=room
+        # A click on a voice channel in the room list opens it and joins its
+        # call (14e985b). Leave it unclicked until the fixture joins.
+        self.voice=room=="Atrium"
         self.tone=i
         self.windows=deque(maxlen=12)
         self.audit=None
@@ -83,6 +87,7 @@ class Desktop:
             # matrix-sdk shows its stored rooms before the first sync and may
             # open another one first; open this room from the sidebar.
             spot=next(((x,y) for w,x,y in self.words() if w==room.lower() and x<CHAT_X),None)
+            if spot and self.voice:return True
             if spot:self.press(*spot)
             return False
         wait_for(f"client {i+1} synced {room}",synced,35)
@@ -103,6 +108,7 @@ class Desktop:
             if room in kde.command("kdotool","getwindowname",self.win,check=False).stdout:return True
             # As on X11, matrix-sdk may open another stored room first.
             spot=next(((x,y) for w,x,y in self.words() if w==room.lower() and x<CHAT_X),None)
+            if spot and self.voice:return True
             if spot:self.press(*spot)
             return False
         wait_for(f"Wayland client synced {room}",shown,35)
@@ -182,8 +188,17 @@ class Desktop:
         buf=io.BytesIO();im.resize((im.width*3,im.height*3)).save(buf,"PNG")
         return sp.run(["tesseract","stdin","stdout","--psm","7"],input=buf.getvalue(),capture_output=True).stdout.decode().lower()
 
+    def title(self):
+        if self.kde:return self.kde.command("kdotool","getwindowname",self.win,check=False).stdout
+        return self.cmd("xdotool","getwindowname",self.win,check=False)
+
     def click(self,label):
         if self.kde:self.kde.command("kdotool","windowactivate",self.win)
+        if label=="join" and self.voice and self.room not in self.title():
+            # Join from the room list, which also opens the voice channel.
+            self.press(*wait_for(self.room+" in the room list",lambda:next(
+                ((x,y) for w,x,y in self.words() if w==self.room.lower() and x<CHAT_X),None),12))
+            return
         if label in ("voice","video"):
             # DM calls start from the phone and camera icons in the channel header.
             tip="start "+label+" call"
