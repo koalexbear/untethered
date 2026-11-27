@@ -44,6 +44,9 @@
    "paths": [
     "README.md",
     "ROADMAP.md",
+    "rust-client/src/engine/app.rs",
+    "rust-client/src/engine/live_test.rs",
+    "rust-client/src/engine/mod.rs",
     "rust-client/src/engine/search.rs",
     "rust-client/src/main.rs",
     "rust-client/src/search",
@@ -54,7 +57,7 @@
    ],
    "status": "working",
    "title": "Search across a space",
-   "updated": "2026-11-27T14:45:33Z",
+   "updated": "2026-11-27T14:55:02Z",
    "worktree": "."
   }
  },
