@@ -21,9 +21,9 @@
     "rust-client/src/view/context_menu.rs",
     "scripts/qa_matrix_sdk.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Message deletion and persistent drafts",
-   "updated": "2026-11-27T10:39:05Z",
+   "updated": "2026-11-27T10:42:45Z",
    "worktree": "../../../../../tmp/untethered-m6"
   }
  },
