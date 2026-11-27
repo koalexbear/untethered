@@ -306,9 +306,9 @@
     "rust-client/src/view/channel_order.rs",
     "scripts/qa_channel_order.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Drag to reorder channels and categories",
-   "updated": "2026-11-27T21:47:01Z",
+   "updated": "2026-11-27T21:59:39Z",
    "worktree": ".claude/worktrees/n5-order-211d5e"
   }
  },
