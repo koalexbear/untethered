@@ -249,7 +249,10 @@ impl App {
     }
 
     /// Mark every room the open server's icon counts read, through the same
-    /// path as each room's Mark as Read.
+    /// paths as each room's Mark as Read. Only the open room's timeline is
+    /// live: another room's newest event the App saw may be old by now (its
+    /// timeline closed when you left it), so the engine marks those at the
+    /// newest event it has.
     fn mark_section_read(&mut self) -> Task<Msg> {
         if !self.logged_in || !self.verified || !self.connected {
             return Task::none();
@@ -269,11 +272,13 @@ impl App {
                 .filter_map(|id| rooms.list.get_key_value(id).map(|(id, _)| id))
                 .collect(),
         };
+        let live = |id: &str| id == self.selected && !self.released.contains(id);
         let unread: Vec<(String, Option<String>)> = ids
             .into_iter()
             .filter_map(|id| {
                 let r = rooms.list.get(id)?;
-                (r.unread && !r.space).then(|| (id.clone(), r.read.target().map(str::to_owned)))
+                let target = r.read.target().filter(|_| live(id)).map(str::to_owned);
+                (r.unread && !r.space).then(|| (id.clone(), target))
             })
             .collect();
         let mut tasks = Vec::new();
@@ -462,20 +467,37 @@ mod tests {
         let mut app = app();
         app.sdk = Some(tx);
         app.section = Section::Space("!s1:h".into());
+        let _ = app.update(Msg::Open("!gamma:h".into()));
+        // gamma's timeline is open; beta's closed when it was left, so the
+        // newest event the App saw there may be old.
+        app.live
+            .list
+            .get_mut("!gamma:h")
+            .unwrap()
+            .read
+            .set_latest(Some("$g".into()));
+        app.live
+            .list
+            .get_mut("!beta:h")
+            .unwrap()
+            .read
+            .set_latest(Some("$old".into()));
+        app.released.insert("!beta:h".into());
+        while commands.try_recv().is_ok() {}
         let _ = app.update(Msg::Shortcut(Input::MarkServerRead));
-        let mut marked = std::collections::BTreeSet::new();
+        let (mut latest, mut at) = (std::collections::BTreeSet::new(), Vec::new());
         while let Ok(command) = commands.try_recv() {
-            if let crate::engine::Command::MarkRoomRead { room, .. } = command {
-                marked.insert(room);
+            match command {
+                crate::engine::Command::MarkRoomRead { room, .. } => {
+                    latest.insert(room);
+                }
+                crate::engine::Command::MarkRead { room, event, .. } => at.push((room, event)),
+                _ => {}
             }
         }
-        // beta, the voice channel and gamma; not delta in the other server
-        // or the DM.
-        assert_eq!(
-            marked,
-            ["!beta:h", "!gamma:h", "!lounge:h"]
-                .map(String::from)
-                .into()
-        );
+        // beta and the voice channel at the engine's newest event, gamma at
+        // its open timeline's; not delta in the other server or the DM.
+        assert_eq!(latest, ["!beta:h", "!lounge:h"].map(String::from).into());
+        assert_eq!(at, [("!gamma:h".to_owned(), "$g".to_owned())]);
     }
 }

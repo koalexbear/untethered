@@ -1,6 +1,9 @@
 //! Ctrl+/'s list of keyboard shortcuts (shortcuts.rs), shaped like
 //! Discord's: each thing you can do, with its keys drawn as keycaps.
-use super::{BOLD, CHANNEL, CHAT, El, FIELD, Icon, MUTED, Msg, SIDE, TEXT, icon_button, surface};
+use super::{
+    BOLD, CHANNEL, CHAT, El, FIELD, Icon, MUTED, Msg, SIDE, TEXT, icon_button, scroll_style,
+    surface, thin_scrollbar,
+};
 use crate::{
     App,
     shortcuts::{Input, list},
@@ -90,6 +93,8 @@ impl App {
                     right: 12.,
                     ..Padding::ZERO
                 }))
+                .direction(thin_scrollbar())
+                .style(scroll_style(None))
                 .height(iced::Length::Shrink)
             ]
             .spacing(16),

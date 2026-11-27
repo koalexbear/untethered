@@ -8,8 +8,8 @@ runs the UI), then from the checkout, with the call fixtures' tools
 It reruns itself in a private network namespace, as run_element.sh does.
 
 The test account has a space, Workshop (alpha, beta, gamma), a room outside
-it, a DM with Bob and two encrypted voice rooms, Atrium and Porch. Bob posts
-over plain HTTP. The release client runs in a private KWin session with
+it (each also with Bob and Carol), a DM with Bob and two encrypted voice
+rooms, Atrium and Porch. Bob posts over plain HTTP. The release client runs in a private KWin session with
 KDE's tray watcher and a private PulseAudio sink whose monitor the fixture
 listens to: every sound has notes of its own (sounds.rs), so each is told
 apart by its notes and their order. Driven by the keyboard and the tray's
@@ -34,6 +34,7 @@ import os
 from pathlib import Path
 import secrets
 import shutil
+import sqlite3
 import subprocess as sp
 import sys
 import tempfile
@@ -202,9 +203,13 @@ def populate(tmp, hs, name, mod):
     def create(**body):
         return http("POST", hs + "/_matrix/client/v3/createRoom", headers=hdr, json=body).json()["room_id"]
 
+    # Three members: Matrix's one-to-one push rule gives any two-member room a sound, like a DM.
+    carol, _, carol_hdr = register(hs, "carol" + secrets.token_hex(3))
+
     def with_bob(room_name, **body):
-        room = create(name=room_name, preset="private_chat", invite=[bob], **body)
-        http("POST", path(room) + "/join", headers=bob_hdr, json={})
+        room = create(name=room_name, preset="private_chat", invite=[bob, carol], **body)
+        for who in (bob_hdr, carol_hdr):
+            http("POST", path(room) + "/join", headers=who, json={})
         return room
     space = create(name="Workshop", preset="private_chat", creation_content={"type": "m.space"})
     rooms = {n: with_bob(n) for n in ("alpha", "beta", "gamma", "outside")}
@@ -222,12 +227,25 @@ def populate(tmp, hs, name, mod):
                           initial_state=[{"type": "m.room.encryption", "state_key": "",
                                           "content": {"algorithm": "m.megolm.v1.aes-sha2"}}])
 
+    latest = {}
+
     def post(room, body, mention=False):
         content = {"msgtype": "m.text", "body": body}
         if mention:
             content["m.mentions"] = {"user_ids": [me]}
             content["body"] = f"{fixture['username']}: {body}"
-        http("PUT", f"{path(room)}/send/m.room.message/{secrets.token_hex(8)}", headers=bob_hdr, json=content)
+        latest[room] = http("PUT", f"{path(room)}/send/m.room.message/{secrets.token_hex(8)}", headers=bob_hdr,
+                            json=content).json()["event_id"]
+
+    def receipts(room):
+        """The account's read receipts in `room`, from Synapse's database (as qa_read_state.py reads them)."""
+        with contextlib.closing(sqlite3.connect((tmp / "homeserver.db").as_uri() + "?mode=ro", uri=True)) as db:
+            return dict(db.execute("SELECT receipt_type, event_id FROM receipts_linearized WHERE room_id=? AND "
+                                   "user_id=? AND thread_id IS NULL", (room, me)))
+
+    def read(room):
+        """The account's receipt is at Bob's latest message there."""
+        return room not in latest or latest[room] in receipts(room).values()
 
     def counts():
         """Each room's unread notifications on the server, as the account syncs them."""
@@ -242,7 +260,8 @@ def populate(tmp, hs, name, mod):
         post(rooms[n], f"news in {n}")
     print(f"Synapse at {hs}: {me} with Bob, a space with alpha/beta/gamma, outside, a DM and two voice rooms",
           flush=True)
-    return dict(me=me, rooms=rooms, dm=dm, voice=voice, post=post, counts=counts, in_call=in_call,
+    return dict(me=me, rooms=rooms, dm=dm, voice=voice, post=post, counts=counts, in_call=in_call, read=read,
+                receipts=receipts,
                 profile=tmp / "seed")
 
 
@@ -273,6 +292,9 @@ def look(tmp, shots, world):
                                                                capture_output=True, text=True).stdout
         wait_for("private PulseAudio sinks", audio_ready)
         speaker = Speaker(stack, env)
+        # kded starts KDE's first-run Welcome Center, which takes the keys.
+        (Path(env["XDG_CONFIG_HOME"]) / "plasma-welcomerc").write_text(
+            "[General]\nShouldShow=false\nLastSeenVersion=6.8.3\n")
         kde = KWin(stack, ui, ROOT, None, env=env, tray=True)
         tray = Tray(kde)
         win = wait_for("client window", lambda: kde.window("^Untethered"), 60)
@@ -292,13 +314,20 @@ def look(tmp, shots, world):
             return [(clean(w), x, y) for w, x, y in read(kde.capture().crop((0, 0, WIDTH, HEIGHT)),
                                                           origin=(0, TITLE_BAR))]
 
+        def press(x, y):
+            kde.actions("pointer", [{"type": "pointerMove", "x": x, "y": y}, {"type": "pause", "duration": 120},
+                                    {"type": "pointerDown", "button": 0}, {"type": "pause", "duration": 80},
+                                    {"type": "pointerUp", "button": 0}])
+
         def chord(*keys):
             kde.keys(*[("Down", k) for k in keys], *[("Up", k) for k in reversed(keys)])
 
-        def go(query, expect):
-            """Ctrl+K, a few letters and Enter, until `expect` is open."""
+        def go(query, expect, done=None):
+            """Ctrl+K, a few letters and Enter, until `expect` is open (or `done()`)."""
+            done = done or (lambda: title() == expect)
+
             def opened():
-                if title() == expect:
+                if done():
                     return True
                 chord(CONTROL, "k")
                 time.sleep(.6)
@@ -306,15 +335,30 @@ def look(tmp, shots, world):
                 time.sleep(.8)
                 chord(ENTER)
                 time.sleep(1.5)
-                if title() != expect:
+                if not done():
                     chord(ESCAPE)  # the switcher, if the room wasn't listed yet
                     return False
                 return True
-            wait_for(f"{expect} opened with Ctrl+K", opened, 90)
+            try:
+                wait_for(f"{expect} opened with Ctrl+K", opened, 90)
+            except RuntimeError:
+                shot(f"failed-{expect}")
+                print(f"Window title {title()!r}; words {[w for w, _, _ in words()][:60]}", flush=True)
+                raise
+
+        def workshop():
+            """The space's channel list: its name heads the sidebar."""
+            return any(w == "workshop" and x < RAIL + SIDEBAR and y < 80 for w, x, y in words())
 
         def read_on_server(*names):
-            wait_for(f"{', '.join(names)} read on the server",
-                     lambda: all(counts().get(rooms[n], 0) == 0 for n in names), 30)
+            try:
+                wait_for(f"{', '.join(names)} read on the server",
+                         lambda: all(world["read"](rooms[n]) for n in names), 30)
+            except RuntimeError:
+                shot("failed-read")
+                print(f"Title {title()!r}; counts {counts()}; receipts "
+                      f"{ {n: world['receipts'](rooms[n]) for n in names} }", flush=True)
+                raise
 
         def expect(sound, at, within=8):
             t = wait_for(f"the {sound} sound", lambda: speaker.heard(sound, at), within)
@@ -323,9 +367,15 @@ def look(tmp, shots, world):
         def quiet(what, at, hold=3.5):
             time.sleep(max(0, at + hold - time.monotonic()))
             loudest = speaker.silent(at)
-            assert loudest < QUIET, f"{what}: a sound played (note amplitude {loudest:.0f})"
+            which = [s for s in NOTES if speaker.heard(s, at)]
+            assert loudest < QUIET, f"{what}: a sound played (note amplitude {loudest:.0f}; {which})"
 
         # --- Shortcuts ---------------------------------------------------
+        # KWin gives a new window keyboard focus once it's clicked; the
+        # timeline's empty middle does nothing else.
+        wait_for("the room list", lambda: any("media-proof" in w for w, _, _ in words()), 90)
+        press(760, 420)
+        go("*work", "Workshop", workshop)
         go("alpha", "alpha")
         read_on_server("alpha")
         for want in ("beta", "gamma", "outside"):
@@ -352,18 +402,18 @@ def look(tmp, shots, world):
         at = time.monotonic()
         for n in ("alpha", "beta"):
             post(rooms[n], f"more for {n}")
-        wait_for("Bob's new messages unread", lambda: all(counts().get(rooms[n], 0) > 0 for n in ("alpha", "beta")), 15)
+        wait_for("Bob's new messages unread", lambda: not any(world["read"](rooms[n]) for n in ("alpha", "beta")), 15)
         quiet("ordinary group messages", at)
-        go("*work", "gamma")  # the space opens on the room last open there
+        go("*work", "Workshop", workshop)
+        wait_for("Workshop on gamma, the room last open there", lambda: title() == "gamma", 10)
         post(rooms["outside"], "more for outside")
-        wait_for("outside unread again", lambda: counts().get(rooms["outside"], 0) > 0, 15)
+        wait_for("outside unread again", lambda: not world["read"](rooms["outside"]), 15)
         chord(SHIFT, ESCAPE)
         read_on_server("alpha", "beta")
         time.sleep(2)
-        left = counts().get(rooms["outside"], 0)
-        assert left > 0, "Shift+Escape marked a room outside the space read"
-        print(f"Shift+Escape in Workshop marked alpha and beta read on the server; outside kept {left} unread; "
-              "ordinary group messages played no sound", flush=True)
+        assert not world["read"](rooms["outside"]), "Shift+Escape marked a room outside the space read"
+        print("Shift+Escape in Workshop marked alpha and beta read on the server (receipts at Bob's latest); outside "
+              "stayed unread; ordinary group messages played no sound", flush=True)
 
         # --- Message sounds ----------------------------------------------
         at = time.monotonic()
@@ -408,10 +458,6 @@ def look(tmp, shots, world):
         # --- Switched off ------------------------------------------------
         saved = world["profile"] / "sounds.json"
 
-        def press(x, y):
-            kde.actions("pointer", [{"type": "pointerMove", "x": x, "y": y}, {"type": "pause", "duration": 120},
-                                    {"type": "pointerDown", "button": 0}, {"type": "pause", "duration": 80},
-                                    {"type": "pointerUp", "button": 0}])
         press(RAIL + SIDEBAR - 25, HEIGHT - USER_PANEL // 2)
         wait_for("User Settings", lambda: "privacy" in {w for w, _, _ in words()}, 15)
 
