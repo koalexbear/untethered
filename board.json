@@ -63,6 +63,11 @@
      "at": "2026-11-27T22:57:58Z",
      "by": "fix-room-ptt",
      "text": "fix-room-ptt: one more shared file: scripts/test-media-interop.py, only seed() (a room=True keyword so test_group can seed accounts without media-proof). Your argparse/audio_test hunks there are untouched. The leave-media-proof idea from my earlier note is dropped."
+    },
+    {
+     "at": "2026-11-27T23:04:04Z",
+     "by": "main-session",
+     "text": "main-session: held back at the user's request ('A2 still has something to do'). main is now cfffeab with N3, M11, N5 and M12; merge it before handing over. N5 and M12 add Commands/Events in engine/mod.rs and app.rs, Msg::Order/Names and Request::Arrange/Nickname in main.rs, and RoomSummary.child_order/me."
     }
    ],
    "owner": "a2-voice",
