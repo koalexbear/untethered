@@ -19,9 +19,9 @@
     "rust-client/src/view.rs",
     "scripts/qa_remember_place.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Remember where you were",
-   "updated": "2026-11-27T14:22:25Z",
+   "updated": "2026-11-27T14:22:38Z",
    "worktree": "."
   },
   "N3": {
