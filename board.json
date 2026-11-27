@@ -1,5 +1,25 @@
 {
- "claims": {},
+ "claims": {
+  "fix-media-previews": {
+   "branch": "fix-media-previews",
+   "claimed": "2026-11-27T08:15:28Z",
+   "notes": [],
+   "owner": "main-session",
+   "paths": [
+    "rust-client/src/engine/media.rs",
+    "rust-client/src/inline.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/media.rs",
+    "rust-client/src/view.rs",
+    "rust-client/src/view/upgrades.rs",
+    "rust-client/src/view/viewer.rs"
+   ],
+   "status": "working",
+   "title": "Image previews always load; the viewer keeps the scroll position",
+   "updated": "2026-11-27T08:15:28Z",
+   "worktree": "."
+  }
+ },
  "done": [
   {
    "branch": "main",
