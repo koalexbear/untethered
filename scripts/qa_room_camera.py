@@ -85,7 +85,7 @@ def check_layers(sender,peers,secret,palettes,show):
     assert tracks[0].get("simulcast") and layers==[(320,180),(640,360),(1280,720)],tracks[0]
     print("Simulcast: the SFU lists the GCM camera track with 320x180, 640x360 and 1280x720 layers.",flush=True)
     bruno,clara=peers
-    stats=all([debug_stats(d) for d in (sender,*peers)])
+    stats=debug_stats(sender) and all([debug_stats(p) for p in peers])
     def inbound(peer):
         got=list(video_stats(peer,"inbound","camera").values())
         return got[0] if len(got)==1 else None
@@ -94,8 +94,8 @@ def check_layers(sender,peers,secret,palettes,show):
         return got if got and got["fps"]>0 and fits(got["width"]) else None
     def sending():
         return {k.rsplit("/",1)[-1]:v for k,v in video_stats(sender,"outbound","camera").items() if v["fps"]>0}
-    def expect(label,check):
-        try:return wait_for(label,check,20)
+    def expect(label,check,timeout=20):
+        try:return wait_for(label,check,timeout)
         except RuntimeError:
             print("Sender outbound:",video_stats(sender,"outbound","camera"),
                   "Receivers inbound:",[inbound(p) for p in peers],flush=True)
@@ -104,7 +104,10 @@ def check_layers(sender,peers,secret,palettes,show):
         return {w for w,x,_ in peer.words() if x>CHAT_X}
     if stats:
         expect("both peers' grid tiles take the 640x360 layer",lambda:all(receiving(p,lambda w:w==640) for p in peers))
-        print("Grid of three: both peers receive the camera's 640x360 layer; the sender encodes "
+        # Dynacast: the SFU has the sender stop the layer nobody watches,
+        # some seconds after its last viewer left it.
+        expect("the sender stops encoding the unwatched 1280x720 layer",lambda:"f" not in sending() and "h" in sending(),40)
+        print("Grid of three: both peers receive the camera's 640x360 layer; the sender encodes only "
               +", ".join(f"{rid} {v['width']}x{v['height']}" for rid,v in sorted(sending().items()))+".",flush=True)
     box=wait_for("Alice's camera tile on Bruno's stage",lambda:pattern_box(bruno.image(),palettes[0]),10)
     bruno.press((box[0]+box[2])//2,(box[1]+box[3])//2)
@@ -113,7 +116,7 @@ def check_layers(sender,peers,secret,palettes,show):
         expect("Bruno's focused tile takes the 1280x720 layer while Clara's grid tile keeps 640x360",
                lambda:receiving(bruno,lambda w:w>=1280) and receiving(clara,lambda w:w==640) and "f" in sending())
         print(f"Focus: Bruno receives {inbound(bruno)['width']}x{inbound(bruno)['height']}, Clara "
-              f"{inbound(clara)['width']}x{inbound(clara)['height']}; the sender's top layer runs for Bruno alone.",flush=True)
+              f"{inbound(clara)['width']}x{inbound(clara)['height']}; the sender resumed its top layer for Bruno alone.",flush=True)
     bruno.click("grid")
     if stats:
         expect("back in the grid, Bruno's tile takes 640x360 again",lambda:receiving(bruno,lambda w:w==640))
@@ -142,15 +145,16 @@ def check_layers(sender,peers,secret,palettes,show):
     wait_for("Clara renders the new pattern while Bruno's camera is paused",lambda:area(clara,palettes[1]),18)
     assert before is None or inbound(bruno)["bytes"]==before
     spot=wait_for("Open call view in Bruno's dock",lambda:next(((x,y) for w,x,y in bruno.words() if w=="open" and x<CHAT_X),None),10)
-    bruno.press(*spot)
+    # Timed from before the click: xdotool may return well after it landed.
     opened=time.monotonic()
+    bruno.press(*spot)
     def restored():
         taken=time.monotonic()
         return (taken-opened,time.monotonic()-opened) if area(bruno,palettes[1]) else None
     first,seen=wait_for("Bruno's reopened stage shows the new pattern",restored,10)
     assert first<=1,f"fresh pixels {first:.2f} s after reopening"
     print(f"Reopened: Bruno's stage showed the new pattern in a screenshot started {first:.2f} s after the click "
-          f"(confirmed {seen:.2f} s).",flush=True)
+          f"began (confirmed {seen:.2f} s).",flush=True)
 
 
 def room_camera(stack,desks,secret,original,publications):

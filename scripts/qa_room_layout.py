@@ -53,6 +53,9 @@ def check_layout(stack,desks,users,secret,original_mics,publications):
                 if t.get("type")!="VIDEO":continue
                 uid=p["identity"].rsplit(":",1)[0]
                 assert t["source"]=="CAMERA" and t["encryption"]=="GCM" and uid not in tracks
+                # Simulcast (V2): three layers, so Alice's thumbnail costs little.
+                layers=sorted((l.get("width",0),l.get("height",0)) for l in t.get("layers",[]))
+                assert t.get("simulcast") and layers==[(320,180),(640,360),(1280,720)],t
                 tracks[uid]=t["sid"]
         return tracks
     updates=[]
@@ -95,6 +98,8 @@ def check_layout(stack,desks,users,secret,original_mics,publications):
         l,t,r,b=box
         alice.cmd("xdotool","mousemove","--window",alice.win,str((l+r)//2),str((t+b)//2),"click","1")
 
+    # Calls start docked in the sidebar; Alice watches on the stage.
+    alice.open_stage()
     grid=state("grid",0)
     im=screen()
     for name,(l,t,r,b) in zip(("bruno","clara"),grid):

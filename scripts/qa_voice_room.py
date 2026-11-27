@@ -11,6 +11,7 @@ import threading
 import time
 from collections import deque
 from contextlib import ExitStack
+from difflib import SequenceMatcher
 from pathlib import Path
 from urllib.parse import quote
 
@@ -381,7 +382,10 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
                 return [(inputs.count(sources[f"Mic{i}.monitor"]),outputs.count(sinks[f"Out{i}"])) for i in range(3)]
             def sidebar(peer,n):
                 words={w for w,x,y in peer.words() if x<CHAT_X and y<500}
-                return all((name.lower() in words)==(i<n) for i,name in enumerate(names))
+                # OCR reads the grey roster names loosely ("aiice" for Alice).
+                def seen(name):
+                    return any(SequenceMatcher(None,name.lower(),w).ratio()>=.8 for w in words)
+                return all(seen(name)==(i<n) for i,name in enumerate(names))
             original={}
             if ptt:
                 desks[0].click("push-to-talk")
