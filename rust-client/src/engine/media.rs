@@ -106,7 +106,9 @@ pub async fn inline_bytes(
     };
     let (bytes, limit) = match source {
         // The media viewer shows the original.
-        _ if preview.fit == Fit::Full => (whole(&media, source).await?, FULL_BYTES),
+        _ if matches!(preview.fit, Fit::Full | Fit::Zoom) => {
+            (whole(&media, source).await?, FULL_BYTES)
+        }
         MediaSource::Plain(_) => {
             let size = if preview.fit == Fit::Avatar {
                 // Cropped to a square, at twice the largest size drawn.
