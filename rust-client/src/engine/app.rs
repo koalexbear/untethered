@@ -328,6 +328,7 @@ impl App {
     pub(crate) fn engine_event(&mut self, event: Event) {
         match event {
             Event::Account(a) => self.engine_account(a),
+            Event::Discussion { id, result } => self.discussion_response(id, result),
             Event::ProfileSaved { id, result } => self.profile_saved(id, result),
             Event::ProfileDirect { id, result } => self.profile_direct(id, result),
             Event::Rooms(list) => {
@@ -431,6 +432,8 @@ impl App {
                             "Transfer failed. Retry or remove the attachment.",
                         ),
                     }
+                } else {
+                    self.thread_uploaded(id, result);
                 }
             }
             Event::RoomState { id, result } => self.engine_room_state(id, result),

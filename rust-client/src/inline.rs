@@ -154,8 +154,21 @@ impl App {
             .enumerate()
             .filter_map(|(i, p)| Some((range.start + i, p.media.as_ref()?.preview.clone()?)))
             .collect();
+        shown.extend(
+            self.thread_image_sources()
+                .map(|source| (focus, source.clone())),
+        );
         // Link previews' images too, where the room shows them.
         if room.link_previews {
+            for url in self.thread_preview_links() {
+                if let Some(source) = self
+                    .link_previews
+                    .get(url)
+                    .and_then(crate::view::link_preview_image)
+                {
+                    shown.push((focus, source));
+                }
+            }
             for (i, post) in history.posts_in(range.clone()).enumerate() {
                 for url in crate::link_previews::links(post) {
                     if let Some(source) = self

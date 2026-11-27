@@ -27,6 +27,7 @@ mod keyring;
 mod live_test;
 mod media;
 mod messaging;
+pub mod pins;
 pub mod polls;
 mod presence;
 mod previews;
@@ -38,6 +39,7 @@ pub mod rt;
 mod search;
 pub use search::{Has, Reach, RoomsFound, SearchQuery};
 mod session;
+pub mod threads;
 // The desktop's own settings live beside the profile (tray.rs).
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) use session::profile_root;
@@ -78,6 +80,11 @@ const UPGRADE: &str = "Untethered now uses a new Matrix engine. Sign in once mor
 /// `id` is answered by exactly one [`Event::Done`].
 #[derive(serde::Serialize, serde::Deserialize)]
 pub enum Command {
+    Discussion {
+        id: i64,
+        room: String,
+        action: threads::Request,
+    },
     Login {
         id: i64,
         homeserver: String,
@@ -446,6 +453,10 @@ pub enum BrowserMethod {
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub enum Event {
+    Discussion {
+        id: i64,
+        result: Result<threads::Response, Failure>,
+    },
     Account(Account),
     ProfileSaved {
         id: i64,
@@ -1405,6 +1416,22 @@ impl Engine {
                     session::forget(&self.profile).await;
                     self.done(id, Err(Failure::Cancelled)).await;
                 }
+            }
+            Command::Discussion { id, room, action } => {
+                let sources = self.sources.clone();
+                self.answer(
+                    Event::Discussion {
+                        id,
+                        result: Err(Failure::Unavailable),
+                    },
+                    move |client| async move {
+                        Event::Discussion {
+                            id,
+                            result: threads::request(&client, &room, action, &sources).await,
+                        }
+                    },
+                )
+                .await;
             }
             Command::React {
                 id,

@@ -146,7 +146,12 @@ async fn context_in(
 }
 
 /// A single event outside a Timeline, mapped like a timeline item.
-fn message(event: &TimelineEvent, row: i64, me: &str, sources: &Sources) -> Option<Message> {
+pub(super) fn message(
+    event: &TimelineEvent,
+    row: i64,
+    me: &str,
+    sources: &Sources,
+) -> Option<Message> {
     let encrypted = event.encryption_info().is_some();
     let parsed = event.raw().deserialize().ok();
     let (id, sender, time) = match &parsed {

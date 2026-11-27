@@ -339,8 +339,8 @@ sso:
              headers=alice_hdr, json={bob: [dm]})
         unread = create(alice_hdr, name="mentions", preset="private_chat", invite=[bob])
         join(bob_hdr, unread)
-        http("PUT", f"{hs}/_matrix/client/v3/rooms/{quote(unread, safe='')}/send/m.room.message/{secrets.token_hex(8)}",
-             headers=bob_hdr, json={"msgtype": "m.text", "body": f"{alice} ping", "m.mentions": {"user_ids": [alice]}})
+        thread_root = http("PUT", f"{hs}/_matrix/client/v3/rooms/{quote(unread, safe='')}/send/m.room.message/{secrets.token_hex(8)}",
+             headers=bob_hdr, json={"msgtype": "m.text", "body": f"{alice} ping", "m.mentions": {"user_ids": [alice]}}).json()["event_id"]
 
         seed = Gomuks(tmp / "seed", hs, alice, alice_pwd)
         peers.append(seed)
@@ -371,7 +371,8 @@ sso:
                                            room=room, space=space, dm=dm, unread_room=unread, peer=bob,
                                            history=history, fresh_username=fresh.split(":")[0][1:],
                                            fresh_password=fresh_pwd, sso_user=f"@{SSO_USER}:{SERVER_NAME}",
-                                           old_event=old_event, peer_password=bob_pwd, peer_key=peer_key)))
+                                           old_event=old_event, peer_password=bob_pwd, peer_key=peer_key,
+                                           thread_root=thread_root)))
         bus = stack.enter_context(private_keyring(tmp))
         isolated = {**os.environ, "UNTETHERED_QA_FIXTURE": str(fixture)}
         if bus:
@@ -390,6 +391,14 @@ sso:
                             "matrix_sdk_delete_and_drafts", "--", "--ignored", "--nocapture"],
                            cwd=ROOT, env=flows, check=True)
             print("PASS message deletion and draft restore", flush=True)
+            return
+        if os.environ.get("UNTETHERED_QA_ONLY") == "discussions":
+            flows = {**isolated, "UNTETHERED_KEYRING": "off", "UNTETHERED_QA_PROFILES": str(tmp / "profiles")}
+            flows.pop("UNTETHERED_QA_KEYRING", None)
+            subprocess.run(["cargo", "test", "--locked", "--manifest-path", "rust-client/Cargo.toml",
+                            "matrix_sdk_pins_and_threads", "--", "--ignored", "--nocapture"],
+                           cwd=ROOT, env=flows, check=True)
+            print("PASS pins and threads", flush=True)
             return
         if os.environ.get("UNTETHERED_QA_ONLY") == "profiles":
             flows = {**isolated, "UNTETHERED_KEYRING": "off", "UNTETHERED_QA_PROFILES": str(tmp / "profiles")}
@@ -498,7 +507,8 @@ sso:
                            "matrix_sdk_account_flows", "--", "--ignored", "--nocapture"],
                           cwd=ROOT, env=flows).returncode:
             failed.append("matrix_sdk_account_flows")
-        for name in ("matrix_sdk_rooms_spaces_and_moderation", "matrix_sdk_call_signaling", "matrix_sdk_profile_interop"):
+        for name in ("matrix_sdk_rooms_spaces_and_moderation", "matrix_sdk_call_signaling", "matrix_sdk_profile_interop",
+                     "matrix_sdk_pins_and_threads"):
             if subprocess.run(["cargo", "test", "--locked", "--manifest-path", "rust-client/Cargo.toml",
                                name, "--", "--ignored", "--nocapture"], cwd=ROOT, env=flows).returncode:
                 failed.append(name)

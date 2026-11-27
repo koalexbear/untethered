@@ -106,6 +106,7 @@ enum Field {
 }
 #[derive(Clone)]
 enum Msg {
+    Discussion(view::discussions::Action),
     #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
     NotificationPanel,
     #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
@@ -142,6 +143,7 @@ enum Msg {
     Files(String, Vec<media::LocalFile>),
     Thumbnail(String, u64, Option<iced::widget::image::Handle>),
     PickFiles,
+    PickThreadImage,
     RemoveFile(u64),
     DismissSkipped(String),
     CancelUpload(String, u64, i64),
@@ -539,6 +541,7 @@ struct App {
     commands: Sender<backend::Command>,
     /// Set when UNTETHERED_ENGINE=matrix-sdk replaces gomuks.
     sdk: Option<Sender<engine::Command>>,
+    discussions: view::discussions::State,
     sdk_ui: engine::account_ui::AccountUi,
     outbox: media::Outbox,
     inline: inline::InlineImages,
@@ -703,6 +706,7 @@ impl App {
             pasting: false,
             commands,
             sdk: None,
+            discussions: Default::default(),
             sdk_ui: Default::default(),
             outbox: Default::default(),
             inline: Default::default(),
@@ -872,6 +876,7 @@ impl App {
         self.close_viewer();
         self.scrolled_away = false;
         self.scrolled_far = false;
+        self.discussions = Default::default();
         self.reset_directory();
         self.leave_permission_panel();
         #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
@@ -1068,6 +1073,14 @@ impl App {
             self.server_menu = false;
         }
         match msg {
+            Msg::Discussion(action) => {
+                let focus = matches!(action, view::discussions::Action::Emoji(_));
+                self.discussion(action);
+                if focus {
+                    return operation::focus("thread-composer");
+                }
+            }
+            Msg::PickThreadImage => return self.pick_thread_image(),
             #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
             Msg::NotificationPanel => self.alerts.panel = !self.alerts.panel,
             #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
@@ -1637,6 +1650,13 @@ impl App {
                 }
             }
             Msg::Files(mut room, files) => {
+                if let Some(picker) = room
+                    .strip_prefix("thread-image:")
+                    .and_then(|id| id.parse().ok())
+                {
+                    self.thread_image_picked(picker, files.into_iter().next());
+                    return operation::focus("thread-composer");
+                }
                 #[cfg(target_arch = "wasm32")]
                 if let Some(id) = room
                     .strip_prefix(engine::profile::AVATAR_PICKER)

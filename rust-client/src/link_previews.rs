@@ -49,6 +49,13 @@ pub fn links(post: &Post) -> Vec<String> {
     post.rich.as_deref().map(doc_links).unwrap_or_default()
 }
 
+pub(crate) fn message_links(body: &str, formatted: Option<&str>) -> Vec<String> {
+    crate::rich::Doc::message(formatted, body)
+        .as_ref()
+        .map(doc_links)
+        .unwrap_or_default()
+}
+
 fn doc_links(doc: &crate::rich::Doc) -> Vec<String> {
     let mut found = Vec::new();
     collect(&doc.blocks, &mut found);
@@ -110,14 +117,16 @@ impl App {
         let range = self.timeline_range(history);
         let previews = &self.link_previews;
         let mut wanted: Vec<String> = Vec::new();
-        for post in history.posts_in(range).rev() {
-            for url in links(post) {
-                if !previews.cache.contains_key(&url)
-                    && !previews.asked.contains(&url)
-                    && !wanted.contains(&url)
-                {
-                    wanted.push(url);
-                }
+        let urls = self
+            .thread_preview_links()
+            .map(str::to_owned)
+            .chain(history.posts_in(range).rev().flat_map(links));
+        for url in urls {
+            if !previews.cache.contains_key(&url)
+                && !previews.asked.contains(&url)
+                && !wanted.contains(&url)
+            {
+                wanted.push(url);
             }
         }
         let Some(sdk) = &self.sdk else {
@@ -192,15 +201,9 @@ impl App {
 mod tests {
     use super::*;
 
-    fn links_of(body: &str, formatted: Option<&str>) -> Vec<String> {
-        crate::rich::Doc::message(formatted, body)
-            .map(|d| doc_links(&d))
-            .unwrap_or_default()
-    }
-
     #[test]
     fn a_message_previews_its_first_two_web_links() {
-        let found = links_of(
+        let found = message_links(
             "see https://example.org/a, https://matrix.to/#/!r:x and https://example.org/b and https://example.org/c",
             None,
         );
@@ -209,7 +212,7 @@ mod tests {
 
     #[test]
     fn links_in_code_spoilers_and_mail_get_none() {
-        let found = links_of(
+        let found = message_links(
             "x",
             Some(
                 "<code>https://a.example</code> <span data-mx-spoiler>https://b.example</span> \

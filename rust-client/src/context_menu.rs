@@ -150,6 +150,9 @@ pub enum Entry {
     CopyImage,
     MarkUnread,
     CopyMessageLink,
+    ReplyInThread,
+    PinMessage,
+    UnpinMessage,
     Delete,
     Report,
     Profile,
@@ -182,6 +185,9 @@ impl Entry {
             Self::CopyImage => "Copy Image",
             Self::MarkUnread => "Mark Unread",
             Self::CopyMessageLink => "Copy Message Link",
+            Self::ReplyInThread => "Reply in Thread",
+            Self::PinMessage => "Pin Message",
+            Self::UnpinMessage => "Unpin Message",
             Self::Report => "Report Message",
             Self::Delete => "Delete Message…",
             Self::Profile => "Profile",
@@ -226,6 +232,9 @@ impl Entry {
             | Self::CopyImage
             | Self::MarkUnread
             | Self::CopyMessageLink
+            | Self::ReplyInThread
+            | Self::PinMessage
+            | Self::UnpinMessage
             | Self::Kick
             | Self::Ban => 1,
             #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
@@ -355,6 +364,24 @@ impl App {
                     })
                 }),
             ));
+        }
+        if p.from.is_none() && p.reactable && self.verified {
+            use crate::view::discussions::{Action, Panel};
+            items.push(item(
+                Entry::ReplyInThread,
+                ready.then(|| Msg::Discussion(Action::Open(Panel::Replies(id.clone())))),
+            ));
+            if r.posting.can_pin_message(&self.matrix_id) {
+                let pinned = self.discussions.pinned(room, id);
+                items.push(item(
+                    if pinned {
+                        Entry::UnpinMessage
+                    } else {
+                        Entry::PinMessage
+                    },
+                    ready.then(|| Msg::Discussion(Action::Pin(id.clone(), !pinned))),
+                ));
+            }
         }
         if p.may_edit(&self.matrix_id) && r.has_metadata && r.encrypted == p.encrypted {
             items.push(item(
@@ -955,6 +982,7 @@ mod tests {
                 AddReaction,
                 Reply,
                 Forward,
+                ReplyInThread,
                 Edit,
                 CopyText,
                 MarkUnread,
@@ -968,6 +996,7 @@ mod tests {
                 AddReaction,
                 Reply,
                 Forward,
+                ReplyInThread,
                 CopyText,
                 MarkUnread,
                 CopyMessageLink,
@@ -975,6 +1004,7 @@ mod tests {
             ]
         );
         assert!(post(&app(50), "$m1").contains(&Delete));
+        assert!(post(&app(50), "$m1").contains(&PinMessage));
     }
 
     #[test]

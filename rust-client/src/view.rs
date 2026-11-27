@@ -23,6 +23,7 @@ mod polls;
 mod switcher;
 mod zoom;
 pub(crate) use link_preview::image_source as link_preview_image;
+pub(crate) mod discussions;
 mod mentions;
 mod popover;
 mod presence;
@@ -269,6 +270,39 @@ fn field_style(_: &Theme, status: text_editor::Status) -> text_editor::Style {
         selection: color!(0x5865f2, 0.45),
     }
 }
+fn composer_editor<'a>(
+    content: &'a text_editor::Content,
+    id: &'static str,
+    hint: String,
+    on_action: Option<fn(text_editor::Action) -> Msg>,
+    key_binding: impl Fn(text_editor::KeyPress) -> Option<text_editor::Binding<Msg>> + 'a,
+) -> El<'a> {
+    let editor = text_editor(content)
+        .id(id)
+        .placeholder(hint)
+        .key_binding(key_binding)
+        .padding([11, 0])
+        .size(16)
+        .height(Length::Shrink)
+        .min_height(22)
+        .max_height(220)
+        .style(|theme, status| text_editor::Style {
+            background: Color::TRANSPARENT.into(),
+            border: Border::default(),
+            ..field_style(theme, status)
+        });
+    match on_action {
+        Some(action) => editor.on_action(action).into(),
+        None => editor.into(),
+    }
+}
+
+fn composer_send_key(press: &text_editor::KeyPress) -> bool {
+    press.key == keyboard::Key::Named(keyboard::key::Named::Enter)
+        && press.modifiers.is_empty()
+        && matches!(press.status, text_editor::Status::Focused { .. })
+}
+
 fn input_style(_: &Theme, status: text_input::Status) -> text_input::Style {
     text_input::Style {
         background: RAIL.into(),
@@ -2374,6 +2408,33 @@ impl App {
                 tooltip::Position::Bottom,
             ));
         }
+        if full {
+            use discussions::{Action, Panel};
+
+            for (glyph, label, panel) in [
+                (Icon::Pin, "Pinned Messages", Panel::Pins),
+                (Icon::Threads, "Threads", Panel::Threads),
+            ] {
+                let active = !self.people
+                    && (self.discussions.panel.as_ref() == Some(&panel)
+                        || matches!(
+                            (&panel, &self.discussions.panel),
+                            (Panel::Threads, Some(Panel::Replies(_)))
+                        ));
+                let action = if active {
+                    Action::Close
+                } else {
+                    Action::Open(panel)
+                };
+                tools = tools.push(icon_button(
+                    glyph,
+                    label,
+                    active,
+                    (active || self.connected).then_some(Msg::Discussion(action)),
+                    tooltip::Position::Bottom,
+                ));
+            }
+        }
         tools = tools
             .push(icon_button(
                 Icon::Members,
@@ -2671,7 +2732,9 @@ impl App {
                 .into()
         };
         let mut middle = Row::new().push(body).height(Fill);
-        if self.people && self.logged_in && room.is_some() {
+        if let Some(panel) = discussions::view(self).filter(|_| room.is_some() && !self.people) {
+            middle = middle.push(panel);
+        } else if self.people && self.logged_in && room.is_some() {
             middle = middle.push(room_people::view(self));
         } else if self.people
             && let Some(r) = room
@@ -3313,50 +3376,30 @@ impl App {
             };
             format!("Message {sign}{}", r.name)
         };
-        let editor = text_editor(&self.editor)
-            .id("composer")
-            .placeholder(hint)
-            .on_action(Msg::Draft)
-            .key_binding(|press| {
-                if let Some(popup) =
-                    self.completion_key(crate::autocomplete::Field::Composer, &press)
-                {
-                    return Some(popup);
+        let editor = composer_editor(&self.editor, "composer", hint, Some(Msg::Draft), |press| {
+            if let Some(popup) = self.completion_key(crate::autocomplete::Field::Composer, &press) {
+                return Some(popup);
+            }
+            #[cfg(target_arch = "wasm32")]
+            if press.modifiers.command()
+                && press.key.as_ref() == keyboard::Key::Character("v")
+                && matches!(press.status, text_editor::Status::Focused { .. })
+            {
+                return Some(text_editor::Binding::Custom(Msg::WebPaste(
+                    super::Field::Composer(self.selected.clone()),
+                )));
+            }
+            if composer_send_key(&press) {
+                Some(text_editor::Binding::Custom(Msg::Send))
+            } else {
+                let binding = text_editor::Binding::from_key_press(press);
+                #[cfg(not(target_arch = "wasm32"))]
+                if matches!(binding, Some(text_editor::Binding::Paste)) {
+                    return Some(text_editor::Binding::Custom(Msg::PasteComposer));
                 }
-                #[cfg(target_arch = "wasm32")]
-                if press.modifiers.command()
-                    && press.key.as_ref() == keyboard::Key::Character("v")
-                    && matches!(press.status, text_editor::Status::Focused { .. })
-                {
-                    return Some(text_editor::Binding::Custom(Msg::WebPaste(
-                        super::Field::Composer(self.selected.clone()),
-                    )));
-                }
-                if press.key == keyboard::Key::Named(keyboard::key::Named::Enter)
-                    && press.modifiers.is_empty()
-                    && matches!(press.status, text_editor::Status::Focused { .. })
-                {
-                    Some(text_editor::Binding::Custom(Msg::Send))
-                } else {
-                    let binding = text_editor::Binding::from_key_press(press);
-                    #[cfg(not(target_arch = "wasm32"))]
-                    if matches!(binding, Some(text_editor::Binding::Paste)) {
-                        return Some(text_editor::Binding::Custom(Msg::PasteComposer));
-                    }
-                    binding
-                }
-            })
-            .padding([11, 0])
-            .size(16)
-            .height(Length::Shrink)
-            // Content height; the 11 px padding above and below makes a 44 px bar.
-            .min_height(22)
-            .max_height(220)
-            .style(|theme, status| text_editor::Style {
-                background: Color::TRANSPARENT.into(),
-                border: Border::default(),
-                ..field_style(theme, status)
-            });
+                binding
+            }
+        });
         let sending = self
             .pending
             .values()
