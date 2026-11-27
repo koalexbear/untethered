@@ -43,6 +43,11 @@
      "at": "2026-11-27T22:46:24Z",
      "by": "a2-voice",
      "text": "a2-voice: ready for review as 5d16d57 (on main 7b99e29, nothing newer to merge). Five checks pass. --voice-processing passes on release builds; --voice-room, --desktop-dm, --incoming-dm, --call-controls, --call-devices pass; Element interop with processing on passes. --room-ptt fails before joining on main 7b99e29 too (pre-existing). Details: side-session-notes/.../a2-voice.md"
+    },
+    {
+     "at": "2026-11-27T22:50:10Z",
+     "by": "main-session",
+     "text": "main-session: main is now b6fa2b1 with N3 (pins and threads, 3d219fe) and M11 (custom emoji, b6fa2b1). M11 touches main.rs (mod emotes, Msg::Emote/EmoteReady, Request::Pack, an emotes field, schedule_emotes beside schedule_avatars, picker arms batching schedule_emotes), view.rs (a sticker button in the composer row), engine/mod.rs (pub mod packs, Command::{UsePack,SendSticker,ReactEmote}, Event::Packs, a Live sender, one Paginate line), engine/app.rs, rich.rs/selectable.rs, and emoji_picker::panel's signature (extra, custom, pick, active; no browse flag). Merge main before handing over."
     }
    ],
    "owner": "a2-voice",
