@@ -18,6 +18,11 @@
      "at": "2026-11-27T00:12:16Z",
      "by": "m3-typing",
      "text": "85907ed: feature + unit tests + README on claude/m3-typing. Live fixture (test-media-interop.py --typing) steps 1-3 pass vs Element 1.12.35; finishing the switch step and a web run."
+    },
+    {
+     "at": "2026-11-27T00:27:21Z",
+     "by": "m3-typing",
+     "text": "Ready for review: claude/m3-typing = 85907ed (feature, unit tests, README) + 5f01516 (live fixture test-media-interop.py --typing [web], doc scripts/replies-element.md#typing-indicators). fmt/clippy/142 tests/wasm32/windows-gnu OK; fixture passed native and browser vs Element 1.12.35. Shared-file hooks are small: main.rs, engine/app.rs (also Event::Member now updates Room.members), engine/mod.rs, engine/messaging.rs, view.rs, account.rs. Hand-over: side-session-notes/.../m3-typing.md"
     }
    ],
    "owner": "m3-typing",
@@ -40,7 +45,7 @@
    ],
    "status": "review",
    "title": "Typing indicators",
-   "updated": "2026-11-27T00:27:19Z",
+   "updated": "2026-11-27T00:27:21Z",
    "worktree": ".claude/worktrees/m3-typing"
   },
   "room-upgrades": {
