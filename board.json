@@ -7,13 +7,16 @@
    "owner": "main-session",
    "paths": [
     "README.md",
+    "rust-client/src/avatars.rs",
     "rust-client/src/community.rs",
     "rust-client/src/engine/app.rs",
     "rust-client/src/engine/joining.rs",
     "rust-client/src/engine/mod.rs",
+    "rust-client/src/invites.rs",
     "rust-client/src/joining.rs",
     "rust-client/src/main.rs",
     "rust-client/src/replies.rs",
+    "rust-client/src/upgrades.rs",
     "rust-client/src/view.rs",
     "rust-client/src/view/community.rs",
     "rust-client/src/view/joining.rs",
@@ -21,7 +24,7 @@
    ],
    "status": "working",
    "title": "Join by link",
-   "updated": "2026-11-27T12:46:06Z",
+   "updated": "2026-11-27T12:50:08Z",
    "worktree": "."
   }
  },
