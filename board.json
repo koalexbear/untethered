@@ -61,6 +61,27 @@
    "updated": "2026-11-27T22:14:08Z",
    "worktree": ".claude/worktrees/a2-voice-a94df8"
   },
+  "J5": {
+   "branch": "main",
+   "claimed": "2026-11-27T22:26:13Z",
+   "notes": [],
+   "owner": "codex-j5",
+   "paths": [
+    "rust-client/src/engine/browser.rs",
+    "rust-client/src/engine/session.rs",
+    "rust-client/src/engine/worker.rs",
+    "rust-client/src/view/sdk_account.rs",
+    "rust-client/web/auth.js",
+    "rust-client/web/engine.js",
+    "rust-client/web/index.html",
+    "scripts/qa_matrix_sdk.py",
+    "scripts/qa_web_login.py"
+   ],
+   "status": "working",
+   "title": "Sign-in everywhere",
+   "updated": "2026-11-27T22:26:13Z",
+   "worktree": "."
+  },
   "M11": {
    "branch": "m11-emoji",
    "claimed": "2026-11-27T21:43:12Z",
