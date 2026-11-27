@@ -361,7 +361,7 @@ sso:
 
         peer = Gomuks(tmp / "peer", hs, bob, bob_pwd)
         peers.append(peer)
-        peer.recovery(bob_pwd)
+        peer_key = peer.recovery(bob_pwd)
         peer.joined(room)
 
         signals = tmp / "signals"
@@ -371,7 +371,7 @@ sso:
                                            room=room, space=space, dm=dm, unread_room=unread, peer=bob,
                                            history=history, fresh_username=fresh.split(":")[0][1:],
                                            fresh_password=fresh_pwd, sso_user=f"@{SSO_USER}:{SERVER_NAME}",
-                                           old_event=old_event, peer_password=bob_pwd)))
+                                           old_event=old_event, peer_password=bob_pwd, peer_key=peer_key)))
         bus = stack.enter_context(private_keyring(tmp))
         isolated = {**os.environ, "UNTETHERED_QA_FIXTURE": str(fixture)}
         if bus:
@@ -381,6 +381,16 @@ sso:
             isolated.update(UNTETHERED_KEYRING="off")
             isolated.pop("DBUS_SESSION_BUS_ADDRESS", None)
             print("gnome-keyring-daemon not found; testing the file fallback only", flush=True)
+        if os.environ.get("UNTETHERED_QA_ONLY") == "delete-drafts":
+            flows = {**isolated, "UNTETHERED_KEYRING": "off",
+                     "UNTETHERED_QA_PROFILES": str(tmp / "profiles"),
+                     "UNTETHERED_PROFILE": str(tmp / "drafts-profile")}
+            flows.pop("UNTETHERED_QA_KEYRING", None)
+            subprocess.run(["cargo", "test", "--locked", "--manifest-path", "rust-client/Cargo.toml",
+                            "matrix_sdk_delete_and_drafts", "--", "--ignored", "--nocapture"],
+                           cwd=ROOT, env=flows, check=True)
+            print("PASS message deletion and draft restore", flush=True)
+            return
         if os.environ.get("UNTETHERED_QA_ONLY") == "profiles":
             flows = {**isolated, "UNTETHERED_KEYRING": "off", "UNTETHERED_QA_PROFILES": str(tmp / "profiles")}
             flows.pop("UNTETHERED_QA_KEYRING", None)
@@ -492,6 +502,11 @@ sso:
             if subprocess.run(["cargo", "test", "--locked", "--manifest-path", "rust-client/Cargo.toml",
                                name, "--", "--ignored", "--nocapture"], cwd=ROOT, env=flows).returncode:
                 failed.append(name)
+        draft_env = {**flows, "UNTETHERED_PROFILE": str(tmp / "drafts-profile")}
+        if subprocess.run(["cargo", "test", "--locked", "--manifest-path", "rust-client/Cargo.toml",
+                           "matrix_sdk_delete_and_drafts", "--", "--ignored", "--nocapture"],
+                          cwd=ROOT, env=draft_env).returncode:
+            failed.append("matrix_sdk_delete_and_drafts")
         if failed:
             raise SystemExit("FAILED: " + ", ".join(failed))
         events = http("GET", f"{hs}/_matrix/client/v3/rooms/{quote(room, safe='')}/messages",

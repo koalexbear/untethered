@@ -152,6 +152,26 @@ impl Posting {
         )?;
         Some(self.actor(me)? >= min)
     }
+    /// The sender needs permission to send a redaction. Deleting someone
+    /// else's event also requires the room's redaction power level.
+    pub(crate) fn can_redact_message(&self, me: &str, sender: &str) -> bool {
+        let required = self.content().and_then(|content| {
+            let send = level(
+                &content["events"],
+                "m.room.redaction",
+                level(content, "events_default", 0)?,
+            )?;
+            if me == sender {
+                Some(send)
+            } else {
+                Some(send.max(level(content, "redact", 50)?))
+            }
+        });
+        required
+            .zip(self.actor(me))
+            .is_some_and(|(needed, actor)| actor >= needed)
+    }
+
     pub fn can_link_channel(&self, me: &str) -> bool {
         self.content()
             .and_then(|c| {
@@ -405,6 +425,34 @@ mod tests {
             Some(doc("$base", "@creator:h", c)),
         )
     }
+    #[test]
+    fn redacting_other_messages_requires_both_thresholds() {
+        let p = policy(
+            "12",
+            json!({
+                "users": {"@member:h": 10, "@moderator:h": 55},
+                "events": {"m.room.redaction": 10},
+                "redact": 55
+            }),
+        );
+        assert!(!p.can_redact_message("@guest:h", "@guest:h"));
+        assert!(p.can_redact_message("@member:h", "@member:h"));
+        assert!(!p.can_redact_message("@member:h", "@guest:h"));
+        assert!(p.can_redact_message("@moderator:h", "@guest:h"));
+        assert!(p.can_redact_message("@also:h", "@moderator:h"));
+
+        let stricter = policy(
+            "11",
+            json!({
+                "users": {"@moderator:h": 55},
+                "events": {"m.room.redaction": 60},
+                "redact": 50
+            }),
+        );
+        assert!(!stricter.can_redact_message("@moderator:h", "@guest:h"));
+        assert!(!Posting::default().can_redact_message("@member:h", "@member:h"));
+    }
+
     #[test]
     fn permissions_follow_room_version_and_state_event_threshold() {
         let c =

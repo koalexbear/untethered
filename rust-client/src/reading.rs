@@ -63,6 +63,24 @@ impl State {
         }
         by_event
     }
+    /// Count unread messages across the whole room. Add a time only when
+    /// the read marker has a loaded message row with a known timestamp.
+    pub(crate) fn unread_summary<'a>(
+        &self,
+        room: &'a rooms::Room,
+    ) -> Option<(u64, Option<&'a str>)> {
+        if self.messages == 0 {
+            return None;
+        }
+        let since = self
+            .fully_read
+            .as_deref()
+            .and_then(|event| room.by_id(event))
+            .filter(|post| post.time > 0)
+            .map(|post| post.clock.as_str());
+        Some((self.messages, since))
+    }
+
     pub fn divider<'a>(&'a self, room: &rooms::Room) -> Option<&'a str> {
         let marker = self.fully_read.as_ref()?;
         // A fully-read marker may be on an edit, reaction or room state,
@@ -225,4 +243,28 @@ impl App {
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
-mod tests {}
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unread_summary_keeps_the_server_count_when_the_marker_is_unloaded() {
+        let mut room = rooms::Room::default();
+        room.read.messages = 27;
+        room.read.fully_read = Some("$marker".into());
+        assert_eq!(room.read.unread_summary(&room), Some((27, None)));
+
+        room.insert(&json!({
+            "rowid": 1,
+            "event_id": "$marker",
+            "type": "m.room.message",
+            "timestamp": 1_735_732_800_000i64,
+            "sender": "@alice:example.org",
+            "content": {"msgtype": "m.text", "body": "Read marker"}
+        }));
+        let time = room.by_id("$marker").unwrap().clock.as_str();
+        assert_eq!(room.read.unread_summary(&room), Some((27, Some(time))));
+
+        room.read.messages = 0;
+        assert_eq!(room.read.unread_summary(&room), None);
+    }
+}

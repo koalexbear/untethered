@@ -170,6 +170,11 @@ pub enum Command {
         body: String,
         pills: Vec<crate::pills::Pill>,
     },
+    Redact {
+        id: i64,
+        room: String,
+        event: String,
+    },
     Report {
         id: i64,
         room: String,
@@ -1233,6 +1238,12 @@ impl Engine {
             } => {
                 self.job(id, move |_, timelines, _| async move {
                     timelines.edit(&room, &event, body, &pills).await
+                })
+                .await
+            }
+            Command::Redact { id, room, event } => {
+                self.job(id, move |client, _, _| async move {
+                    messaging::redact(&client, &room, &event).await
                 })
                 .await
             }

@@ -96,6 +96,17 @@ impl App {
     }
 
     /// Asks before leaving a room, as Discord does before leaving a server.
+    pub(super) fn delete_dialog(&self) -> Option<El<'_>> {
+        let (room, event) = self.context_menu.deleting.as_ref()?;
+        Some(self.confirm_destructive(
+            "Delete Message".into(),
+            "Delete this message for everyone in the room?".into(),
+            "This cannot be undone.",
+            "Delete",
+            self.can_delete(room, event).then_some(Menu::ConfirmDelete),
+        ))
+    }
+
     pub(super) fn leave_dialog(&self) -> Option<El<'_>> {
         let room = self.context_menu.leaving.as_ref()?;
         let r = self.live.list.get(room)?;
@@ -107,24 +118,36 @@ impl App {
         } else {
             (format!("Leave #{}", r.name), format!("Leave #{}?", r.name))
         };
+        Some(self.confirm_destructive(
+            title,
+            question,
+            "Rejoining may need a new invite.",
+            "Leave",
+            (self.connected && !self.leaving_room(room)).then_some(Menu::ConfirmLeave),
+        ))
+    }
+
+    fn confirm_destructive(
+        &self,
+        title: String,
+        question: String,
+        hint: &'static str,
+        action: &'static str,
+        confirm: Option<Menu>,
+    ) -> El<'_> {
         let body = column![
             text(title).size(20).font(BOLD).color(TEXT),
             text(question).size(15).color(BODY),
-            text("Rejoining may need a new invite.")
-                .size(14)
-                .color(super::CHANNEL),
+            text(hint).size(14).color(super::CHANNEL),
         ]
         .spacing(8);
         let cancel = button(text("Cancel").size(14))
             .padding([10, 16])
             .style(plain(BODY, Color::WHITE))
             .on_press(Msg::ContextMenu(Menu::Close));
-        let leave = button(text("Leave").size(14).font(BOLD))
+        let leave = button(text(action).size(14).font(BOLD))
             .padding([10, 18])
-            .on_press_maybe(
-                (self.connected && !self.leaving_room(room))
-                    .then_some(Msg::ContextMenu(Menu::ConfirmLeave)),
-            )
+            .on_press_maybe(confirm.map(Msg::ContextMenu))
             .style(|_, s| button::Style {
                 background: Some(
                     match s {
@@ -160,7 +183,7 @@ impl App {
             }
         }))
         .on_press(Msg::ContextMenu(Menu::Close));
-        Some(stack![opaque(backdrop), container(dialog).center(Fill)].into())
+        stack![opaque(backdrop), container(dialog).center(Fill)].into()
     }
 }
 

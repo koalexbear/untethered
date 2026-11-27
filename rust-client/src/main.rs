@@ -16,6 +16,7 @@ mod community;
 mod context_menu;
 #[cfg(target_os = "linux")]
 mod desktop_call;
+mod drafts;
 mod edits;
 mod emoji;
 mod engine;
@@ -224,6 +225,8 @@ enum Msg {
     MoreMentions,
     MentionHit(String, String),
     Draft(text_editor::Action),
+    #[cfg(not(target_arch = "wasm32"))]
+    SaveDrafts,
     /// Composer autocomplete and the emoji button (autocomplete.rs).
     Autocomplete(autocomplete::Input),
     /// Typing notices and their switch (typing.rs).
@@ -359,6 +362,7 @@ enum Request {
     Posting(permissions::Flight),
     Membership(moderation::Flight),
     Edit(String, String),
+    Redact(String, String),
     Reaction(reactions::Toggle),
     Report,
     Search(String, search::Page),
@@ -437,6 +441,7 @@ struct App {
     section: Section,
     selected: String,
     drafts: BTreeMap<String, String>,
+    drafts_dirty: bool,
     reply_drafts: BTreeMap<String, rooms::Quote>,
     original: Option<replies::Original>,
     // Exclusive timestamp/row-ID boundary. None follows the latest message.
@@ -548,6 +553,7 @@ impl App {
             section: Section::Space("!workshop".into()),
             selected: "!general".into(),
             drafts: Default::default(),
+            drafts_dirty: false,
             reply_drafts: Default::default(),
             original: None,
             timeline_end: None,
@@ -679,8 +685,7 @@ impl App {
         self.clear_search();
         self.editing = None;
         self.stop_typing();
-        self.drafts
-            .insert(self.selected.clone(), self.editor.text());
+        self.record_current_draft();
         self.editor =
             text_editor::Content::with_text(self.drafts.get(&id).map(String::as_str).unwrap_or(""));
         let left = std::mem::replace(&mut self.selected, id.clone());
@@ -927,6 +932,7 @@ impl App {
                                 text_editor::Edit::Paste(s.into()),
                             ));
                             self.composer_changed();
+                            self.record_current_draft();
                         }
                         Err(reason) if self.selected == room => self.status = reason.into(),
                         _ => {}
@@ -986,7 +992,11 @@ impl App {
             }
             // The desktop may close to the tray instead (tray.rs).
             #[cfg(not(target_arch = "wasm32"))]
-            Msg::Close => return self.close_requested(),
+            Msg::Close => {
+                self.record_current_draft();
+                self.persist_drafts();
+                return self.close_requested();
+            }
             #[cfg(target_arch = "wasm32")]
             Msg::Close => return self.quit(),
             #[cfg(not(target_arch = "wasm32"))]
@@ -1648,11 +1658,15 @@ impl App {
                 self.draft(a);
                 if edit {
                     self.composer_changed();
+                    self.record_current_draft();
                 }
             }
+            #[cfg(not(target_arch = "wasm32"))]
+            Msg::SaveDrafts => self.persist_drafts(),
             Msg::Autocomplete(input) => {
                 let emoji = matches!(input, autocomplete::Input::PickEmoji(_));
                 let task = self.autocomplete(input);
+                self.record_current_draft();
                 if emoji {
                     self.composer_changed();
                 }
@@ -1891,11 +1905,14 @@ impl App {
             }
             #[cfg(target_arch = "wasm32")]
             Msg::Pasted(field, s) => match field {
-                Field::Composer(room) if self.selected == room && !self.account => self
-                    .editor
-                    .perform(text_editor::Action::Edit(text_editor::Edit::Paste(
-                        s.into(),
-                    ))),
+                Field::Composer(room) if self.selected == room && !self.account => {
+                    self.editor
+                        .perform(text_editor::Action::Edit(text_editor::Edit::Paste(
+                            s.into(),
+                        )));
+                    self.composer_changed();
+                    self.record_current_draft();
+                }
                 Field::Password if self.account && !self.logged_in => self.password = s,
                 Field::Username if self.account && !self.logged_in => {
                     self.username = s.trim().into()
@@ -1952,6 +1969,8 @@ impl App {
     /// Quit: end the call first (its last frame stops the engine), then stop
     /// the engine, and exit once it has stopped.
     fn quit(&mut self) -> Task<Msg> {
+        self.record_current_draft();
+        self.persist_drafts();
         self.closing = true;
         #[cfg(target_os = "linux")]
         self.clear_ring();
@@ -2089,6 +2108,10 @@ fn main() -> iced::Result {
                 if app.auto_target().is_some(){
                     iced::time::every(std::time::Duration::from_millis(750)).map(|_|Msg::CheckReading)
                 }else{iced::Subscription::none()},
+                #[cfg(not(target_arch = "wasm32"))]
+                if app.drafts_dirty {
+                    iced::time::every(std::time::Duration::from_millis(500)).map(|_| Msg::SaveDrafts)
+                } else { iced::Subscription::none() },
                 app.typing_subscription(),
                 #[cfg(not(target_arch = "wasm32"))]
                 iced::event::listen_with(|event, _, _| match event {

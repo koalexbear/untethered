@@ -40,6 +40,14 @@ pub(super) fn http(e: &matrix_sdk::Error) -> Failure {
     }
 }
 
+pub async fn redact(client: &Client, room: &str, event: &str) -> Result<(), Failure> {
+    self::room(client, room)?
+        .redact(&event_id(event)?, None, None)
+        .await
+        .map(|_| ())
+        .map_err(|e| http(&e.into()))
+}
+
 pub async fn report(client: &Client, room: &str, event: &str, reason: &str) -> Result<(), Failure> {
     let reason = (!reason.trim().is_empty()).then(|| reason.to_owned());
     self::room(client, room)?

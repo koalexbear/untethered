@@ -17,6 +17,11 @@ impl App {
     pub fn apply_account(&mut self, state: State) {
         let was = self.logged_in;
         let was_verified = self.verified;
+        let changed_account = was != state.logged_in || self.matrix_id != state.user_id;
+        if was && changed_account {
+            self.record_current_draft();
+            self.persist_drafts();
+        }
         self.connected = true;
         self.logged_in = state.logged_in;
         self.verified = state.verified;
@@ -52,7 +57,7 @@ impl App {
             self.alerts.reset();
         }
         self.matrix_id = user;
-        if was != self.logged_in {
+        if changed_account {
             #[cfg(target_os = "linux")]
             {
                 self.drop_epoch += 1;
@@ -63,7 +68,7 @@ impl App {
                 self.pasting = false;
             }
             self.pending.retain(|_, p| matches!(p, Request::Login));
-            self.drafts.clear();
+            self.load_drafts();
             self.clear_search();
             self.reply_drafts.clear();
             self.reset_directory();

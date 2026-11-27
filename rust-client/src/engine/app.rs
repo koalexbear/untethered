@@ -334,7 +334,9 @@ impl App {
                 self.keep_link_preview_switches();
                 for left in left {
                     self.reply_drafts.remove(&left);
-                    self.drafts.remove(&left);
+                    if self.drafts.remove(&left).is_some() {
+                        self.drafts_changed();
+                    }
                     self.loaded.remove(&left);
                 }
                 if self.logged_in {
@@ -563,6 +565,7 @@ impl App {
                 }
                 if same && self.drafts.get(&room) == Some(&sent) {
                     self.drafts.remove(&room);
+                    self.drafts_changed();
                 }
                 if same {
                     self.reply_drafts.remove(&room);
@@ -587,6 +590,12 @@ impl App {
             }
             (Request::Edit(room, event), Err(_)) => {
                 self.finish_edit(id, &room, &event, &Value::Null)
+            }
+            (Request::Redact(..), Ok(())) => {
+                self.status.clear();
+            }
+            (Request::Redact(..), Err(_)) => {
+                self.status = "Could not delete this message. Try again.".into();
             }
             (Request::Report, result) => self.report_result(result.is_ok()),
             (Request::ReadState(room, event), result) => {
