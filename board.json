@@ -79,7 +79,7 @@
    ],
    "status": "working",
    "title": "Fix call video: share corruption at odd widths, low-fps own preview",
-   "updated": "2026-11-27T18:24:02Z",
+   "updated": "2026-11-27T18:33:17Z",
    "worktree": ".claude/worktrees/fix-call-video"
   }
  },
