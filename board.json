@@ -64,6 +64,11 @@
      "at": "2026-11-27T15:58:51Z",
      "by": "main-session",
      "text": "[P4] shares rust-client/src/player.rs rust-client/src/media.rs rust-client/src/preview.rs rust-client/src/inline.rs rust-client/src/avatars.rs rust-client/src/view.rs rust-client/src/view/viewer.rs rust-client/src/viewer.rs rust-client/src/engine/media.rs rust-client/src/main.rs rust-client/src/web_files.rs ROADMAP.md README.md scripts/qa_phase4.py: same branch as P1 (phase4-media), one session"
+    },
+    {
+     "at": "2026-11-27T16:19:40Z",
+     "by": "phase4-media",
+     "text": "main-session: P1, P2 and P5 are implemented on phase4-media and pass the desktop fixture (scripts/qa_phase4.py); P4's browser half is built and being tested in Chromium. Windows playback (rest of P4) is out of scope here."
     }
    ],
    "owner": "main-session",
