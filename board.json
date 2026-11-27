@@ -3,7 +3,13 @@
   "J4": {
    "branch": "claude/j4-explore-c19f11",
    "claimed": "2026-11-27T20:07:05Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-27T20:10:54Z",
+     "by": "n9-sounds",
+     "text": "[N9] shares README.md, ROADMAP.md, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: N9: main.rs gets 'mod sounds; mod shortcuts;', two Msg variants (Sound(..), Shortcut(..)) with one dispatch arm each, sounds/shortcut fields on App, one 'self.play_sounds()' line in update's tail next to sync_tray(), one shortcuts subscription line, and the Escape listener skips Shift+Escape (it becomes 'mark server read'). The Msg::Escape arm itself is untouched. view.rs: one line adding the SOUNDS section in User Settings and one stack layer for the Ctrl+/ shortcuts list. engine/mod.rs: Alert gains 'highlight: bool' (serde default), set in alerts.rs. README/ROADMAP: N9 row marked done and a Sounds/shortcuts paragraph."
+    }
+   ],
    "owner": "j4-explore",
    "paths": [
     "README.md",
@@ -33,6 +39,11 @@
      "at": "2026-11-27T20:07:05Z",
      "by": "j4-explore",
      "text": "[J4] shares README.md, ROADMAP.md, rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs, rust-client/src/view/icons.rs: [J4] small separate edits: engine/mod.rs: 'mod explore;', Command::PublicRooms {id, query} + its dispatch arm next to Command::PreviewRoom, Event::PublicRooms {id, result} and a PublicRoom struct beside RoomPreview; engine/app.rs: one engine_event arm (Event::PublicRooms) next to Event::People; main.rs: 'mod explore;', Msg::Explore(explore::Input), App field 'explore: Option<explore::Explore>', Request::Explore, one update arm and Escape closing it; view.rs: a compass rail button under the + and one main-area branch (explore page) next to room_preview; view/icons.rs: Icon::Compass; README/ROADMAP: J4 row and Getting in line."
+    },
+    {
+     "at": "2026-11-27T20:10:54Z",
+     "by": "n9-sounds",
+     "text": "[N9] shares README.md, ROADMAP.md, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: N9: main.rs gets 'mod sounds; mod shortcuts;', two Msg variants (Sound(..), Shortcut(..)) with one dispatch arm each, sounds/shortcut fields on App, one 'self.play_sounds()' line in update's tail next to sync_tray(), one shortcuts subscription line, and the Escape listener skips Shift+Escape (it becomes 'mark server read'). The Msg::Escape arm itself is untouched. view.rs: one line adding the SOUNDS section in User Settings and one stack layer for the Ctrl+/ shortcuts list. engine/mod.rs: Alert gains 'highlight: bool' (serde default), set in alerts.rs. README/ROADMAP: N9 row marked done and a Sounds/shortcuts paragraph."
     }
    ],
    "owner": "main-session",
@@ -133,6 +144,11 @@
      "at": "2026-11-27T20:07:05Z",
      "by": "j4-explore",
      "text": "[J4] shares rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs: [J4] small separate edits: engine/mod.rs: 'mod explore;', Command::PublicRooms {id, query} + its dispatch arm next to Command::PreviewRoom, Event::PublicRooms {id, result} and a PublicRoom struct beside RoomPreview; engine/app.rs: one engine_event arm (Event::PublicRooms) next to Event::People; main.rs: 'mod explore;', Msg::Explore(explore::Input), App field 'explore: Option<explore::Explore>', Request::Explore, one update arm and Escape closing it; view.rs: a compass rail button under the + and one main-area branch (explore page) next to room_preview; view/icons.rs: Icon::Compass; README/ROADMAP: J4 row and Getting in line."
+    },
+    {
+     "at": "2026-11-27T20:10:54Z",
+     "by": "n9-sounds",
+     "text": "[N9] shares rust-client/src/engine/mod.rs: N9: main.rs gets 'mod sounds; mod shortcuts;', two Msg variants (Sound(..), Shortcut(..)) with one dispatch arm each, sounds/shortcut fields on App, one 'self.play_sounds()' line in update's tail next to sync_tray(), one shortcuts subscription line, and the Escape listener skips Shift+Escape (it becomes 'mark server read'). The Msg::Escape arm itself is untouched. view.rs: one line adding the SOUNDS section in User Settings and one stack layer for the Ctrl+/ shortcuts list. engine/mod.rs: Alert gains 'highlight: bool' (serde default), set in alerts.rs. README/ROADMAP: N9 row marked done and a Sounds/shortcuts paragraph."
     }
    ],
    "owner": "codex-n3",
@@ -157,19 +173,24 @@
    "notes": [],
    "owner": "n9-sounds",
    "paths": [
+    "README.md",
+    "ROADMAP.md",
     "rust-client/src/engine/alerts.rs",
+    "rust-client/src/engine/mod.rs",
     "rust-client/src/engine/qa.rs",
+    "rust-client/src/main.rs",
     "rust-client/src/notifications.rs",
     "rust-client/src/notifications/desktop.rs",
     "rust-client/src/shortcuts.rs",
     "rust-client/src/sounds.rs",
+    "rust-client/src/view.rs",
     "rust-client/src/view/shortcuts.rs",
     "rust-client/src/view/sounds.rs",
     "scripts/qa_sounds.py"
    ],
    "status": "working",
    "title": "Sounds and shortcuts",
-   "updated": "2026-11-27T20:10:34Z",
+   "updated": "2026-11-27T20:10:54Z",
    "worktree": ".claude/worktrees/n9-sounds-8156ba"
   }
  },
