@@ -28,6 +28,7 @@ mod live_test;
 mod media;
 mod messaging;
 pub mod polls;
+mod presence;
 mod previews;
 pub mod profile;
 #[cfg(debug_assertions)]
@@ -324,6 +325,21 @@ pub enum Command {
         id: i64,
         send: bool,
     },
+    /// Publish our status (N4) and keep it published; no answer.
+    PublishPresence {
+        presence: crate::presence::Presence,
+    },
+    /// Read these people's presence (N4) from now on, most visible first;
+    /// changes come as [`Event::Presence`]. No answer.
+    WatchPresence {
+        users: Vec<String>,
+    },
+    /// Save our status choice and custom status (N4) as account data.
+    SaveStatus {
+        id: i64,
+        choice: crate::presence::Choice,
+        message: String,
+    },
     /// The homeserver's upload size limit, as [`Event::UploadLimit`].
     UploadLimit {
         id: i64,
@@ -469,6 +485,17 @@ pub enum Event {
     },
     /// The account's "Send typing indicators" preference.
     TypingSharing(bool),
+    /// People's presence (N4), when it changed.
+    Presence(Vec<(String, crate::presence::Presence)>),
+    /// Whether the homeserver shares presence (N4): Unknown when the
+    /// engine starts asking.
+    PresenceSupport(crate::presence::Support),
+    /// Our saved status choice and custom status (N4), at startup and
+    /// whenever it syncs.
+    OwnStatus {
+        choice: crate::presence::Choice,
+        message: String,
+    },
     /// A room's preview for a link or address.
     RoomPreview {
         target: String,
@@ -1063,6 +1090,8 @@ struct Live {
     verifier: Arc<verify::Verifier>,
     /// Typing notices for `typing::notices`, in order.
     typing: Sender<(String, bool)>,
+    /// Our status and the people shown, for `presence::run`.
+    presence: Sender<presence::Request>,
     profile: tokio::sync::watch::Sender<profile::Changes>,
     tasks: Tasks,
 }
@@ -1135,6 +1164,8 @@ impl Engine {
         typing::watch(&client, self.events.clone());
         let (typing, notices) = async_channel::unbounded();
         tasks.spawn(typing::notices(client.clone(), notices));
+        let (presence, requests) = async_channel::unbounded();
+        tasks.spawn(presence::run(client.clone(), self.events.clone(), requests));
         #[cfg(target_os = "linux")]
         calls::watch(&client, self.events.clone());
         alerts::register(&client, self.events.clone()).await;
@@ -1153,6 +1184,7 @@ impl Engine {
             timelines,
             verifier,
             typing,
+            presence,
             profile,
             tasks,
         });
@@ -1597,6 +1629,26 @@ impl Engine {
             Command::ShareTyping { id, send } => {
                 self.job(id, move |client, _, _| async move {
                     typing::share(&client, send).await
+                })
+                .await
+            }
+            Command::PublishPresence { presence } => {
+                if let Some(live) = &self.live {
+                    let _ = live.presence.try_send(presence::Request::Publish(presence));
+                }
+            }
+            Command::WatchPresence { users } => {
+                if let Some(live) = &self.live {
+                    let _ = live.presence.try_send(presence::Request::Watch(users));
+                }
+            }
+            Command::SaveStatus {
+                id,
+                choice,
+                message,
+            } => {
+                self.job(id, move |client, _, _| async move {
+                    presence::save(&client, choice, &message).await
                 })
                 .await
             }

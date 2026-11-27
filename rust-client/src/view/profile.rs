@@ -52,15 +52,30 @@ pub(super) fn card(app: &App) -> Option<El<'_>> {
         |level| format!("Room power level {level}"),
     );
     let close = msg(Action::Close);
+    // Their status dot, and status with any custom status (presence.rs).
+    let presence = app.presence_of(user);
+    let mut who = column![
+        text(name).size(23).font(BOLD).color(TEXT),
+        text(user).size(13).color(MUTED)
+    ]
+    .spacing(3)
+    .width(Fill);
+    if let Some(p) = &presence {
+        let line = match p.message.as_ref().filter(|_| p.status.here()) {
+            Some(message) => format!("{} · {message}", p.status.label()),
+            None => p.status.label().to_owned(),
+        };
+        who = who.push(text(line).size(13).color(BODY));
+    }
     let mut details = column![
         row![
-            face(name, picture, 64.),
-            column![
-                text(name).size(23).font(BOLD).color(TEXT),
-                text(user).size(13).color(MUTED)
-            ]
-            .spacing(3)
-            .width(Fill),
+            super::presence::with_dot(
+                face(name, picture, 64.),
+                64.,
+                presence.as_ref().map(|p| p.status),
+                FLOAT
+            ),
+            who,
             button(text("Close").size(12))
                 .style(nav(false))
                 .on_press(close.clone()),

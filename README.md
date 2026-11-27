@@ -78,9 +78,9 @@ people’s). Header icons open notification settings, posting permissions, the
 member list and room search; hover any icon for its name. Click the space name
 at the top of the channel list for **Invite People**, **Create Channel** and
 **Notification Settings**, or use **+** beside a channel category. **+** at
-the bottom of the server rail creates a space. Click your name or the gear at
-the bottom left for **User Settings**. Escape closes menus, dialogs and
-settings. Category headers collapse; a collapsed category still lists unread
+the bottom of the server rail creates a space. Click the gear at the bottom
+left for **User Settings**, or your name for your status (see Presence).
+Escape closes menus, dialogs and settings. Category headers collapse; a collapsed category still lists unread
 and selected channels.
 
 **Quick switcher:** **Ctrl+K**, also while typing a message, opens a search of
@@ -229,6 +229,22 @@ including direct mentions. Messages still arrive, and the mentions inbox still
 updates. On Linux you can answer or decline an incoming call without a ringtone.
 Choose **Resume alerts** on either Linux or web to restore the existing room
 settings. [Cross-device and call tests](scripts/room-alerts.md#verify-account-wide-do-not-disturb).
+
+**Presence:** where your homeserver shares presence, a dot on people's
+pictures in the member list, Direct Messages, profile cards and the user panel
+says who's online (green), idle (amber), on Do Not Disturb (red) or offline
+(a grey ring), with their custom status under their name; the member list
+puts people under **Online** and **Offline**, as Discord does. Click your name
+at the bottom left for your own status: **Online**, **Idle**, **Do Not
+Disturb** (the alerts pause above) or **Invisible** (you appear offline,
+without your custom status), and **Set Custom Status**. Online turns Idle
+after five minutes without input in the window, and back on your next input.
+Your status and custom status follow you to your other devices. Matrix has
+no Do Not Disturb, so other apps show you as online then. Many large
+homeservers, matrix.org among them, turn presence off: Untethered notices,
+shows no dots and offers only Do Not Disturb. Sliding sync carries no
+presence, so Untethered publishes yours every 20 seconds and reads the people
+on screen every 40 ([live test](scripts/qa_presence.py)).
 
 **System tray:** On Linux and Windows Untethered keeps an icon in the system
 tray: a chat bubble with a red dot for mentions (every unread direct message

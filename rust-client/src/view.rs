@@ -25,6 +25,7 @@ mod zoom;
 pub(crate) use link_preview::image_source as link_preview_image;
 mod mentions;
 mod popover;
+mod presence;
 mod profile;
 mod reaction_bar;
 mod rich;
@@ -1299,6 +1300,7 @@ impl App {
             .or_else(|| self.poll_dialog())
             .or_else(|| self.end_poll_dialog())
             .or_else(|| self.shortcuts_view())
+            .or_else(|| presence::dialog(self))
             .unwrap_or_else(none);
         let viewer = self
             .viewer
@@ -1458,8 +1460,15 @@ impl App {
         let muted = !unread && self.alerts.mode(id) == crate::notifications::Mode::Quiet;
         #[cfg(not(any(target_os = "linux", target_arch = "wasm32")))]
         let muted = false;
+        // A DM's peer has a status dot and their custom status (presence.rs).
+        let peer = r.dm_peer.as_deref().and_then(|peer| self.presence_of(peer));
         let leading: El = if r.dm {
-            self.room_face(r, 32.)
+            presence::with_dot(
+                self.room_face(r, 32.),
+                32.,
+                peer.as_ref().map(|p| p.status),
+                if active { ACTIVE } else { SIDE },
+            )
         } else {
             icon(
                 if r.voice { Icon::Speaker } else { Icon::Hash },
@@ -1471,16 +1480,27 @@ impl App {
                 },
             )
         };
-        let mut entry = row![
-            leading,
-            text(&r.name)
-                .size(if r.dm { 15 } else { 16 })
-                .font_maybe(unread.then_some(BOLD))
-                .wrapping(text::Wrapping::None)
-                .width(Fill)
-        ]
-        .spacing(if r.dm { 12 } else { 6 })
-        .align_y(Center);
+        let name = text(&r.name)
+            .size(if r.dm { 15 } else { 16 })
+            .font_maybe(unread.then_some(BOLD))
+            .wrapping(text::Wrapping::None)
+            .width(Fill);
+        let custom = peer.filter(|p| p.status.here()).and_then(|p| p.message);
+        let label: El = match custom {
+            Some(message) => column![
+                name,
+                text(message)
+                    .size(12)
+                    .color(CHANNEL)
+                    .wrapping(text::Wrapping::None)
+            ]
+            .width(Fill)
+            .into(),
+            None => name.into(),
+        };
+        let mut entry = row![leading, label]
+            .spacing(if r.dm { 12 } else { 6 })
+            .align_y(Center);
         let mentions = if !r.unread {
             0
         } else if r.dm {
@@ -1741,32 +1761,24 @@ impl App {
         } else {
             "Preview user"
         };
+        // Our status where the homeserver shares presence, or Do Not
+        // Disturb, which works without it (presence.rs).
         let (status, dot) = if self.logged_in {
-            ("Online", GREEN)
+            let line = presence::panel_line(self);
+            let dot = line.as_ref().map(|_| self.own_status());
+            (line.unwrap_or_else(|| self.matrix_id.clone()), dot)
         } else {
-            ("Local preview", color!(0x80848e))
-        };
-        #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
-        let (status, dot) = if self.logged_in && self.alerts.dnd == Some(true) {
-            ("Do Not Disturb", RED)
-        } else {
-            (status, dot)
-        };
-        let face = stack![
-            face(name, self.avatars.get(self.own_avatar.as_deref()), 32.),
-            container(
-                container(
-                    container(Space::new())
-                        .width(10)
-                        .height(10)
-                        .style(move |_| surface(dot, 5.))
-                )
-                .padding(3)
-                .style(|_| surface(TRAY, 8.))
+            (
+                "Local preview".to_owned(),
+                Some(crate::presence::Status::Offline),
             )
-            .align_right(36)
-            .align_bottom(36)
-        ];
+        };
+        let face = presence::with_dot(
+            face(name, self.avatars.get(self.own_avatar.as_deref()), 32.),
+            32.,
+            dot,
+            TRAY,
+        );
         let who = button(
             row![
                 container(face).width(36).height(36),
@@ -1776,7 +1788,10 @@ impl App {
                         .font(BOLD)
                         .color(TEXT)
                         .wrapping(text::Wrapping::None),
-                    text(status).size(12).color(MUTED)
+                    text(status)
+                        .size(12)
+                        .color(MUTED)
+                        .wrapping(text::Wrapping::None)
                 ]
                 .spacing(1)
             ]
@@ -1785,12 +1800,31 @@ impl App {
         )
         .width(Fill)
         .padding([2, 4])
-        .on_press(Msg::Account)
+        // A long name or Matrix ID stops at the gear.
+        .clip(true)
+        // The status menu, as on Discord; settings where there's no status
+        // to pick.
+        .on_press(
+            if self.logged_in
+                && (self.presence.support == crate::presence::Support::On || self.dnd_available())
+            {
+                Msg::Presence(crate::presence::Input::Menu(!self.presence.menu))
+            } else {
+                Msg::Account
+            },
+        )
         .style(|_, s| button::Style {
             background: (s == button::Status::Hovered).then(|| ACTIVE.into()),
             border: Border::default().rounded(4),
             ..Default::default()
         });
+        let menu = (self.presence.menu && self.logged_in).then(|| presence::menu(self));
+        let who = popover::popover(
+            who,
+            menu,
+            popover::Place::Below,
+            Msg::Presence(crate::presence::Input::Menu(false)),
+        );
         container(
             row![
                 who,
