@@ -341,6 +341,8 @@ impl App {
                     self.loaded.remove(&left);
                 }
                 if self.logged_in {
+                    // After signing in, the room open when the app closed.
+                    self.restore_open_room();
                     self.reconcile();
                 }
                 #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
@@ -364,6 +366,9 @@ impl App {
             Event::Timeline(mut t) => {
                 // Blocked people's messages stay hidden (dms.rs).
                 t.messages.retain(|m| !self.blocked.contains(&m.sender));
+                if let Some(ret) = self.returning.as_mut().filter(|r| r.room == t.room) {
+                    ret.fresh = true;
+                }
                 if let Some(r) = self.live.list.get_mut(&t.room) {
                     r.apply_engine(t.messages, t.start_reached);
                     r.read.set_latest(t.latest_event);

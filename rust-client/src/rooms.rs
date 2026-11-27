@@ -408,6 +408,11 @@ impl Room {
             .binary_search(&(self.history.get(&row)?.time, row))
             .ok()
     }
+    /// Where a loaded message is in the timeline.
+    pub fn index_of(&self, event: &str) -> Option<usize> {
+        let row = *self.event_rows.get(event)?;
+        self.order.iter().position(|&(_, r)| r == row)
+    }
     pub fn key_at(&self, index: usize) -> Option<(i64, i64)> {
         self.order.get(index).copied()
     }

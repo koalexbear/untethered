@@ -20,7 +20,7 @@ pub(crate) fn update(drafts: &mut Drafts, room: &str, text: String) -> bool {
     true
 }
 
-fn account_key(account: &str) -> String {
+pub(crate) fn account_key(account: &str) -> String {
     URL_SAFE_NO_PAD.encode(account)
 }
 

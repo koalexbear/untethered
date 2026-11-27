@@ -21,6 +21,7 @@ impl App {
         if was && changed_account {
             self.record_current_draft();
             self.persist_drafts();
+            self.persist_places();
         }
         self.connected = true;
         self.logged_in = state.logged_in;
@@ -69,6 +70,7 @@ impl App {
             }
             self.pending.retain(|_, p| matches!(p, Request::Login));
             self.load_drafts();
+            self.load_places();
             self.clear_search();
             self.reply_drafts.clear();
             self.reset_directory();

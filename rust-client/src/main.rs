@@ -43,6 +43,7 @@ mod paging;
 mod paste;
 mod permissions;
 mod pills;
+mod places;
 #[cfg(target_os = "linux")]
 mod player;
 mod preview;
@@ -233,6 +234,11 @@ enum Msg {
     Dm(dms::Input),
     /// The quick switcher (switcher.rs).
     Switcher(switcher::Input),
+    /// Note where the open room is scrolled to, and what was measured;
+    /// save what's remembered (places.rs).
+    NotePlace,
+    PlaceNoted(String, Option<(String, f32)>),
+    SavePlaces,
     /// Scrolled near the top of what's loaded: fetch older messages.
     /// Page Up (true) or Page Down: scroll the timeline by most of a screen.
     PageScroll(bool),
@@ -469,6 +475,14 @@ struct App {
     started_dm: Option<String>,
     /// Ctrl+K's quick switcher (switcher.rs).
     switcher: Option<switcher::Switcher>,
+    /// Where you were in each room and section (places.rs): what's
+    /// remembered, unsaved, restored after signing in, scrolled since last
+    /// noted, and the room being taken back to its place.
+    places: places::Places,
+    places_dirty: bool,
+    places_restored: bool,
+    place_unnoted: bool,
+    returning: Option<places::Return>,
     blocked: BTreeSet<String>,
     avatars: avatars::Avatars,
     viewer: Option<viewer::Viewer>,
@@ -591,6 +605,11 @@ impl App {
             new_message: None,
             started_dm: None,
             switcher: None,
+            places: Default::default(),
+            places_dirty: false,
+            places_restored: false,
+            place_unnoted: false,
+            returning: None,
             blocked: BTreeSet::new(),
             avatars: Default::default(),
             viewer: None,
@@ -753,6 +772,9 @@ impl App {
         } else if let Some(r) = self.demo.list.get_mut(&id) {
             r.unread = false;
         }
+        // Back to where it was scrolled to, and remembered as open here.
+        self.start_return();
+        self.note_open();
     }
     /// Ask for the selected room's history and members, once per session,
     /// when this device can read them. A room selected before the device was
@@ -1048,6 +1070,7 @@ impl App {
             Msg::Close => {
                 self.record_current_draft();
                 self.persist_drafts();
+                self.persist_places();
                 return self.close_requested();
             }
             #[cfg(target_arch = "wasm32")]
@@ -1579,7 +1602,10 @@ impl App {
                 self.invite_open = None;
                 self.room_preview = None;
                 self.section = s;
+                // Back to the room last open there (places.rs).
+                self.open_last_in_section();
                 self.reconcile();
+                self.note_open();
             }
             Msg::Open(id) => {
                 #[cfg(target_os = "linux")]
@@ -1615,6 +1641,9 @@ impl App {
             Msg::JoinAddress => self.join_address(),
             Msg::Dm(input) => return self.new_message(input),
             Msg::Switcher(input) => return self.switcher(input),
+            Msg::NotePlace => return self.note_place(),
+            Msg::PlaceNoted(room, hit) => self.place_noted(room, hit),
+            Msg::SavePlaces => self.persist_places(),
             Msg::AcceptInvite(id) => self.accept_invite(id),
             Msg::DeclineInvite(id) => self.decline_invite(id),
             Msg::ReadingScroll(room, at) if room == self.selected && self.original.is_none() => {
@@ -1625,6 +1654,7 @@ impl App {
                 self.scrolled_away = at.away;
                 self.scrolled_far = at.far;
                 self.inline.depth = at.depth;
+                self.place_moved(&room, at.away);
                 self.scrolled = Some((room, at));
             }
             Msg::PageScroll(up) if self.viewer.is_none() => {
@@ -2027,6 +2057,7 @@ impl App {
             self.schedule_inline(),
             self.keep_paging(),
             self.bound_history(),
+            self.continue_return(),
         ]);
         self.fill_history();
         self.schedule_link_previews();
@@ -2044,6 +2075,7 @@ impl App {
     fn quit(&mut self) -> Task<Msg> {
         self.record_current_draft();
         self.persist_drafts();
+        self.persist_places();
         self.closing = true;
         #[cfg(target_os = "linux")]
         self.clear_ring();
@@ -2186,6 +2218,14 @@ fn main() -> iced::Result {
                     iced::time::every(std::time::Duration::from_millis(500)).map(|_| Msg::SaveDrafts)
                 } else { iced::Subscription::none() },
                 app.typing_subscription(),
+                // A moment after the timeline stops moving, note the place.
+                if app.place_unnoted {
+                    iced::time::every(std::time::Duration::from_millis(400)).map(|_| Msg::NotePlace)
+                } else { iced::Subscription::none() },
+                #[cfg(not(target_arch = "wasm32"))]
+                if app.places_dirty {
+                    iced::time::every(std::time::Duration::from_secs(1)).map(|_| Msg::SavePlaces)
+                } else { iced::Subscription::none() },
                 // Ctrl+K opens the quick switcher, also while typing, as on
                 // Discord; while it's open, the arrow keys move through it.
                 iced::event::listen_with(|event, _, _| match event {
