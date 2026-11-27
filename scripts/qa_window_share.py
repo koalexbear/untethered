@@ -26,15 +26,18 @@ def area(peer,palette):
     return 0<b[0]-a[1]<16 and abs(a[2]-b[2])<10 and abs(a[3]-b[3])<10
 
 
-STAT=re.compile(r"^RTC video (inbound|outbound|render) sid=(\S+) (?:source=(\w+) )?(?:rid=\S+ )?"
+STAT=re.compile(r"^RTC video (inbound|outbound|render) sid=(\S+) (?:source=(\w+) )?(?:rid=(\S+) )?"
                 r"width=(\d+) height=(\d+) fps=([\d.]+)(.*)$",re.M)
 def video_stats(desk,direction,source=None):
-    """Latest UNTETHERED_QA_VIDEO_STATS sample per track SID in a client's log."""
+    """Latest UNTETHERED_QA_VIDEO_STATS sample per track SID in a client's log.
+
+    A simulcast track's layers are keyed SID/RID (q, h and f: low to high)."""
     latest={}
     for m in STAT.finditer(desk.stats.read_text(errors="replace")):
         if m[1]==direction and (source is None or m[3]==source):
-            extra=dict(kv.split("=",1) for kv in m[7].split() if "=" in kv)
-            latest[m[2]]={"width":int(m[4]),"height":int(m[5]),"fps":float(m[6]),**extra}
+            extra=dict(kv.split("=",1) for kv in m[8].split() if "=" in kv)
+            key=m[2] if m[4] in (None,"-") else f"{m[2]}/{m[4]}"
+            latest[key]={"width":int(m[5]),"height":int(m[6]),"fps":float(m[7]),**extra}
     return latest
 
 def process_cpu(pids,seconds=8):

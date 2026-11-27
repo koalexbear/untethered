@@ -200,18 +200,22 @@ impl GroupKeys {
 struct Subscriptions {
     jobs: JoinSet<Result<()>>,
     tracks: HashMap<TrackSid, AbortHandle>,
+    /// Which video flows, and at which layer.
+    viewer: room_video::Viewer,
 }
 impl Subscriptions {
     /// Stop all playback, as the SFU connection drops.
     fn stop(&mut self) {
         self.jobs.abort_all();
         self.tracks.clear();
+        self.viewer.clear();
     }
     /// The track behind `sid` was (re)subscribed: play the current one.
     fn forget(&mut self, sid: &TrackSid) {
         if let Some(job) = self.tracks.remove(sid) {
             job.abort();
         }
+        self.viewer.forget(sid);
     }
     fn sync(
         &mut self,
@@ -220,6 +224,7 @@ impl Subscriptions {
         mixer: &Mixer,
         notices: &DeviceNotices,
         previews: &Previews,
+        sight: &room_video::Sight,
     ) -> Result<BTreeSet<String>> {
         let mut live = BTreeSet::new();
         let mut speaking = BTreeSet::new();
@@ -252,6 +257,9 @@ impl Subscriptions {
                     {
                         speaking.insert(keys.members[&id.0].user.clone());
                     }
+                    if publication.kind() == TrackKind::Video {
+                        self.viewer.ask(&publication, sight);
+                    }
                     live.insert(sid.clone());
                     self.tracks.entry(sid).or_insert_with(|| match track {
                         RemoteTrack::Audio(track) => self.jobs.spawn(mixer.play(
@@ -282,6 +290,7 @@ impl Subscriptions {
                 false
             }
         });
+        self.viewer.retain(|sid| live.contains(sid));
         Ok(speaking)
     }
 }
@@ -401,8 +410,10 @@ async fn live<S: CallSignal>(
     camera.local_preview = Some(views.previews.clone());
     let mut heartbeat = time::interval(SECOND * 4);
     heartbeat.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
-    #[cfg(debug_assertions)]
+    // What the window shows: hidden video pauses, each tile gets its layer.
+    let mut sight = views.previews.watch();
     let trace_video = room_video::trace_video_enabled();
+    let mut video_stats = time::interval(SECOND);
     let mut label = String::new();
     // Between the SDK's Reconnecting and Reconnected.
     let mut online = true;
@@ -432,7 +443,8 @@ async fn live<S: CallSignal>(
         keys.receive(w)?;
         let mut speaking = BTreeSet::new();
         if online {
-            speaking = subscriptions.sync(lk, keys, &mixer, &notices, &views.previews)?;
+            let shown = sight.borrow_and_update().clone();
+            speaking = subscriptions.sync(lk, keys, &mixer, &notices, &views.previews, &shown)?;
             if lk.local_participant().is_speaking() && !mic.is_muted() && !mode.borrow().mic_off() {
                 speaking.insert(s.user.clone());
             }
@@ -485,11 +497,15 @@ async fn live<S: CallSignal>(
                 _=>return Err("Voice room playback failed."),
             },
             frame=w.pump()=>{frame?;}
+            changed=sight.changed()=>{changed.map_err(|_|ENDED)?;}
+            _=subscriptions.viewer.settled()=>if online {subscriptions.viewer.repeat(lk)} else {subscriptions.viewer.clear()},
             // Notice the end of our lease as it happens, not at the next tick.
             _=time::sleep_until(lease.deadline())=>(),
-            _=heartbeat.tick()=>{
+            _=video_stats.tick(),if trace_video && online=>{
                 #[cfg(debug_assertions)]
-                if trace_video && online {room_video::trace_video_stats(lk).await;}
+                room_video::trace_video_stats(lk).await;
+            }
+            _=heartbeat.tick()=>{
                 lease.keep(w, m).await;
                 if online {keys.flush(w, s).await;}
                 w.roster_dirty=true;

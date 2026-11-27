@@ -390,8 +390,10 @@ impl App {
         let Some(id) = self.tray.window.take() else {
             return Task::none();
         };
-        // A video would play on with nothing on screen.
+        // A video would play on with nothing on screen; call video pauses.
         self.close_viewer();
+        #[cfg(target_os = "linux")]
+        self.hide_video();
         self.context_menu.open = None;
         // Nobody is reading now: alerts for the open room come back, and
         // push-to-talk held in the window lets go.

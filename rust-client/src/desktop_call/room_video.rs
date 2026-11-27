@@ -8,7 +8,7 @@ use ashpd::desktop::{
 use ashpd::{zbus, zvariant};
 use iced::advanced::image::{self, Allocation};
 use iced::widget::image::Handle;
-use livekit::options::VideoEncoding;
+use livekit::options::{VideoEncoding, VideoPreset};
 use livekit::webrtc::{
     prelude::{
         I420Buffer, RtcVideoSource, VideoBuffer, VideoFormatType, VideoFrame, VideoResolution,
@@ -66,10 +66,55 @@ impl Quality {
         (even(w), even(h))
     }
 }
+/// The camera's lower simulcast layers; the top one is `Quality::CAMERA`
+/// itself (1280×720). Every layer keeps the full frame rate.
+const CAMERA_LAYERS: [VideoPreset; 2] = [
+    VideoPreset::new(320, 180, 200_000, 30.),
+    VideoPreset::new(640, 360, 600_000, 30.),
+];
 /// Largest frame a receiver converts for display, and its fastest redraw.
 const SHOW_W: u32 = 1920;
 const SHOW_H: u32 = 1080;
 const SHOW_EVERY: Duration = Duration::from_millis(33);
+
+/// How much picture a tile needs: thumbnails and the dock preview are small,
+/// the focused tile large, a grid tile in between. A camera's simulcast
+/// layer follows it; screen shares have one layer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum Layer {
+    Low,
+    Medium,
+    High,
+}
+impl Layer {
+    /// The short side of this layer's picture: the camera's layers are
+    /// 180, 360 and 720 lines.
+    fn lines(self) -> u32 {
+        match self {
+            Self::Low => 180,
+            Self::Medium => 360,
+            Self::High => 720,
+        }
+    }
+    /// The size to ask the SFU for, in the track's own aspect ratio. It
+    /// picks the smallest layer that covers it.
+    fn dimension(self, track: TrackDimension) -> TrackDimension {
+        let TrackDimension(w, h) = track;
+        let (w, h) = if w == 0 || h == 0 { (16, 9) } else { (w, h) };
+        let scale = f64::from(self.lines()) / f64::from(w.min(h));
+        let side = |v: u32| (f64::from(v) * scale).round() as u32;
+        TrackDimension(side(w), side(h))
+    }
+    /// The largest picture of a local feed's own tile at this layer.
+    fn preview(self) -> (u32, u32) {
+        let h = self.lines();
+        (h * 16 / 9, h)
+    }
+}
+/// What the window shows of each feed it knows: `Some(layer)` on screen,
+/// `None` hidden (scrolled away, the stage collapsed, the window closed).
+/// A feed missing here is new and nothing has decided about it yet.
+pub(crate) type Sight = BTreeMap<String, Option<Layer>>;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum VideoInput {
@@ -157,12 +202,30 @@ impl Feed {
 struct Wall {
     feeds: BTreeMap<String, Feed>,
     focus: Option<String>,
+    /// The tiles the view being built draws, and the layer each needs.
+    drawing: Option<BTreeMap<String, Layer>>,
+    /// The window closed: no view is built until it opens again, and a feed
+    /// that starts meanwhile is hidden too.
+    closed: bool,
 }
-#[derive(Clone, Default)]
-pub(crate) struct Previews(Arc<Mutex<Wall>>);
+#[derive(Clone)]
+pub(crate) struct Previews {
+    wall: Arc<Mutex<Wall>>,
+    /// What the window shows: the call loop pauses the rest and asks for
+    /// each tile's layer; capture and display skip pictures nobody sees.
+    sight: Arc<watch::Sender<Sight>>,
+}
+impl Default for Previews {
+    fn default() -> Self {
+        Self {
+            wall: Arc::default(),
+            sight: Arc::new(watch::channel(Sight::new()).0),
+        }
+    }
+}
 impl Previews {
     pub fn remote_share(&self) -> bool {
-        self.0
+        self.wall
             .lock()
             .unwrap()
             .feeds
@@ -170,8 +233,57 @@ impl Previews {
             .any(|f| f.source == VideoInput::Window && !f.user.is_empty())
     }
     pub(crate) fn snapshot(&self) -> (Option<String>, Vec<Feed>) {
-        let wall = self.0.lock().unwrap();
+        let wall = self.wall.lock().unwrap();
         (wall.focus.clone(), wall.feeds.values().cloned().collect())
+    }
+    /// A view of the window is being built; its tiles say what they draw.
+    pub(crate) fn start_view(&self) {
+        let mut wall = self.wall.lock().unwrap();
+        wall.drawing = Some(BTreeMap::new());
+        wall.closed = false;
+    }
+    /// A tile of the view being built draws `sid`, needing `layer`.
+    pub(crate) fn draws(&self, sid: &str, layer: Layer) {
+        if let Some(drawn) = &mut self.wall.lock().unwrap().drawing {
+            let wanted = drawn.entry(sid.into()).or_insert(layer);
+            *wanted = layer.max(*wanted);
+        }
+    }
+    /// The view is built: what it draws is on screen, every other feed is
+    /// hidden; all of them when something `covered` the view.
+    pub(crate) fn finish_view(&self, covered: bool) {
+        let mut wall = self.wall.lock().unwrap();
+        let drawn = wall.drawing.take().unwrap_or_default();
+        let sight = wall
+            .feeds
+            .keys()
+            .map(|sid| (sid.clone(), drawn.get(sid).copied().filter(|_| !covered)))
+            .collect();
+        drop(wall);
+        self.show(sight);
+    }
+    /// Nothing is on screen: the window closed to the tray.
+    pub(crate) fn hide_all(&self) {
+        let mut wall = self.wall.lock().unwrap();
+        wall.closed = true;
+        let sight = wall.feeds.keys().map(|sid| (sid.clone(), None)).collect();
+        drop(wall);
+        self.show(sight);
+    }
+    fn show(&self, sight: Sight) {
+        self.sight.send_if_modified(|shown| {
+            let changed = *shown != sight;
+            *shown = sight;
+            changed
+        });
+    }
+    /// What the window shows, as it changes.
+    pub(super) fn watch(&self) -> watch::Receiver<Sight> {
+        self.sight.subscribe()
+    }
+    /// Whether and how large a feed is on screen; `None` for a new feed.
+    fn shown(&self, sid: &str) -> Option<Option<Layer>> {
+        self.sight.borrow().get(sid).copied()
     }
     /// The feed the call dock previews while the stage is closed: the
     /// focused one, else a screen share, else a remote camera.
@@ -194,19 +306,20 @@ impl Previews {
             })
     }
     pub(crate) fn focus(&self, sid: Option<String>) {
-        let mut wall = self.0.lock().unwrap();
+        let mut wall = self.wall.lock().unwrap();
         if sid.as_ref().is_none_or(|s| wall.feeds.contains_key(s)) {
             wall.focus = sid;
         }
     }
-    /// Newest frames to upload for the feeds on screen (`only` one, or all),
-    /// each feed's next once its last upload has answered.
-    pub(crate) fn uploads(&self, only: Option<&str>) -> Vec<(String, Handle)> {
-        let mut wall = self.0.lock().unwrap();
+    /// Newest frames to upload for the feeds on screen, each feed's next
+    /// once its last upload has answered.
+    pub(crate) fn uploads(&self) -> Vec<(String, Handle)> {
+        let sight = self.sight.borrow().clone();
+        let mut wall = self.wall.lock().unwrap();
         let now = Instant::now();
         wall.feeds
             .values_mut()
-            .filter(|f| only.is_none_or(|sid| sid == f.sid))
+            .filter(|f| sight.get(&f.sid).is_some_and(Option::is_some))
             .filter(|f| f.waiting())
             .filter(|f| {
                 f.uploading
@@ -220,7 +333,7 @@ impl Previews {
     }
     /// A frame is on the GPU: tiles draw it from now on.
     pub(crate) fn uploaded(&self, sid: &str, frame: std::result::Result<Allocation, image::Error>) {
-        let mut wall = self.0.lock().unwrap();
+        let mut wall = self.wall.lock().unwrap();
         let Some(feed) = wall.feeds.get_mut(sid) else {
             return;
         };
@@ -243,7 +356,7 @@ impl Previews {
     /// while an upload is out, its answer picks up the newest frame instead,
     /// so a steady stream costs the UI one update per frame, not two.
     fn frame(&self, sid: &str, user: &str, source: VideoInput, frame: Handle) -> bool {
-        let mut wall = self.0.lock().unwrap();
+        let mut wall = self.wall.lock().unwrap();
         if let Some(feed) = wall.feeds.get_mut(sid) {
             feed.frame = frame;
             feed.uploading
@@ -263,6 +376,12 @@ impl Previews {
                     uploading: None,
                 },
             );
+            if wall.closed {
+                drop(wall);
+                self.sight.send_modify(|sight| {
+                    sight.insert(sid.into(), None);
+                });
+            }
             true
         }
     }
@@ -274,7 +393,7 @@ struct Tile {
 }
 impl Drop for Tile {
     fn drop(&mut self) {
-        let mut wall = self.views.0.lock().unwrap();
+        let mut wall = self.views.wall.lock().unwrap();
         wall.feeds.remove(&self.sid);
         if wall.focus.as_ref() == Some(&self.sid) {
             wall.focus = None;
@@ -309,7 +428,13 @@ pub(super) async fn display(
             return Ok(());
         };
         let (w, h) = (frame.buffer.width(), frame.buffer.height());
-        if w == 0 || h == 0 || u64::from(w) * u64::from(h) > 8_294_400 {
+        // A hidden tile keeps its last picture: the call loop pauses this
+        // track, and what still arrives meanwhile is black (a disabled track).
+        if w == 0
+            || h == 0
+            || u64::from(w) * u64::from(h) > 8_294_400
+            || tile.views.shown(&tile.sid) == Some(None)
+        {
             continue;
         }
         #[cfg(debug_assertions)]
@@ -322,6 +447,98 @@ pub(super) async fn display(
         if tile.views.frame(&tile.sid, &user, source, frame) {
             let _ = tile.events.try_send(json!({"command":"video_redraw"}));
         }
+    }
+}
+
+/// How long changes to what's on screen settle before the call loop sends
+/// its asks to the SFU once more (`Viewer::repeat`).
+const SETTLE: Duration = Duration::from_millis(300);
+
+/// What a call asked the SFU for each remote video track: whether it flows,
+/// and the layer it needs. Dimensions pick the layer, not
+/// `set_video_quality`: each ask replaces the track's subscriber settings at
+/// the SFU, and only a dimension ask carries the paused flag along. The SDK
+/// sends every ask from a task of its own, so two made together can arrive
+/// in either order; one complete ask once they settle has the last word.
+#[derive(Default)]
+pub(super) struct Viewer {
+    asked: BTreeMap<TrackSid, Ask>,
+    repeat_at: Option<Instant>,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Ask {
+    flowing: bool,
+    layer: Layer,
+}
+impl Viewer {
+    /// Ask for what the window shows of a subscribed video track. One it
+    /// hasn't seen yet keeps flowing, at the SFU's default (the top layer).
+    pub(super) fn ask(&mut self, publication: &RemoteTrackPublication, sight: &Sight) {
+        let sid = publication.sid();
+        let Some(&shown) = sight.get(sid.as_str()) else {
+            return;
+        };
+        if publication.track().is_none() {
+            return;
+        }
+        let before = self.asked.get(&sid).copied();
+        let ask = Ask {
+            flowing: shown.is_some(),
+            // A hidden track keeps its layer, ready to resume.
+            layer: shown.or(before.map(|a| a.layer)).unwrap_or(Layer::High),
+        };
+        // A resubscribed track is enabled again, whatever was asked before.
+        if before == Some(ask) && publication.is_enabled() == ask.flowing {
+            return;
+        }
+        if publication.is_enabled() != ask.flowing {
+            publication.set_enabled(ask.flowing);
+        }
+        if ask.flowing && before.is_none_or(|b| b.layer != ask.layer) && publication.simulcasted() {
+            publication.update_video_dimensions(ask.layer.dimension(publication.dimension()));
+        }
+        self.asked.insert(sid, ask);
+        self.repeat_at = Some(Instant::now() + SETTLE);
+    }
+    /// Resolves when the asks should be sent once more.
+    pub(super) async fn settled(&self) {
+        match self.repeat_at {
+            Some(at) => time::sleep_until(at).await,
+            None => std::future::pending().await,
+        }
+    }
+    /// Send each asked track's settings again, flag and layer in one ask.
+    pub(super) fn repeat(&mut self, lk: &Room) {
+        self.repeat_at = None;
+        for peer in lk.remote_participants().into_values() {
+            for (sid, publication) in peer.track_publications() {
+                let Some(ask) = self.asked.get(&sid) else {
+                    continue;
+                };
+                if publication.track().is_none() {
+                    continue;
+                }
+                if publication.is_enabled() != ask.flowing {
+                    publication.set_enabled(ask.flowing);
+                }
+                publication.update_video_dimensions(if publication.simulcasted() {
+                    ask.layer.dimension(publication.dimension())
+                } else {
+                    publication.dimension()
+                });
+            }
+        }
+    }
+    /// The track was subscribed anew: it starts at the SFU's defaults.
+    pub(super) fn forget(&mut self, sid: &TrackSid) {
+        self.asked.remove(sid);
+    }
+    pub(super) fn clear(&mut self) {
+        self.asked.clear();
+        self.repeat_at = None;
+    }
+    pub(super) fn retain(&mut self, live: impl Fn(&TrackSid) -> bool) {
+        self.asked.retain(|sid, _| live(sid));
     }
 }
 
@@ -761,10 +978,11 @@ impl Capture {
         };
         tokio::pin!(closed);
         let layout = self.layout;
-        let (pw, ph) = if input == VideoInput::Window {
-            (1280, 720)
+        // Before the window has seen the tile: the stage focuses a new share.
+        let unseen = if input == VideoInput::Window {
+            Layer::High
         } else {
-            (320, 180)
+            Layer::Low
         };
         #[cfg(debug_assertions)]
         let mut probe = trace_video_enabled().then(|| RenderProbe::new(input.name()));
@@ -785,8 +1003,12 @@ impl Capture {
                 VideoFrame::new(VideoRotation::VideoRotation0, layout.buffer(&self.pixels));
             src.capture_frame(&frame);
             // The encoder has the frame; the sharer's own tile follows the
-            // capture rate (at most `quality.fps`), as remote viewers' do.
-            if let Some(tile) = preview {
+            // capture rate (at most `quality.fps`), as remote viewers' do,
+            // at its tile's size, and not at all while it's hidden.
+            if let Some(tile) = preview
+                && let Some(layer) = tile.views.shown(&tile.sid).unwrap_or(Some(unseen))
+            {
+                let (pw, ph) = layer.preview();
                 #[cfg(debug_assertions)]
                 let started = Instant::now();
                 let shown_frame = rgba(&mut frame.buffer, pw, ph);
@@ -980,9 +1202,14 @@ impl Publisher {
                         LocalTrack::Video(video),
                         // Degradation stays at the SDK default per source:
                         // screens keep resolution, cameras keep frame rate.
+                        // Cameras send three layers (180p, 360p, 720p) so a
+                        // thumbnail costs its viewer a thumbnail's worth;
+                        // with dynacast the SFU pauses layers nobody watches.
+                        // Shares send one, at the source's resolution.
                         TrackPublishOptions {
                             source: self.input.source(),
-                            simulcast: false,
+                            simulcast: self.input == VideoInput::Camera,
+                            simulcast_layers: Some(CAMERA_LAYERS.to_vec()),
                             video_encoding: Some(cap.quality.encoding()),
                             ..Default::default()
                         },
@@ -1042,10 +1269,10 @@ impl Publisher {
     }
 }
 
-/// Whether `UNTETHERED_QA_VIDEO_STATS=1` asked for [`trace_video_stats`].
-#[cfg(debug_assertions)]
+/// Whether `UNTETHERED_QA_VIDEO_STATS=1` asked for [`trace_video_stats`]
+/// (debug builds only).
 pub(super) fn trace_video_enabled() -> bool {
-    std::env::var("UNTETHERED_QA_VIDEO_STATS").as_deref() == Ok("1")
+    cfg!(debug_assertions) && std::env::var("UNTETHERED_QA_VIDEO_STATS").as_deref() == Ok("1")
 }
 /// Opt-in acceptance diagnostics, one line per sent or received video track:
 /// direction, source, frame size, frame rate and byte count. Never log the
@@ -1146,33 +1373,111 @@ mod tests {
         let shown = || views.snapshot().1[0].picture().map(Handle::id);
         let (a, b, c) = (frame(1), frame(2), frame(3));
         assert!(views.frame("cam", "@b:h", VideoInput::Camera, a.clone()));
-        let asked = views.uploads(None);
+        // A feed the window hasn't drawn yet isn't uploaded.
+        assert!(views.uploads().is_empty());
+        let draw = |sids: &[&str]| {
+            views.start_view();
+            for sid in sids {
+                views.draws(sid, Layer::Low);
+            }
+            views.finish_view(false);
+        };
+        draw(&["cam"]);
+        let asked = views.uploads();
         assert_eq!((asked.len(), asked[0].1.id()), (1, a.id()));
         // Nothing to draw until it's uploaded; one upload at a time.
         assert_eq!(shown(), None);
         // The upload's answer looks for newer frames; no need to wake the UI.
         assert!(!views.frame("cam", "@b:h", VideoInput::Camera, b.clone()));
-        assert!(views.uploads(None).is_empty());
+        assert!(views.uploads().is_empty());
         views.uploaded("cam", on_gpu(&a));
         assert_eq!(shown(), Some(a.id()));
         // Then the newest frame, while the tile keeps drawing the last one.
         views.frame("cam", "@b:h", VideoInput::Camera, c.clone());
-        assert_eq!(views.uploads(None)[0].1.id(), c.id());
+        assert_eq!(views.uploads()[0].1.id(), c.id());
         assert_eq!(shown(), Some(a.id()));
         // A failed upload keeps the picture and asks again.
         views.uploaded("cam", Err(image::Error::OutOfMemory));
         assert_eq!(shown(), Some(a.id()));
-        assert_eq!(views.uploads(None)[0].1.id(), c.id());
+        assert_eq!(views.uploads()[0].1.id(), c.id());
         // An answer to a request given up on doesn't replace a newer picture.
         views.uploaded("cam", on_gpu(&c));
         views.uploaded("cam", on_gpu(&b));
         assert_eq!(shown(), Some(c.id()));
-        assert!(views.uploads(None).is_empty());
+        assert!(views.uploads().is_empty());
         // Only feeds on screen are asked for.
         views.frame("share", "", VideoInput::Window, frame(4));
         views.frame("cam", "@b:h", VideoInput::Camera, frame(5));
-        let asked = views.uploads(Some("share"));
+        draw(&["share"]);
+        let asked = views.uploads();
         assert_eq!((asked.len(), asked[0].0.as_str()), (1, "share"));
+    }
+
+    #[test]
+    fn the_window_decides_what_plays_and_at_which_layer() {
+        let views = Previews::default();
+        let sight = views.watch();
+        let frame = || Handle::from_rgba(1, 1, vec![0; 4]);
+        views.frame("cam", "@b:h", VideoInput::Camera, frame());
+        views.frame("share", "@c:h", VideoInput::Window, frame());
+        // New feeds are undecided: they keep flowing until a view saw them.
+        assert_eq!(views.shown("cam"), None);
+        // A feed drawn twice (stage and dock) needs the larger layer; one
+        // not drawn is hidden.
+        views.start_view();
+        views.draws("cam", Layer::Low);
+        views.draws("cam", Layer::High);
+        views.draws("gone", Layer::Low);
+        views.finish_view(false);
+        let expect = |cam, share| Sight::from([("cam".into(), cam), ("share".into(), share)]);
+        assert_eq!(*sight.borrow(), expect(Some(Layer::High), None));
+        assert_eq!(views.shown("share"), Some(None));
+        // The media viewer covers the window; closing to the tray hides it.
+        views.start_view();
+        views.draws("cam", Layer::Medium);
+        views.finish_view(true);
+        assert_eq!(*sight.borrow(), expect(None, None));
+        views.start_view();
+        views.draws("share", Layer::High);
+        views.finish_view(false);
+        assert_eq!(*sight.borrow(), expect(None, Some(Layer::High)));
+        views.hide_all();
+        assert_eq!(*sight.borrow(), expect(None, None));
+        // Tiles outside a view being built don't count.
+        views.draws("cam", Layer::High);
+        assert_eq!(views.shown("cam"), Some(None));
+        // A feed that starts while the window is closed is hidden at once,
+        // until the window's next view.
+        views.frame("late", "@d:h", VideoInput::Camera, frame());
+        assert_eq!(views.shown("late"), Some(None));
+        views.start_view();
+        views.draws("late", Layer::Low);
+        views.finish_view(false);
+        assert_eq!(views.shown("late"), Some(Some(Layer::Low)));
+        views.frame("later", "@e:h", VideoInput::Camera, frame());
+        assert_eq!(views.shown("later"), None);
+    }
+
+    #[test]
+    fn layers_ask_for_their_size_in_the_tracks_shape() {
+        let wide = TrackDimension(1280, 720);
+        let ask = |l: Layer, t| {
+            let TrackDimension(w, h) = l.dimension(t);
+            (w, h)
+        };
+        assert_eq!(ask(Layer::Low, wide), (320, 180));
+        assert_eq!(ask(Layer::Medium, wide), (640, 360));
+        assert_eq!(ask(Layer::High, wide), (1280, 720));
+        // Portrait and 4:3 cameras keep their shape; an unknown size is 16:9.
+        assert_eq!(ask(Layer::Low, TrackDimension(720, 1280)), (180, 320));
+        assert_eq!(ask(Layer::Medium, TrackDimension(640, 480)), (480, 360));
+        assert_eq!(ask(Layer::High, TrackDimension(0, 0)), (1280, 720));
+        assert_eq!(Layer::Low.preview(), (320, 180));
+        assert_eq!(Layer::High.preview(), (1280, 720));
+        // The camera's layers are the ones the SFU picks between.
+        let heights: Vec<u32> = CAMERA_LAYERS.iter().map(|p| p.height).collect();
+        assert_eq!(heights, [Layer::Low.lines(), Layer::Medium.lines()]);
+        assert_eq!(Quality::CAMERA.height, Layer::High.lines());
     }
 
     #[test]

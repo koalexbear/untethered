@@ -1,12 +1,63 @@
 use super::{ACTIVE, BOLD, El, HOVER, MUTED, Msg, RAIL, Room, TEXT, TRAY, face, nav, surface};
 use crate::avatars::Avatars;
-use crate::desktop_call::{ActiveCall, Feed, VideoInput};
+use crate::desktop_call::{ActiveCall, Feed, Layer, Scroll, Scrolled, StageScroll, VideoInput};
 use iced::widget::image::Handle;
 use iced::{
     Alignment::Center,
     Border, Fill, Length, color,
-    widget::{Column, Row, Space, button, column, container, image, row, scrollable, stack, text},
+    widget::{
+        Column, Row, Space, button, column, container, image, row, scrollable, sensor, stack, text,
+    },
 };
+
+/// Thumbnails under the focused tile, and the grid's rows once it scrolls.
+const THUMB_W: f32 = 162.;
+const THUMB_GAP: f32 = 6.;
+const ROW_H: f32 = 165.;
+const ROW_GAP: f32 = 8.;
+
+/// Whether item `i` of `count` in a scrolling row or column (items `size`
+/// long, `gap` apart) shows. Until the area reported its size every item
+/// counts as shown; once everything fits, all are, whatever it scrolled to.
+fn in_view(scroll: Scroll, (i, count): (usize, usize), size: f32, gap: f32) -> bool {
+    if scroll.extent <= 0. {
+        return true;
+    }
+    let content = count as f32 * (size + gap) - gap;
+    let offset = scroll.offset.clamp(0., (content - scroll.extent).max(0.));
+    let start = i as f32 * (size + gap);
+    start < offset + scroll.extent && start + size > offset
+}
+
+/// A scrolling area of the stage that reports where it is (`in_view`).
+fn scroller<'a>(content: impl Into<El<'a>>, id: uuid::Uuid, area: StageScroll) -> El<'a> {
+    let across = matches!(area, StageScroll::Thumbnails);
+    let along = move |x: f32, y: f32| if across { x } else { y };
+    let scroll = scrollable(content).on_scroll(move |v| {
+        let o = v.absolute_offset();
+        Msg::StageScroll(id, area, Scrolled::Offset(along(o.x, o.y)))
+    });
+    let scroll = if across {
+        scroll.horizontal()
+    } else {
+        scroll.height(Fill)
+    };
+    sensor(scroll)
+        .on_resize(move |size| {
+            Msg::StageScroll(id, area, Scrolled::Extent(along(size.width, size.height)))
+        })
+        .into()
+}
+
+/// The layer a grid tile needs: one fills the stage, up to six share it
+/// two to a row, more sit in short scrolling rows.
+fn grid_layer(cards: usize) -> Layer {
+    match cards {
+        0 | 1 => Layer::High,
+        2..=6 => Layer::Medium,
+        _ => Layer::Low,
+    }
+}
 
 struct Card {
     name: String,
@@ -224,24 +275,39 @@ pub(super) fn view(call: &ActiveCall, room: &Room, me: &str, pictures: &Pictures
         {
             stage = stage.push(text("No incoming video").size(13).color(MUTED));
         }
+        if let Some(f) = &active.feed {
+            call.previews.draws(&f.sid, Layer::High);
+        }
         stage = stage.push(
             container(card(active, call.id, false, false))
                 .width(Fill)
                 .height(Fill),
         );
         if cards.len() > 1 {
-            let strip =
-                Row::with_children(cards.iter().enumerate().filter(|(i, _)| *i != index).map(
-                    |(_, c)| {
-                        container(card(c, call.id, true, true))
-                            .width(162)
-                            .height(94)
-                            .into()
-                    },
-                ))
-                .spacing(6);
-            let strip: El = if cards.len() > 4 {
-                scrollable(strip).horizontal().into()
+            let thumbs: Vec<&Card> = cards
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| *i != index)
+                .map(|(_, c)| c)
+                .collect();
+            let scrolls = thumbs.len() > 3;
+            let shown = call.stage_scroll[StageScroll::Thumbnails as usize];
+            for (i, c) in thumbs.iter().enumerate() {
+                if let Some(f) = &c.feed
+                    && (!scrolls || in_view(shown, (i, thumbs.len()), THUMB_W, THUMB_GAP))
+                {
+                    call.previews.draws(&f.sid, Layer::Low);
+                }
+            }
+            let strip = Row::with_children(thumbs.into_iter().map(|c| {
+                container(card(c, call.id, true, true))
+                    .width(THUMB_W)
+                    .height(94)
+                    .into()
+            }))
+            .spacing(THUMB_GAP);
+            let strip: El = if scrolls {
+                scroller(strip, call.id, StageScroll::Thumbnails)
             } else {
                 strip.into()
             };
@@ -249,22 +315,26 @@ pub(super) fn view(call: &ActiveCall, room: &Room, me: &str, pictures: &Pictures
         }
         stage.into()
     } else {
-        let mut grid = Column::new().spacing(8);
-        let cols = cards.len().min(if cards.len() > 6 { 3 } else { 2 });
-        for chunk in cards.chunks(cols.max(1)) {
+        let mut grid = Column::new().spacing(ROW_GAP);
+        let scrolls = cards.len() > 6;
+        let cols = cards.len().min(if scrolls { 3 } else { 2 });
+        let rows = cards.len().div_ceil(cols.max(1));
+        let shown = call.stage_scroll[StageScroll::Grid as usize];
+        for (r, chunk) in cards.chunks(cols.max(1)).enumerate() {
+            if !scrolls || in_view(shown, (r, rows), ROW_H, ROW_GAP) {
+                for f in chunk.iter().filter_map(|c| c.feed.as_ref()) {
+                    call.previews.draws(&f.sid, grid_layer(cards.len()));
+                }
+            }
             let mut cells =
                 Row::with_children(chunk.iter().map(|c| card(c, call.id, false, true))).spacing(8);
             for _ in chunk.len()..cols {
                 cells = cells.push(Space::new().width(Fill));
             }
-            grid = grid.push(cells.height(if cards.len() > 6 {
-                Length::Fixed(165.)
-            } else {
-                Fill
-            }));
+            grid = grid.push(cells.height(if scrolls { Length::Fixed(ROW_H) } else { Fill }));
         }
-        if cards.len() > 6 {
-            scrollable(grid).height(Fill).into()
+        if scrolls {
+            scroller(grid, call.id, StageScroll::Grid)
         } else {
             grid.height(Fill).into()
         }
@@ -285,6 +355,9 @@ pub(super) fn popover(
 ) -> El<'static> {
     let feed = call.previews.docked();
     let has_feed = feed.is_some();
+    if let Some(f) = feed.as_ref().filter(|_| !call.preview_hidden) {
+        call.previews.draws(&f.sid, Layer::Low);
+    }
     let hint = text("Open call view").size(12).font(BOLD);
     let frame = feed
         .as_ref()
@@ -356,4 +429,43 @@ pub(super) fn popover(
         );
     }
     card.into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scrolled_away_tiles_are_not_in_view() {
+        // Seven thumbnails (1170 px) in a 500-px strip: scrolled by 340 px,
+        // the third (336-498) through the fifth (672-834) show.
+        let at = |offset, extent| Scroll { offset, extent };
+        let shown = |scroll| {
+            (0..7)
+                .filter(|&i| in_view(scroll, (i, 7), THUMB_W, THUMB_GAP))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(shown(at(0., 500.)), [0, 1, 2]);
+        assert_eq!(shown(at(340., 500.)), [2, 3, 4]);
+        assert_eq!(shown(at(676., 500.)), [4, 5, 6]);
+        // Before the strip reported its size, and once the window is wide
+        // enough for all of it (scrolling stops being reported), all show.
+        assert_eq!(shown(at(340., 0.)), [0, 1, 2, 3, 4, 5, 6]);
+        assert_eq!(shown(at(676., 1200.)), [0, 1, 2, 3, 4, 5, 6]);
+        // Fewer tiles than when it scrolled: the offset can't pass the end.
+        assert!(in_view(at(676., 500.), (4, 5), THUMB_W, THUMB_GAP));
+        // A grid of four 165-px rows in 400 px, scrolled to the bottom.
+        let rows: Vec<_> = (0..4)
+            .filter(|&r| in_view(at(292., 400.), (r, 4), ROW_H, ROW_GAP))
+            .collect();
+        assert_eq!(rows, [1, 2, 3]);
+    }
+
+    #[test]
+    fn grid_tiles_need_less_picture_as_they_shrink() {
+        assert_eq!(grid_layer(1), Layer::High);
+        assert_eq!(grid_layer(2), Layer::Medium);
+        assert_eq!(grid_layer(6), Layer::Medium);
+        assert_eq!(grid_layer(7), Layer::Low);
+    }
 }

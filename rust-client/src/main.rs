@@ -182,6 +182,13 @@ enum Msg {
     ToggleVideo(desktop_call::VideoInput),
     #[cfg(target_os = "linux")]
     FocusVideo(uuid::Uuid, Option<String>),
+    /// The call stage's thumbnail strip or grid scrolled (desktop_call.rs).
+    #[cfg(target_os = "linux")]
+    StageScroll(
+        uuid::Uuid,
+        desktop_call::StageScroll,
+        desktop_call::Scrolled,
+    ),
     #[cfg(target_os = "linux")]
     ReturnToCall(uuid::Uuid),
     #[cfg(target_os = "linux")]
@@ -1387,6 +1394,8 @@ impl App {
             #[cfg(target_os = "linux")]
             Msg::VideoUploaded(sid, frame) => return self.video_uploaded(sid, frame),
             #[cfg(target_os = "linux")]
+            Msg::StageScroll(id, area, report) => self.stage_scrolled(id, area, report),
+            #[cfg(target_os = "linux")]
             Msg::FocusVideo(id, sid) => {
                 if let Some(call) = &self.call
                     && call.id == id
@@ -2298,6 +2307,10 @@ impl App {
     /// The daemon's view and title for its one window.
     #[cfg(not(target_arch = "wasm32"))]
     fn window_view(&self, _: iced::window::Id) -> iced::Element<'_, Msg> {
+        // Call video plays only for the tiles this view draws.
+        #[cfg(target_os = "linux")]
+        return self.watch_video(|| self.view());
+        #[cfg(not(target_os = "linux"))]
         self.view()
     }
     #[cfg(not(target_arch = "wasm32"))]

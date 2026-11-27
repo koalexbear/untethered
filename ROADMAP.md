@@ -155,8 +155,9 @@ doesn't:
 ### Phase 5 — calls
 
 Follow the [calls plan](rust-client/docs/calls-parity-plan.md): A2 (noise
-suppression and input sensitivity) and V2 (simulcast, per-tile quality) finish
-Phase 1 there; then U1–U6: the Voice Connected panel, a persisted Voice & Video
+suppression and input sensitivity) finishes Phase 1 there, now that V2 has
+cameras send three simulcast layers, each tile receive the layer its size
+needs and video nobody can see pause; then U1–U6: the Voice Connected panel, a persisted Voice & Video
 settings page, participant menus, Go Live and Watch Stream, the incoming call
 card, and stage polish. Stream quality is a choice, up to 60 fps at the
 source's resolution, with no tier to pay for.
