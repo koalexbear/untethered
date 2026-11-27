@@ -5,12 +5,12 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
 | N3 | Pinned messages and Matrix threads | codex-n3 | `codex/n3-pins-threads` | working | 2026-11-27T15:03:37Z | `rust-client/src/engine/account_ui.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/live_test.rs`, `rust-client/src/engine/messaging.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/pins.rs`, `rust-client/src/engine/threads.rs`, `scripts/qa_matrix_sdk.py` |
-| P2 | Inline players | main-session | `phase4-media` | review | 2026-11-27T16:22:45Z | `rust-client/src/player.rs rust-client/src/media.rs rust-client/src/preview.rs rust-client/src/inline.rs rust-client/src/avatars.rs rust-client/src/view.rs rust-client/src/view/viewer.rs rust-client/src/viewer.rs rust-client/src/engine/media.rs rust-client/src/main.rs rust-client/src/web_files.rs ROADMAP.md README.md scripts/qa_phase4.py` |
 | P4 | Video in the browser (Windows playback stays open) | main-session | `phase4-media` | review | 2026-11-27T16:22:49Z | `rust-client/src/player.rs rust-client/src/media.rs rust-client/src/preview.rs rust-client/src/inline.rs rust-client/src/avatars.rs rust-client/src/view.rs rust-client/src/view/viewer.rs rust-client/src/viewer.rs rust-client/src/engine/media.rs rust-client/src/main.rs rust-client/src/web_files.rs ROADMAP.md README.md scripts/qa_phase4.py` |
 | P5 | Sending video | main-session | `phase4-media` | review | 2026-11-27T16:22:47Z | `rust-client/src/player.rs rust-client/src/media.rs rust-client/src/preview.rs rust-client/src/inline.rs rust-client/src/avatars.rs rust-client/src/view.rs rust-client/src/view/viewer.rs rust-client/src/viewer.rs rust-client/src/engine/media.rs rust-client/src/main.rs rust-client/src/web_files.rs ROADMAP.md README.md scripts/qa_phase4.py` |
 
 ## Done
 
+- 2026-11-27 **P2** Inline players (main-session): merged as 0c7f452
 - 2026-11-27 **P1** Animated images (with P2, P4 browser, P5 on this branch) (main-session): merged as 0c7f452
 - 2026-11-27 **P3** Viewer polish: preloading, thumbnail strip, gallery, sharper zoom (main-session): merged as 1b74b10
 - 2026-11-27 **copy-image-zoom** Copy Image, and zoom in the viewer (part of P3) (main-session): merged as 372e13d
