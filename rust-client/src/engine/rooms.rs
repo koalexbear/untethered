@@ -136,6 +136,7 @@ async fn summary(room: &Room) -> RoomSummary {
             .flatten()
             .and_then(|raw| raw.deserialize().ok())
             .map(|e| e.content.event_id.to_string()),
+        link_previews: super::previews::enabled(room).await,
         create: state_doc(room, StateEventType::RoomCreate).await,
         power: state_doc(room, StateEventType::RoomPowerLevels).await,
         space_alerts: room
@@ -153,7 +154,7 @@ async fn summary(room: &Room) -> RoomSummary {
 
 /// A state event from the store as the App keeps it. Fields are read from
 /// the JSON so power levels keep what ruma doesn't model.
-async fn state_doc(room: &Room, kind: StateEventType) -> Option<StateDoc> {
+pub(super) async fn state_doc(room: &Room, kind: StateEventType) -> Option<StateDoc> {
     let RawAnySyncOrStrippedState::Sync(raw) = room.get_state_event(kind, "").await.ok()?? else {
         return None;
     };

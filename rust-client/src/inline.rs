@@ -129,17 +129,31 @@ impl App {
                 let span = range.len().saturating_sub(1) as f32;
                 range.end.saturating_sub(1) - (self.inline.depth.clamp(0., 1.) * span) as usize
             });
-        let mut shown: Vec<(usize, &PreviewRef)> = history
+        let mut shown: Vec<(usize, PreviewRef)> = history
             .posts_in(range.clone())
             .enumerate()
-            .filter_map(|(i, p)| Some((range.start + i, p.media.as_ref()?.preview.as_ref()?)))
+            .filter_map(|(i, p)| Some((range.start + i, p.media.as_ref()?.preview.clone()?)))
             .collect();
+        // Link previews' images too, where the room shows them.
+        if room.link_previews {
+            for (i, post) in history.posts_in(range.clone()).enumerate() {
+                for url in crate::link_previews::links(post) {
+                    if let Some(source) = self
+                        .link_previews
+                        .get(&url)
+                        .and_then(crate::view::link_preview_image)
+                    {
+                        shown.push((range.start + i, source));
+                    }
+                }
+            }
+        }
         shown.sort_by_key(|(i, _)| i.abs_diff(focus));
         let images = &mut self.inline;
         let mut wanted: Vec<PreviewRef> = images.manual.iter().cloned().collect();
         for (_, key) in shown {
-            if !wanted.contains(key) {
-                wanted.push(key.clone());
+            if !wanted.contains(&key) {
+                wanted.push(key);
             }
         }
         images.cache.retain(|k, _| wanted.contains(k));

@@ -260,6 +260,15 @@ rooms or pause for about five seconds. To stop sending it, turn off
 your Matrix account, so it applies on every device running Untethered.
 [Element test](scripts/replies-element.md#typing-indicators).
 
+**Link previews:** A message's first two web links show a preview below it,
+as Discord's embeds do: the site, the page's title as a link, its
+description and its image; a link straight to an image shows the picture.
+Your homeserver fetches the pages (its `preview_url`), so the sites never
+see you. Right-click a channel for **Show Link Previews** or **Hide Link
+Previews**: unencrypted rooms show them unless you turn them off, encrypted
+rooms only once you turn them on, because asking tells your homeserver the
+link. The switch is stored where Element keeps it, so both clients agree.
+
 **Reactions:** Hover a message and click **Add Reaction** (or use the smile
 beside its reactions) to choose a quick reaction, search emoji by shortcode,
 or enter your own emoji or text. The picker floats under the button that

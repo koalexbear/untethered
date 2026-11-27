@@ -28,6 +28,7 @@ mod incoming;
 mod inline;
 #[cfg(not(target_arch = "wasm32"))]
 mod instance;
+mod link_previews;
 mod media;
 mod mentions;
 mod moderation;
@@ -211,6 +212,8 @@ enum Msg {
     ReadingScroll(String, paging::Scrolled),
     /// Open the room's timeline again after a pause (paging.rs).
     ReopenTimeline(String),
+    /// Turn a room's link previews on or off (link_previews.rs).
+    LinkPreviews(String, bool),
     /// Scrolled near the top of what's loaded: fetch older messages.
     /// Page Up (true) or Page Down: scroll the timeline by most of a screen.
     PageScroll(bool),
@@ -363,6 +366,8 @@ enum Request {
     ReadState(String, Option<String>),
     ShareReads(bool, u64),
     ShareTyping(bool, u64),
+    /// Saving a room's link preview switch (link_previews.rs).
+    LinkPreviews(String, bool),
     LeaveRoom(String),
     FollowUpgrade(String),
 }
@@ -416,6 +421,7 @@ struct App {
     sdk_ui: engine::account_ui::AccountUi,
     outbox: media::Outbox,
     inline: inline::InlineImages,
+    link_previews: link_previews::LinkPreviews,
     avatars: avatars::Avatars,
     viewer: Option<viewer::Viewer>,
     /// The account's profile picture (mxc URI).
@@ -527,6 +533,7 @@ impl App {
             sdk_ui: Default::default(),
             outbox: Default::default(),
             inline: Default::default(),
+            link_previews: Default::default(),
             avatars: Default::default(),
             viewer: None,
             own_avatar: None,
@@ -1530,6 +1537,7 @@ impl App {
             }
             Msg::CheckReading => return self.check_reading(),
             Msg::ReopenTimeline(room) => self.reopen_timeline(room),
+            Msg::LinkPreviews(room, on) => self.set_link_previews(room, on),
             Msg::ReadingScroll(room, at) if room == self.selected && self.original.is_none() => {
                 if at.away {
                     // Scrolled up: the next return may start over (paging.rs).
@@ -1931,6 +1939,7 @@ impl App {
             self.bound_history(),
         ]);
         self.fill_history();
+        self.schedule_link_previews();
         let task = Task::batch([task, self.schedule_avatars()]);
         #[cfg(target_os = "linux")]
         let task = Task::batch([task, self.start_ringtone()]);

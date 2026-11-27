@@ -106,8 +106,9 @@ def placeholders(im):
     return sum(n for n, c in im.getcolors(im.width * im.height) if c == (17, 18, 20))
 
 
-def homeserver(tmp):
-    """A disposable Synapse in `tmp`: its process and address."""
+def homeserver(tmp, extra=""):
+    """A disposable Synapse in `tmp`: its process and address. `extra` is more
+    homeserver configuration (YAML)."""
     subprocess.run([sys.executable, "-m", "synapse.app.homeserver", "-c", "hs.yaml", "--generate-config",
                     "-H", SERVER_NAME, "--report-stats", "no"], cwd=tmp, stdout=subprocess.DEVNULL, check=True)
     port = free_port()
@@ -128,7 +129,7 @@ rc_message: {limit}
 rc_room_creation: {limit}
 rc_joins: {{local: {limit}, remote: {limit}}}
 rc_login: {{address: {limit}, account: {limit}, failed_attempts: {limit}}}
-""")
+{extra}""")
     synapse = subprocess.Popen([sys.executable, "-m", "synapse.app.homeserver", "-c", "hs.yaml", "-c", "local.yaml"],
                                cwd=tmp, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     for _ in range(300):

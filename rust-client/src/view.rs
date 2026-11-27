@@ -9,6 +9,8 @@ mod context_menu;
 mod emoji_picker;
 mod hover;
 mod icons;
+mod link_preview;
+pub(crate) use link_preview::image_source as link_preview_image;
 mod mentions;
 mod popover;
 mod profile;
@@ -2746,6 +2748,11 @@ impl App {
             }
             if let Some(file) = &p.media {
                 message = message.push(self.attachment(p.event_id.as_deref(), file));
+            }
+            if r.link_previews
+                && let Some(previews) = link_preview::view(self, p)
+            {
+                message = message.push(previews);
             }
             if let Some(bar) = reaction_bar::view(self, p) {
                 message = message.push(bar);
