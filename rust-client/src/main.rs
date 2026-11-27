@@ -182,6 +182,12 @@ enum Msg {
     CallLayout(uuid::Uuid, bool),
     #[cfg(target_os = "linux")]
     HideCallPreview(uuid::Uuid, bool),
+    /// A call video frame is on the GPU, or couldn't be put there.
+    #[cfg(target_os = "linux")]
+    VideoUploaded(
+        String,
+        Result<iced::advanced::image::Allocation, iced::advanced::image::Error>,
+    ),
     #[cfg(target_os = "linux")]
     AudioDevices,
     #[cfg(target_os = "linux")]
@@ -1116,9 +1122,17 @@ impl App {
             Msg::ShowInline(key) => self.inline.request(key),
             Msg::Engine(event) => {
                 let jumped = matches!(event, engine::Event::Context { .. });
+                #[cfg(target_os = "linux")]
+                let video =
+                    matches!(&event, engine::Event::CallFrame(f) if f["command"] == "video_redraw");
                 self.engine_event(event);
                 if jumped && self.original.is_some() {
                     return self.anchor_history();
+                }
+                // A call video tile has a new frame to upload (desktop_call.rs).
+                #[cfg(target_os = "linux")]
+                if video {
+                    return self.upload_video();
                 }
             }
             Msg::Sdk(action) => return self.sdk_action(action),
@@ -1319,6 +1333,8 @@ impl App {
                     c.preview_hidden = hidden;
                 }
             }
+            #[cfg(target_os = "linux")]
+            Msg::VideoUploaded(sid, frame) => return self.video_uploaded(sid, frame),
             #[cfg(target_os = "linux")]
             Msg::FocusVideo(id, sid) => {
                 if let Some(call) = &self.call

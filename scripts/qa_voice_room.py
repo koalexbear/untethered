@@ -40,6 +40,10 @@ class Desktop:
         self.env=env
         self.i=i
         self.kde=kde
+        self.room=room
+        # A click on a voice channel in the room list opens it and joins its
+        # call (14e985b). Leave it unclicked until the fixture joins.
+        self.voice=room=="Atrium"
         self.tone=i
         self.windows=deque(maxlen=12)
         self.audit=None
@@ -71,7 +75,8 @@ class Desktop:
         # Limit per-client rendering/codec parallelism in this three-GUI fixture.
         # Separate four-core sets, when available, stand in for separate machines.
         cores=client_cores(i)
-        binary=os.getenv("UNTETHERED_QA_CLIENT") or root/"rust-client/target/debug/untethered-iced"
+        binary=(os.getenv("UNTETHERED_QA_UI_CLIENT") or os.getenv("UNTETHERED_QA_CLIENT")
+                or root/"rust-client/target/debug/untethered-iced")
         self.client=stack.enter_context(child([*prefix,"taskset","-c",",".join(map(str,cores)),binary],env,stderr=log))
         def window():
             assert self.client.poll() is None,f"client {i+1} exited"
@@ -83,6 +88,7 @@ class Desktop:
             # matrix-sdk shows its stored rooms before the first sync and may
             # open another one first; open this room from the sidebar.
             spot=next(((x,y) for w,x,y in self.words() if w==room.lower() and x<CHAT_X),None)
+            if spot and self.voice:return True
             if spot:self.press(*spot)
             return False
         wait_for(f"client {i+1} synced {room}",synced,35)
@@ -103,6 +109,7 @@ class Desktop:
             if room in kde.command("kdotool","getwindowname",self.win,check=False).stdout:return True
             # As on X11, matrix-sdk may open another stored room first.
             spot=next(((x,y) for w,x,y in self.words() if w==room.lower() and x<CHAT_X),None)
+            if spot and self.voice:return True
             if spot:self.press(*spot)
             return False
         wait_for(f"Wayland client synced {room}",shown,35)
@@ -168,22 +175,37 @@ class Desktop:
     def tooltip(self,x,y):
         """Hover a control and OCR only the tooltip that appears above it.
 
-        Status text can sit right behind the tooltip, so crop to the pixels
-        that changed between the pointer resting below the row and hovering."""
-        from PIL import ImageChops
+        Status text can sit right behind the tooltip ("In voice · 3 connected"
+        does in the dock), so read only the pixels that got brighter between
+        the pointer resting below the row and hovering: the tooltip's light
+        text, not the text it covers."""
+        from PIL import ImageChops,ImageOps
         area=(max(0,x-150),max(0,y-70),x+150,y-19)
         self.hover(x,y+60);time.sleep(.25)
         before=self.shot().crop(area)
         self.hover(x,y);time.sleep(.4)
         after=self.shot().crop(area)
-        box=ImageChops.difference(before,after).convert("L").point(lambda v:255 if v>24 else 0).getbbox()
-        if not box:return ""
-        im=after.crop(box)
-        buf=io.BytesIO();im.resize((im.width*3,im.height*3)).save(buf,"PNG")
+        if debug:=os.environ.get("KWIN_QA_DEBUG"):
+            before.save(Path(debug)/f"tooltip-{self.i}-{x}-before.png");after.save(Path(debug)/f"tooltip-{self.i}-{x}-after.png")
+        gain=ImageChops.subtract(after.convert("L"),before.convert("L"))
+        if not (box:=gain.point(lambda v:255 if v>24 else 0).getbbox()):return ""
+        # Keep the grey levels: a hard threshold thins "Stop" into "step".
+        im=gain.crop((max(0,box[0]-4),max(0,box[1]-4),min(gain.width,box[2]+4),min(gain.height,box[3]+4)))
+        im=ImageOps.invert(ImageOps.autocontrast(im))
+        buf=io.BytesIO();im.resize((im.width*3,im.height*3),Image.LANCZOS).save(buf,"PNG")
         return sp.run(["tesseract","stdin","stdout","--psm","7"],input=buf.getvalue(),capture_output=True).stdout.decode().lower()
+
+    def title(self):
+        if self.kde:return self.kde.command("kdotool","getwindowname",self.win,check=False).stdout
+        return self.cmd("xdotool","getwindowname",self.win,check=False)
 
     def click(self,label):
         if self.kde:self.kde.command("kdotool","windowactivate",self.win)
+        if label=="join" and self.voice and self.room not in self.title():
+            # Join from the room list, which also opens the voice channel.
+            self.press(*wait_for(self.room+" in the room list",lambda:next(
+                ((x,y) for w,x,y in self.words() if w==self.room.lower() and x<CHAT_X),None),12))
+            return
         if label in ("voice","video"):
             # DM calls start from the phone and camera icons in the channel header.
             tip="start "+label+" call"
@@ -191,16 +213,21 @@ class Desktop:
             return
         icons={"mute":[0],"unmute":[0],"start":[1],"camera":[1],"share":[2],"sharing":[2],
                "stop":[2,1],"cancel":[2,1],"leave":[3],"hang":[3]}
+        read={}
         def locate():
             if label in icons:
                 buttons=icon_buttons(self.shot())
                 # Try the usual slot first; the tooltip text decides.
                 order=[i for i in icons[label] if i<len(buttons)]
                 for i in order+[i for i in range(len(buttons)) if i not in order]:
-                    if re.search(r"\b"+label+r"\b",self.tooltip(*buttons[i])):return buttons[i]
+                    read[buttons[i]]=tip=self.tooltip(*buttons[i])
+                    if re.search(r"\b"+label+r"\b",tip):return buttons[i]
                 return None
             return next(((x,y) for word,x,y in self.words() if word==label),None)
-        x,y=wait_for(label,locate,12)
+        try:x,y=wait_for(label,locate,12)
+        except RuntimeError:
+            if label in icons:print(f"Desktop {self.i+1} dock tooltips:",{k:v.strip() for k,v in read.items()},flush=True)
+            raise
         self.press(x,y)
 
     def open_stage(self):

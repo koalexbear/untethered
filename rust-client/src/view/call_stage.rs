@@ -17,8 +17,8 @@ struct Card {
     local: bool,
 }
 fn card(c: &Card, id: uuid::Uuid, small: bool, selectable: bool) -> El<'static> {
-    let body: El = if let Some(f) = &c.feed {
-        image(f.frame.clone())
+    let body: El = if let Some(frame) = c.feed.as_ref().and_then(Feed::picture) {
+        image(frame.clone())
             .content_fit(iced::ContentFit::Contain)
             .width(Fill)
             .height(Fill)
@@ -283,28 +283,17 @@ pub(super) fn popover(
     picture: Option<&Handle>,
     can_expand: bool,
 ) -> El<'static> {
-    let (focus, feeds) = call.previews.snapshot();
-    let feed = feeds
-        .into_iter()
-        .filter(|f| !f.user.is_empty() || f.source == VideoInput::Window)
-        .min_by(|a, b| {
-            let priority = |f: &Feed| {
-                (
-                    Some(&f.sid) != focus.as_ref(),
-                    f.source != VideoInput::Window,
-                )
-            };
-            priority(a)
-                .cmp(&priority(b))
-                .then_with(|| a.user.cmp(&b.user))
-                .then_with(|| a.sid.cmp(&b.sid))
-        });
+    let feed = call.previews.docked();
     let has_feed = feed.is_some();
     let hint = text("Open call view").size(12).font(BOLD);
-    let preview: El<'static> = if let Some(feed) = feed.filter(|_| !call.preview_hidden) {
+    let frame = feed
+        .as_ref()
+        .filter(|_| !call.preview_hidden)
+        .and_then(|f| f.picture().cloned());
+    let preview: El<'static> = if let Some(frame) = frame {
         column![
             container(
-                image(feed.frame)
+                image(frame)
                     .width(Fill)
                     .height(Fill)
                     .content_fit(iced::ContentFit::Contain)
