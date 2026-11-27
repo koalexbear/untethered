@@ -78,6 +78,8 @@
    ],
    "owner": "fix-call-video",
    "paths": [
+    "rust-client/Cargo.lock",
+    "rust-client/Cargo.toml",
     "rust-client/src/desktop_call.rs",
     "rust-client/src/desktop_call/room_video.rs",
     "rust-client/src/main.rs",
@@ -87,9 +89,9 @@
     "scripts/qa_window_pattern.py",
     "scripts/qa_window_share.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Fix call video: share corruption at odd widths, low-fps own preview",
-   "updated": "2026-11-27T19:15:11Z",
+   "updated": "2026-11-27T19:25:10Z",
    "worktree": ".claude/worktrees/fix-call-video"
   }
  },
