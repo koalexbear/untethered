@@ -13,6 +13,11 @@
      "at": "2026-11-27T20:12:06Z",
      "by": "v2-simulcast",
      "text": "[V2] shares README.md, ROADMAP.md, rust-client/src/main.rs: main.rs: one Msg::CallScroll variant + dispatch arm next to FocusVideo, one post-update line next to sync_tray; ROADMAP/README: call video lines only"
+    },
+    {
+     "at": "2026-11-27T20:12:43Z",
+     "by": "n4-presence",
+     "text": "[N4] shares README.md, ROADMAP.md, rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: [N4] small separate hooks: engine/mod.rs: 'pub mod presence;', Command::{PublishPresence, WatchPresence, SaveStatus} with dispatch arms next to Command::ShareTyping, Event::{Presence, PresenceSupport, OwnStatus} after Event::TypingSharing, one task spawn in go_live and a sender in Live; engine/app.rs: three engine_event arms after Event::TypingSharing and one engine_done arm (Request::SaveStatus) next to ShareTyping; main.rs: 'mod presence;', Msg::Presence(presence::Input), Request::SaveStatus, App field 'presence', one update arm, one subscription line; view.rs: dots on DM rows (channel_row), user panel status + menu, one overlay line for the status dialog; README/ROADMAP: N4 row and a Presence paragraph."
     }
    ],
    "owner": "j4-explore",
@@ -59,6 +64,11 @@
      "at": "2026-11-27T20:12:06Z",
      "by": "v2-simulcast",
      "text": "[V2] shares README.md, ROADMAP.md, rust-client/src/main.rs: main.rs: one Msg::CallScroll variant + dispatch arm next to FocusVideo, one post-update line next to sync_tray; ROADMAP/README: call video lines only"
+    },
+    {
+     "at": "2026-11-27T20:12:43Z",
+     "by": "n4-presence",
+     "text": "[N4] shares README.md, ROADMAP.md, rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: [N4] small separate hooks: engine/mod.rs: 'pub mod presence;', Command::{PublishPresence, WatchPresence, SaveStatus} with dispatch arms next to Command::ShareTyping, Event::{Presence, PresenceSupport, OwnStatus} after Event::TypingSharing, one task spawn in go_live and a sender in Live; engine/app.rs: three engine_event arms after Event::TypingSharing and one engine_done arm (Request::SaveStatus) next to ShareTyping; main.rs: 'mod presence;', Msg::Presence(presence::Input), Request::SaveStatus, App field 'presence', one update arm, one subscription line; view.rs: dots on DM rows (channel_row), user panel status + menu, one overlay line for the status dialog; README/ROADMAP: N4 row and a Presence paragraph."
     }
    ],
    "owner": "main-session",
@@ -164,6 +174,11 @@
      "at": "2026-11-27T20:10:54Z",
      "by": "n9-sounds",
      "text": "[N9] shares rust-client/src/engine/mod.rs: N9: main.rs gets 'mod sounds; mod shortcuts;', two Msg variants (Sound(..), Shortcut(..)) with one dispatch arm each, sounds/shortcut fields on App, one 'self.play_sounds()' line in update's tail next to sync_tray(), one shortcuts subscription line, and the Escape listener skips Shift+Escape (it becomes 'mark server read'). The Msg::Escape arm itself is untouched. view.rs: one line adding the SOUNDS section in User Settings and one stack layer for the Ctrl+/ shortcuts list. engine/mod.rs: Alert gains 'highlight: bool' (serde default), set in alerts.rs. README/ROADMAP: N9 row marked done and a Sounds/shortcuts paragraph."
+    },
+    {
+     "at": "2026-11-27T20:12:43Z",
+     "by": "n4-presence",
+     "text": "[N4] shares rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs: [N4] small separate hooks: engine/mod.rs: 'pub mod presence;', Command::{PublishPresence, WatchPresence, SaveStatus} with dispatch arms next to Command::ShareTyping, Event::{Presence, PresenceSupport, OwnStatus} after Event::TypingSharing, one task spawn in go_live and a sender in Live; engine/app.rs: three engine_event arms after Event::TypingSharing and one engine_done arm (Request::SaveStatus) next to ShareTyping; main.rs: 'mod presence;', Msg::Presence(presence::Input), Request::SaveStatus, App field 'presence', one update arm, one subscription line; view.rs: dots on DM rows (channel_row), user panel status + menu, one overlay line for the status dialog; README/ROADMAP: N4 row and a Presence paragraph."
     }
    ],
    "owner": "codex-n3",
@@ -182,6 +197,31 @@
    "updated": "2026-11-27T15:03:37Z",
    "worktree": "../../../../../tmp/untethered-n3"
   },
+  "N4": {
+   "branch": "claude/n4-presence-13e26f",
+   "claimed": "2026-11-27T20:12:43Z",
+   "notes": [],
+   "owner": "n4-presence",
+   "paths": [
+    "README.md",
+    "ROADMAP.md",
+    "rust-client/src/account.rs",
+    "rust-client/src/engine/app.rs",
+    "rust-client/src/engine/mod.rs",
+    "rust-client/src/engine/presence.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/presence.rs",
+    "rust-client/src/view.rs",
+    "rust-client/src/view/presence.rs",
+    "rust-client/src/view/profile.rs",
+    "rust-client/src/view/room_people.rs",
+    "scripts/qa_presence.py"
+   ],
+   "status": "working",
+   "title": "Presence and custom status",
+   "updated": "2026-11-27T20:12:43Z",
+   "worktree": ".claude/worktrees/n4-presence-13e26f"
+  },
   "N9": {
    "branch": "claude/n9-sounds-8156ba",
    "claimed": "2026-11-27T20:10:34Z",
@@ -190,6 +230,11 @@
      "at": "2026-11-27T20:12:06Z",
      "by": "v2-simulcast",
      "text": "[V2] shares README.md, ROADMAP.md, rust-client/src/main.rs: main.rs: one Msg::CallScroll variant + dispatch arm next to FocusVideo, one post-update line next to sync_tray; ROADMAP/README: call video lines only"
+    },
+    {
+     "at": "2026-11-27T20:12:43Z",
+     "by": "n4-presence",
+     "text": "[N4] shares README.md, ROADMAP.md, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: [N4] small separate hooks: engine/mod.rs: 'pub mod presence;', Command::{PublishPresence, WatchPresence, SaveStatus} with dispatch arms next to Command::ShareTyping, Event::{Presence, PresenceSupport, OwnStatus} after Event::TypingSharing, one task spawn in go_live and a sender in Live; engine/app.rs: three engine_event arms after Event::TypingSharing and one engine_done arm (Request::SaveStatus) next to ShareTyping; main.rs: 'mod presence;', Msg::Presence(presence::Input), Request::SaveStatus, App field 'presence', one update arm, one subscription line; view.rs: dots on DM rows (channel_row), user panel status + menu, one overlay line for the status dialog; README/ROADMAP: N4 row and a Presence paragraph."
     }
    ],
    "owner": "n9-sounds",
@@ -217,7 +262,13 @@
   "V2": {
    "branch": "claude/v2-simulcast-9158cf",
    "claimed": "2026-11-27T20:12:06Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-27T20:12:43Z",
+     "by": "n4-presence",
+     "text": "[N4] shares README.md, ROADMAP.md, rust-client/src/main.rs: [N4] small separate hooks: engine/mod.rs: 'pub mod presence;', Command::{PublishPresence, WatchPresence, SaveStatus} with dispatch arms next to Command::ShareTyping, Event::{Presence, PresenceSupport, OwnStatus} after Event::TypingSharing, one task spawn in go_live and a sender in Live; engine/app.rs: three engine_event arms after Event::TypingSharing and one engine_done arm (Request::SaveStatus) next to ShareTyping; main.rs: 'mod presence;', Msg::Presence(presence::Input), Request::SaveStatus, App field 'presence', one update arm, one subscription line; view.rs: dots on DM rows (channel_row), user panel status + menu, one overlay line for the status dialog; README/ROADMAP: N4 row and a Presence paragraph."
+    }
+   ],
    "owner": "v2-simulcast",
    "paths": [
     "README.md",
