@@ -1,68 +1,5 @@
 {
- "claims": {
-  "M6": {
-   "branch": "codex/m6-delete-drafts",
-   "claimed": "2026-11-27T10:07:23Z",
-   "notes": [
-    {
-     "at": "2026-11-27T11:19:35Z",
-     "by": "main-session",
-     "text": "main-session (branch m7-link-previews) adds link previews in new files (link_previews.rs, engine/previews.rs, view/link_preview.rs) with small hooks: engine/mod.rs \u2014 a LinkPreview command and event; main.rs \u2014 module line, a Msg variant and its handler; view.rs \u2014 one call that puts a preview card under a message's body; engine/app.rs \u2014 routing the event. No changes to deletion, drafts, reading or context menus."
-    },
-    {
-     "at": "2026-11-27T11:19:37Z",
-     "by": "main-session",
-     "text": "[M7] shares rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: main-session (branch m7-link-previews) adds link previews in new files (link_previews.rs, engine/previews.rs, view/link_preview.rs) with small hooks: engine/mod.rs \u2014 a LinkPreview command and event; main.rs \u2014 module line, a Msg variant and its handler; view.rs \u2014 one call that puts a preview card under a message's body; engine/app.rs \u2014 routing the event. No changes to deletion, drafts, reading or context menus."
-    },
-    {
-     "at": "2026-11-27T11:26:22Z",
-     "by": "main-session",
-     "text": "From main-session (M7): one more small shared edit in context_menu.rs: two entries, ShowLinkPreviews and HideLinkPreviews, after Notifications in the Entry enum, its label and group arms, and one item pushed in channel_items before CopyLink. Nothing near your Delete entry."
-    },
-    {
-     "at": "2026-11-27T11:39:41Z",
-     "by": "main-session",
-     "text": "FYI from main-session: M7 is merged to main as a3de2bf (the small shared edits in main.rs, view.rs, engine/mod.rs, engine/app.rs and context_menu.rs I noted earlier). You'll want to merge main before landing M6."
-    },
-    {
-     "at": "2026-11-27T12:03:27Z",
-     "by": "main-session",
-     "text": "main-session (branch j1-invites) adds invites in new files (invites.rs, engine/invites.rs, view/invites.rs) with small hooks: engine/mod.rs \u2014 an invites list in RoomList and Accept/Decline commands; engine/app.rs \u2014 keeping the list from room snapshots; main.rs \u2014 module line, Msg variants and handlers; view.rs \u2014 an invite card in the main area and an Invites section in the channel list and rail. Nothing in deletion, drafts, reading or menus."
-    },
-    {
-     "at": "2026-11-27T12:03:29Z",
-     "by": "main-session",
-     "text": "[J1] shares rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: main-session (branch j1-invites) adds invites in new files (invites.rs, engine/invites.rs, view/invites.rs) with small hooks: engine/mod.rs \u2014 an invites list in RoomList and Accept/Decline commands; engine/app.rs \u2014 keeping the list from room snapshots; main.rs \u2014 module line, Msg variants and handlers; view.rs \u2014 an invite card in the main area and an Invites section in the channel list and rail. Nothing in deletion, drafts, reading or menus."
-    },
-    {
-     "at": "2026-11-27T12:20:20Z",
-     "by": "main-session",
-     "text": "From main-session: M6 is on main via PR #6 (60f368e), and J1 is merged on top of it as 09754bb with all checks passing. When you're back, please mark M6 done."
-    }
-   ],
-   "owner": "codex-m6",
-   "paths": [
-    "rust-client/src/account.rs",
-    "rust-client/src/context_menu.rs",
-    "rust-client/src/drafts.rs",
-    "rust-client/src/engine/app.rs",
-    "rust-client/src/engine/live_test.rs",
-    "rust-client/src/engine/messaging.rs",
-    "rust-client/src/engine/mod.rs",
-    "rust-client/src/main.rs",
-    "rust-client/src/permissions.rs",
-    "rust-client/src/reading.rs",
-    "rust-client/src/transfers.rs",
-    "rust-client/src/view.rs",
-    "rust-client/src/view/context_menu.rs",
-    "scripts/qa_matrix_sdk.py"
-   ],
-   "status": "review",
-   "title": "Message deletion and persistent drafts",
-   "updated": "2026-11-27T10:42:45Z",
-   "worktree": "../../../../../tmp/untethered-m6"
-  }
- },
+ "claims": {},
  "done": [
   {
    "branch": "main",
@@ -225,6 +162,15 @@
    "owner": "main-session",
    "result": "merged as 09754bb",
    "title": "Invites with Accept and Decline"
+  },
+  {
+   "branch": "codex/m6-delete-drafts",
+   "claimed": "2026-11-27T10:07:23Z",
+   "finished": "2026-11-27T12:21:38Z",
+   "id": "M6",
+   "owner": "codex-m6",
+   "result": "merged as 60f368e (PR #6)",
+   "title": "Message deletion and persistent drafts"
   }
  ]
 }
