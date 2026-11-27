@@ -281,9 +281,9 @@
     "scripts/qa_voice_room.py",
     "scripts/qa_window_share.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Simulcast, per-tile quality, pause hidden video",
-   "updated": "2026-11-27T20:31:14Z",
+   "updated": "2026-11-27T20:50:36Z",
    "worktree": ".claude/worktrees/v2-simulcast-9158cf"
   }
  },
