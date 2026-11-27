@@ -186,6 +186,11 @@
      "at": "2026-11-27T21:30:27Z",
      "by": "n5-order",
      "text": "[N5] shares rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs: N5: engine/mod.rs 'mod arrange;' + Command::Arrange {id, changes} with one dispatch arm near the poll arms, and RoomSummary.children (space child edges with order/ts, serde default); engine/app.rs one engine_done arm (Request::Arrange); engine/rooms.rs children() also returns order+ts; rooms.rs/rooms/engine.rs sort_rooms orders a space's channels by m.space.child order and builds subspace categories; main.rs mod channel_order, Msg::Order, App.order field, Request::Arrange, one update arm + Escape arm; view.rs channel_list grows subspace categories and wraps rows in drag slots (view/channel_order.rs); README/ROADMAP N5 row and a short Channel order note"
+    },
+    {
+     "at": "2026-11-27T21:43:10Z",
+     "by": "main-session",
+     "text": "[M11] main-session shares rust-client/src/engine/mod.rs and engine/app.rs: 'pub mod packs;', Command::{UsePack,SendSticker,ReactEmote} with dispatch arms after Command::EndPoll, Event::Packs after Event::Presence, a 'packs: Sender<String>' field on Live with one spawn in go_live, and one line in the Paginate arm (live.packs.try_send(room)); app.rs: one engine_event arm (Event::Packs) before Event::Rooms, one engine_done arm (Request::Pack) after Request::Poll, and emote pills added to the pills in send() and the Edit request."
     }
    ],
    "owner": "codex-n3",
