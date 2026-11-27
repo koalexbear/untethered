@@ -231,7 +231,7 @@
    ],
    "status": "working",
    "title": "Fix --room-ptt: open Atrium without joining",
-   "updated": "2026-11-27T22:52:52Z",
+   "updated": "2026-11-27T22:54:17Z",
    "worktree": ".claude/worktrees/great-lamport-46e7ea"
   }
  },
