@@ -13,6 +13,11 @@
      "at": "2026-11-27T21:28:57Z",
      "by": "m12-names",
      "text": "[M12] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: M12: engine/mod.rs+app.rs: Command::SetNickname, RoomSummary.own_name, one engine_done arm; main.rs/view.rs: Msg::Names, App.names, Request::Nickname, dialog slot, server-menu item, timeline name label; README/ROADMAP M12 row and a Names note"
+    },
+    {
+     "at": "2026-11-27T21:30:27Z",
+     "by": "n5-order",
+     "text": "[N5] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: N5: engine/mod.rs 'mod arrange;' + Command::Arrange {id, changes} with one dispatch arm near the poll arms, and RoomSummary.children (space child edges with order/ts, serde default); engine/app.rs one engine_done arm (Request::Arrange); engine/rooms.rs children() also returns order+ts; rooms.rs/rooms/engine.rs sort_rooms orders a space's channels by m.space.child order and builds subspace categories; main.rs mod channel_order, Msg::Order, App.order field, Request::Arrange, one update arm + Escape arm; view.rs channel_list grows subspace categories and wraps rows in drag slots (view/channel_order.rs); README/ROADMAP N5 row and a short Channel order note"
     }
    ],
    "owner": "a2-voice",
@@ -40,7 +45,13 @@
   "M12": {
    "branch": "claude/m12-names-fc018c",
    "claimed": "2026-11-27T21:28:57Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-27T21:30:27Z",
+     "by": "n5-order",
+     "text": "[N5] shares README.md, ROADMAP.md, rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/engine/rooms.rs, rust-client/src/main.rs, rust-client/src/rooms.rs, rust-client/src/rooms/engine.rs, rust-client/src/view.rs: N5: engine/mod.rs 'mod arrange;' + Command::Arrange {id, changes} with one dispatch arm near the poll arms, and RoomSummary.children (space child edges with order/ts, serde default); engine/app.rs one engine_done arm (Request::Arrange); engine/rooms.rs children() also returns order+ts; rooms.rs/rooms/engine.rs sort_rooms orders a space's channels by m.space.child order and builds subspace categories; main.rs mod channel_order, Msg::Order, App.order field, Request::Arrange, one update arm + Escape arm; view.rs channel_list grows subspace categories and wraps rows in drag slots (view/channel_order.rs); README/ROADMAP N5 row and a short Channel order note"
+    }
+   ],
    "owner": "m12-names",
    "paths": [
     "README.md",
@@ -165,6 +176,11 @@
      "at": "2026-11-27T21:28:57Z",
      "by": "m12-names",
      "text": "[M12] shares rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs: M12: engine/mod.rs+app.rs: Command::SetNickname, RoomSummary.own_name, one engine_done arm; main.rs/view.rs: Msg::Names, App.names, Request::Nickname, dialog slot, server-menu item, timeline name label; README/ROADMAP M12 row and a Names note"
+    },
+    {
+     "at": "2026-11-27T21:30:27Z",
+     "by": "n5-order",
+     "text": "[N5] shares rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs: N5: engine/mod.rs 'mod arrange;' + Command::Arrange {id, changes} with one dispatch arm near the poll arms, and RoomSummary.children (space child edges with order/ts, serde default); engine/app.rs one engine_done arm (Request::Arrange); engine/rooms.rs children() also returns order+ts; rooms.rs/rooms/engine.rs sort_rooms orders a space's channels by m.space.child order and builds subspace categories; main.rs mod channel_order, Msg::Order, App.order field, Request::Arrange, one update arm + Escape arm; view.rs channel_list grows subspace categories and wraps rows in drag slots (view/channel_order.rs); README/ROADMAP N5 row and a short Channel order note"
     }
    ],
    "owner": "codex-n3",
@@ -182,6 +198,32 @@
    "title": "Pinned messages and Matrix threads",
    "updated": "2026-11-27T15:03:37Z",
    "worktree": "../../../../../tmp/untethered-n3"
+  },
+  "N5": {
+   "branch": "claude/n5-order-211d5e",
+   "claimed": "2026-11-27T21:30:27Z",
+   "notes": [],
+   "owner": "n5-order",
+   "paths": [
+    "README.md",
+    "ROADMAP.md",
+    "rust-client/src/channel_order.rs",
+    "rust-client/src/engine/app.rs",
+    "rust-client/src/engine/arrange.rs",
+    "rust-client/src/engine/mod.rs",
+    "rust-client/src/engine/rooms.rs",
+    "rust-client/src/explore.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/rooms.rs",
+    "rust-client/src/rooms/engine.rs",
+    "rust-client/src/view.rs",
+    "rust-client/src/view/channel_order.rs",
+    "scripts/qa_channel_order.py"
+   ],
+   "status": "working",
+   "title": "Drag to reorder channels and categories",
+   "updated": "2026-11-27T21:30:27Z",
+   "worktree": ".claude/worktrees/n5-order-211d5e"
   }
  },
  "done": [
