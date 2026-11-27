@@ -56,9 +56,9 @@
     "scripts/qa_media_previews.py",
     "scripts/qa_ux_polish.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Jump bar button, steady history loading, floating reaction picker, voice channel click joins",
-   "updated": "2026-11-27T09:08:08Z",
+   "updated": "2026-11-27T09:17:02Z",
    "worktree": "."
   }
  },
