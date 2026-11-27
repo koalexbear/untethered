@@ -2,7 +2,7 @@
 
 **2026-11-27 · `main`**
 
-**Next: finish Phase 1 (M6 is in progress, then M7), then let people in.**
+**Next: continue Phase 1 with M8 (Forward), then let people in.**
 Messages now feel like Discord. What stops a community moving over is
 getting in: invites don't show yet, Matrix links open in the browser and a
 new DM can only start from a profile card. Phase 2 (J1–J3 first) comes
@@ -86,8 +86,8 @@ doesn't:
 | **M3. Typing indicators** · done | Spec | Send typing notices while composing (with a privacy toggle) and show "Mira is typing…" / "Several people are typing…" under the composer. | Typing in Element shows the indicator within a second and it clears when they stop or send. |
 | **M4. Right-click menus** · done | Client | Context menus for messages (Reply, Edit, Delete, Copy text, Copy link, Mark unread, Pin, Report), users (Profile, Message, Mention, Kick/Ban by permission) and channels (Mark read, Notifications, Copy link, Leave). | Every action in the hover toolbar is also reachable by right-click and keyboard (Shift+F10 / menu key). |
 | **M5. Profiles** · done | Spec (profiles; extra fields since v1.16) | Click an avatar or name for a profile card (picture, name, user ID, power level, Message button); edit your own display name and picture in User Settings. | Changing your picture here updates it in Element and in this client's member list. |
-| **M6. Delete and drafts** · in progress | Spec (redactions); drafts per device | Delete (redact) your own messages and, with permission, others'; drafts and staged-file captions survive a restart; a "N new messages since 14:02" bar at the top with Mark as read. | A redaction from either client removes the message in both; a draft typed before quitting is still there after restarting. |
-| **M7. Link previews** | Spec (the server's `preview_url`); opt-in where encrypted | URL embeds through the homeserver's `preview_url`, off by default in encrypted rooms, with a per-room switch; image links show inline. | A link to a page with Open Graph tags shows its title, description and image; turning previews off stops the request. |
+| **M6. Delete and drafts** · done | Spec (redactions); drafts per device | Delete (redact) your own messages and, with permission, others'; drafts and staged-file captions survive a restart; a "N new messages since 14:02" bar at the top with Mark as read. | A redaction from either client removes the message in both; a draft typed before quitting is still there after restarting. |
+| **M7. Link previews** · done | Spec (the server's `preview_url`); opt-in where encrypted | URL embeds through the homeserver's `preview_url`, off by default in encrypted rooms, with a per-room switch; image links show inline. | A link to a page with Open Graph tags shows its title, description and image; turning previews off stops the request. |
 | **M8. Forward** | Spec (content sent again) | Forward a message, attachments included, to another room or DM from its toolbar and right-click menu. Encrypted attachments are sent again with the same file and key, not uploaded again. | A message and an image forwarded from an encrypted room show in Element's DM as ordinary messages from you, and no new upload happens. |
 | **M9. Polls** | Accepted MSC3381 (stable `m.poll.*`) | Show, vote in and end polls (MSC3381, as Element does), with live results; create one from the composer's **+**. | A poll started in Element shows here; a vote here moves Element's count; ending it shows the same final tally in both. |
 | **M10. Voice messages** | Unstable MSC3245, as Element sends it | Record and send a voice message (MSC3245) from the composer, with a waveform; playing received ones is P2. | A voice message recorded here plays in Element with its waveform and length. |
