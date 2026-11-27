@@ -4,7 +4,7 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
-| M5 | Member profile cards and own profile editing | codex-m5 | `codex/m5-profiles` | working | 2026-11-27T08:38:23Z | `rust-client/src/account.rs`, `rust-client/src/context_menu.rs`, `rust-client/src/engine/account_ui.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/profile.rs`, `rust-client/src/main.rs`, `rust-client/src/permissions.rs`, `rust-client/src/rooms.rs`, `rust-client/src/rooms/engine.rs`, `rust-client/src/view.rs`, `rust-client/src/view/profile.rs`, `rust-client/src/view/room_people.rs`, `rust-client/src/web_files.rs`, `rust-client/web/files.js` |
+| M5 | Member profile cards and own profile editing | codex-m5 | `codex/m5-profiles` | review | 2026-11-27T09:32:46Z | `rust-client/src/account.rs`, `rust-client/src/context_menu.rs`, `rust-client/src/engine/account_ui.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/live_test.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/profile.rs`, `rust-client/src/main.rs`, `rust-client/src/permissions.rs`, `rust-client/src/rooms.rs`, `rust-client/src/rooms/engine.rs`, `rust-client/src/view.rs`, `rust-client/src/view/profile.rs`, `rust-client/src/view/room_people.rs`, `rust-client/src/web_files.rs`, `rust-client/web/files.js`, `scripts/qa_matrix_sdk.py` |
 
 ## Done
 

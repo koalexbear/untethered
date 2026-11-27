@@ -26,6 +26,7 @@
     "rust-client/src/context_menu.rs",
     "rust-client/src/engine/account_ui.rs",
     "rust-client/src/engine/app.rs",
+    "rust-client/src/engine/live_test.rs",
     "rust-client/src/engine/mod.rs",
     "rust-client/src/engine/profile.rs",
     "rust-client/src/main.rs",
@@ -36,11 +37,12 @@
     "rust-client/src/view/profile.rs",
     "rust-client/src/view/room_people.rs",
     "rust-client/src/web_files.rs",
-    "rust-client/web/files.js"
+    "rust-client/web/files.js",
+    "scripts/qa_matrix_sdk.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Member profile cards and own profile editing",
-   "updated": "2026-11-27T08:38:23Z",
+   "updated": "2026-11-27T09:32:46Z",
    "worktree": "../../../../../tmp/untethered-m5-profiles"
   }
  },
