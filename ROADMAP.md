@@ -91,10 +91,11 @@ doesn't:
 | **M8. Forward** | Spec (content sent again) | Forward a message, attachments included, to another room or DM from its toolbar and right-click menu. Encrypted attachments are sent again with the same file and key, not uploaded again. | A message and an image forwarded from an encrypted room show in Element's DM as ordinary messages from you, and no new upload happens. |
 | **M9. Polls** | Accepted MSC3381 (stable `m.poll.*`) | Show, vote in and end polls (MSC3381, as Element does), with live results; create one from the composer's **+**. | A poll started in Element shows here; a vote here moves Element's count; ending it shows the same final tally in both. |
 | **M10. Voice messages** | Unstable MSC3245, as Element sends it | Record and send a voice message (MSC3245) from the composer, with a waveform; playing received ones is P2. | A voice message recorded here plays in Element with its waveform and length. |
-| **M11. Custom emoji and stickers** | Spec v1.19 (MSC2545 image packs) | Image packs (MSC2545) for a space and for your account, in the emoji picker, autocomplete and reactions, with a sticker picker. Cinny, FluffyChat, Nheko and SchildiChat show them; check Element before relying on it, and send the `:shortcode:` as fallback text. | An emoji pack added to a space appears in its rooms' picker; a custom emoji sent here renders in Cinny, and a client without image packs shows its `:shortcode:`. |
+| **M11. Custom emoji and stickers** | Spec v1.19 (MSC2545 image packs) | Image packs (MSC2545) for a space and for your account, in the emoji picker, autocomplete and reactions, with a sticker picker. Packs work anywhere, as Discord sells with Nitro: your own packs, and packs from rooms you choose to use everywhere (`m.image_pack.rooms`). Animated ones play (P1). Cinny, FluffyChat, Nheko and SchildiChat show them; check Element before relying on it, and send the `:shortcode:` as fallback text. | An emoji pack added to a space appears in its rooms' picker, and in every room once you choose to use it everywhere; a custom emoji sent here renders in Cinny, and a client without image packs shows its `:shortcode:`. |
 | **M12. Names** | Spec (per-room names); badges and colours client-side | Per-server nicknames (Matrix's per-room display names) and an Admin or Moderator badge, or a name colour, from the sender's power level, standing in for Discord's role colours. | A nickname set in one space shows only there, also in Element; a moderator's badge shows wherever their name does. |
 | **M13. Composer details** | Spec (`m.emote`); the rest client-side | Up arrow in an empty composer edits your last message; Escape marks the channel read; a message of only emoji shows larger; code blocks get syntax highlighting; `/me`, `/shrug` and `/spoiler`; spell check if Iced's editor allows it. | Each works as on Discord, and `/me` arrives in Element as an emote. |
 | **M14. Selection across messages** | Client | Drag a selection from one message into the next, and copy their text in order. Today a selection stays within one paragraph. | Dragging across three messages and pressing Ctrl+C pastes their three texts. |
+| **M15. Profile customization** | Spec (per-room names and pictures; profile fields since v1.16); the extra fields only Untethered shows | A profile picture per server (Matrix's per-room member avatar, alongside M12's nicknames), and a banner, bio and accent colour on your profile card as extended profile fields under our own names. Animated pictures play (P1). | A per-server picture set here shows only in that space, also in Element; a banner and bio set here show on your card in another Untethered. |
 
 ### Phase 2 — getting people in
 
@@ -124,7 +125,7 @@ doesn't:
 
 | Step | Matrix | Deliverable | Done when |
 |---|---|---|---|
-| **P1. Animated images** | Client | Play GIF and animated WebP in the timeline and viewer (pause when off screen). | A GIF sent from Element animates here and stops using CPU when scrolled away. |
+| **P1. Animated images** | Client | Play GIF and animated WebP in the timeline and viewer, and animated custom emoji, stickers and profile pictures (pause when off screen). | A GIF sent from Element and an animated profile picture both animate here and stop using CPU when scrolled away. |
 | **P2. Inline players** | Client (MSC3245 waveforms) | Play videos inline in the timeline as Discord does, plus an audio player for voice notes and `m.audio`. | A short clip plays without opening the viewer; an audio file shows a waveform-less player with seek. |
 | **P3. Viewer polish** | Client | Zoom and pan, a thumbnail strip, copy image, preloading the neighbouring images, and a gallery layout for several attachments in one message. | Ten screenshots step without a loading pause; scroll-zoom keeps the point under the cursor. |
 | **P4. Video everywhere** | Client | Video playback on Windows (Media Foundation or bundled GStreamer) and in the browser (an HTML `<video>` element over the canvas). | The same MP4 plays on Linux, Windows and Chromium. |
@@ -136,7 +137,8 @@ Follow the [calls plan](rust-client/docs/calls-parity-plan.md): A2 (noise
 suppression and input sensitivity) and V2 (simulcast, per-tile quality) finish
 Phase 1 there; then U1–U6: the Voice Connected panel, a persisted Voice & Video
 settings page, participant menus, Go Live and Watch Stream, the incoming call
-card, and stage polish.
+card, and stage polish. Stream quality is a choice, up to 60 fps at the
+source's resolution, with no tier to pay for.
 
 ### Phase 6 — community management
 
@@ -495,4 +497,6 @@ Keep the frontend in **Rust/Iced**. The Matrix engine is **matrix-rust-sdk** ([m
 
 **Across every step:** compare keyboard focus, right-click menus, hover states, scroll anchoring, spacing and empty and error states with Discord. Test accessibility and real Windows builds with each feature, measure responsiveness and memory during transfers and calls, and keep file contents, tokens and call keys out of diagnostics.
 
-**Later, by demand:** forum channels, stages, scheduled events, bot commands and richer moderation integrations, most of which need a server feature or a bot (see [Matrix support](#matrix-support)). Discord connectivity, billing, Nitro and its marketplace are separate products.
+**Nitro, free where Matrix allows:** most of what Discord sells with Nitro is a limit, not a technical need. Custom emoji and stickers anywhere (M11), per-server profiles and profile customization (M12, M15), long messages (Matrix allows events up to 64 KiB), HD streaming (the calls plan), animated pictures (P1) and app themes (S1) come with Untethered. Upload size is the homeserver's setting, and a room address does what a boosted server's vanity URL does. Super reactions, avatar decorations and Shop items are left out.
+
+**Later, by demand:** forum channels, stages, scheduled events, bot commands and richer moderation integrations, most of which need a server feature or a bot (see [Matrix support](#matrix-support)). Discord connectivity, billing, a paid tier and a marketplace are separate products.
