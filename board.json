@@ -40,6 +40,25 @@
    "title": "Pinned messages and Matrix threads",
    "updated": "2026-11-27T15:03:37Z",
    "worktree": "../../../../../tmp/untethered-n3"
+  },
+  "copy-image-zoom": {
+   "branch": "copy-image-zoom",
+   "claimed": "2026-11-27T15:20:26Z",
+   "notes": [],
+   "owner": "main-session",
+   "paths": [
+    "README.md",
+    "rust-client/src/context_menu.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/view/context_menu.rs",
+    "rust-client/src/view/viewer.rs",
+    "rust-client/src/viewer.rs",
+    "scripts/qa_copy_zoom.py"
+   ],
+   "status": "working",
+   "title": "Copy Image, and zoom in the viewer (part of P3)",
+   "updated": "2026-11-27T15:20:26Z",
+   "worktree": "."
   }
  },
  "done": [
