@@ -549,6 +549,9 @@ pub struct Alert {
     /// The message text, or an attachment's name or caption.
     pub body: String,
     pub sound: bool,
+    /// The push rules highlight it: a mention (sounds.rs).
+    #[serde(default)]
+    pub highlight: bool,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]

@@ -84,6 +84,7 @@ fn notice(notification: &Notification, room: &Room, me: &UserId, since: u64) -> 
             .actions
             .iter()
             .any(|a| matches!(a, Action::SetTweak(Tweak::Sound(_)))),
+        highlight: notification.actions.iter().any(Action::is_highlight),
     })
 }
 

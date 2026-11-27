@@ -30,6 +30,9 @@ mod room_people;
 mod room_search;
 mod sdk_account;
 mod selectable;
+mod shortcuts;
+#[cfg(target_os = "linux")]
+mod sounds;
 #[cfg(not(target_arch = "wasm32"))]
 mod tray;
 mod typing;
@@ -1291,6 +1294,7 @@ impl App {
             .or_else(|| self.block_dialog())
             .or_else(|| self.new_message_dialog())
             .or_else(|| self.forward_dialog())
+            .or_else(|| self.shortcuts_view())
             .unwrap_or_else(none);
         let viewer = self
             .viewer
@@ -3946,6 +3950,10 @@ impl App {
                     control.into(),
                 )],
             ));
+        }
+        #[cfg(target_os = "linux")]
+        {
+            page = page.push(group("SOUNDS", self.sound_settings(&setting)));
         }
         #[cfg(not(target_arch = "wasm32"))]
         {

@@ -62,6 +62,9 @@ mod rooms;
 #[cfg(not(target_arch = "wasm32"))]
 mod runtime;
 mod search;
+mod shortcuts;
+#[cfg(target_os = "linux")]
+mod sounds;
 mod switcher;
 mod transfers;
 #[cfg(not(target_arch = "wasm32"))]
@@ -320,6 +323,11 @@ enum Msg {
     ServerMenu(bool),
     /// Close the topmost menu, dialog or settings page.
     Escape,
+    /// Alt+Shift+↓, Shift+Escape and Ctrl+/ (shortcuts.rs).
+    Shortcut(shortcuts::Input),
+    /// The sounds' switches (sounds.rs).
+    #[cfg(target_os = "linux")]
+    Sound(sounds::Event),
     /// Right-click menus and what their entries do.
     ContextMenu(context_menu::Event),
     /// Open an image or video in the media viewer.
@@ -528,6 +536,11 @@ struct App {
     started_dm: Option<String>,
     /// Ctrl+K's quick switcher (switcher.rs).
     switcher: Option<switcher::Switcher>,
+    /// Ctrl+/'s list of shortcuts (shortcuts.rs).
+    shortcuts: shortcuts::Shortcuts,
+    /// Message and call sounds, and their switches (sounds.rs).
+    #[cfg(target_os = "linux")]
+    sounds: sounds::Sounds,
     /// How the last Copy Image went, and a fetched original waiting to be
     /// put on the clipboard (copy_image.rs).
     copy_note: Option<&'static str>,
@@ -615,6 +628,10 @@ impl App {
         // Portal users await this too; starting it here keeps it off their path.
         #[cfg(target_os = "linux")]
         let task = Task::batch([Task::future(app_id::portal_ready()).discard(), task]);
+        #[cfg(target_os = "linux")]
+        {
+            app.sounds.settings = sounds::Settings::load();
+        }
         // The window, unless this is a start at sign-in, and the tray icon.
         #[cfg(not(target_arch = "wasm32"))]
         let task = Task::batch([task, app.boot_tray(launches)]);
@@ -668,6 +685,9 @@ impl App {
             forwarding: None,
             started_dm: None,
             switcher: None,
+            shortcuts: Default::default(),
+            #[cfg(target_os = "linux")]
+            sounds: Default::default(),
             copy_note: None,
             #[cfg(not(target_arch = "wasm32"))]
             copy_ready: None,
@@ -1743,6 +1763,10 @@ impl App {
             Msg::Dm(input) => return self.new_message(input),
             Msg::Forward(input) => return self.forward(input),
             Msg::Switcher(input) => return self.switcher(input),
+            Msg::Escape if self.shortcuts.open => self.shortcuts.open = false,
+            Msg::Shortcut(input) => return self.shortcut(input),
+            #[cfg(target_os = "linux")]
+            Msg::Sound(event) => return self.sound_event(event),
             Msg::NotePlace => return self.note_place(),
             Msg::PlaceNoted(room, hit) => self.place_noted(room, hit),
             Msg::SavePlaces => self.persist_places(),
@@ -2156,7 +2180,7 @@ impl App {
         self.schedule_link_previews();
         let task = Task::batch([task, self.schedule_avatars()]);
         #[cfg(target_os = "linux")]
-        let task = Task::batch([task, self.start_ringtone()]);
+        let task = Task::batch([task, self.start_ringtone(), self.play_sounds()]);
         #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
         let task = Task::batch([task, self.send_alerts()]);
         #[cfg(not(target_arch = "wasm32"))]
@@ -2331,6 +2355,8 @@ fn main() -> iced::Result {
                     }
                     _ => None,
                 }),
+                // Alt+Shift+↓, Shift+Escape and Ctrl+/ (shortcuts.rs).
+                shortcuts::subscription(),
                 if app.switcher.is_some() {
                     iced::event::listen_with(|event, _, _| match event {
                         iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
@@ -2375,10 +2401,12 @@ fn main() -> iced::Result {
                     }
                     // Escape also closes menus and dialogs while a text field has
                     // focus, as on Discord; the field itself captures the key.
+                    // Shift+Escape marks the server read (shortcuts.rs).
                     iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
                         key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
+                        modifiers,
                         ..
-                    }) => Some(Msg::Escape),
+                    }) if !modifiers.shift() => Some(Msg::Escape),
                     iced::Event::Window(iced::window::Event::Unfocused)=>Some(Msg::WindowFocus(false)),
                     iced::Event::Window(iced::window::Event::Focused)=>Some(Msg::WindowFocus(true)),
                     iced::Event::Window(iced::window::Event::FileDropped(path)) => {
@@ -2443,8 +2471,9 @@ fn main() -> iced::Result {
                     #[cfg(target_arch = "wasm32")]
                     iced::keyboard::Event::KeyPressed {
                         key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
+                        modifiers,
                         ..
-                    } => Some(Msg::Escape),
+                    } if !modifiers.shift() => Some(Msg::Escape),
                     #[cfg(target_arch = "wasm32")]
                     iced::keyboard::Event::KeyPressed {
                         key: iced::keyboard::Key::Named(iced::keyboard::key::Named::PageUp),
