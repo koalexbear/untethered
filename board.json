@@ -86,6 +86,11 @@
      "at": "2026-11-27T19:49:49Z",
      "by": "main-session",
      "text": "[M9] shares rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs: engine/mod.rs: Kind::Poll, Message.poll (serde default), mod polls, and Command::{CreatePoll,Vote,EndPoll} with dispatch arms next to Command::Forward; engine/app.rs: one engine_done arm (Request::Poll(..), result) next to the Forward arm"
+    },
+    {
+     "at": "2026-11-27T19:52:47Z",
+     "by": "main-session",
+     "text": "[M9] one more shared line: 'poll: None,' at the end of the base Message literal in rust-client/src/engine/messaging.rs (Message gains a poll field); app.rs also gets 'poll: None,' in its three test Message literals."
     }
    ],
    "owner": "codex-n3",
