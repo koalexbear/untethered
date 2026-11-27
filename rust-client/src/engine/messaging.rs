@@ -83,6 +83,37 @@ pub async fn context(
     event: &str,
     sources: &Sources,
 ) -> Result<Vec<Message>, Failure> {
+    // The event may be in an older room this one was upgraded from, whose
+    // history the App shows above this room's (upgrades.rs).
+    let mut first = None;
+    for (i, id) in super::upgrades::lineage(client, room)
+        .await
+        .iter()
+        .enumerate()
+    {
+        match context_in(client, id, event, sources).await {
+            Ok(mut messages) => {
+                if i > 0 {
+                    for m in &mut messages {
+                        m.from = Some(id.clone());
+                    }
+                }
+                return Ok(messages);
+            }
+            Err(failure) => {
+                first.get_or_insert(failure);
+            }
+        }
+    }
+    Err(first.unwrap_or(Failure::Unavailable))
+}
+
+async fn context_in(
+    client: &Client,
+    room: &str,
+    event: &str,
+    sources: &Sources,
+) -> Result<Vec<Message>, Failure> {
     let me = client
         .user_id()
         .map(ToString::to_string)
@@ -147,6 +178,7 @@ fn message(event: &TimelineEvent, row: i64, me: &str, sources: &Sources) -> Opti
         edit_time: None,
         receipts: Vec::new(),
         media: None,
+        from: None,
     };
     match parsed {
         Some(AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomMessage(m))) => {

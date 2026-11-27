@@ -117,6 +117,22 @@ async fn messages(client: &Client, room: &str) -> Result<Vec<Stored>, Failure> {
     Ok(all)
 }
 
+/// A room's stored messages and those of the older rooms it was upgraded
+/// from (upgrades.rs), which the App shows as one channel, newest first.
+async fn history(client: &Client, room: &str) -> Result<Vec<Stored>, Failure> {
+    let mut all = Vec::new();
+    for id in super::upgrades::lineage(client, room).await {
+        all.extend(messages(client, &id).await?);
+    }
+    all.sort_by(|a, b| {
+        b.found
+            .time
+            .cmp(&a.found.time)
+            .then_with(|| a.found.event_id.cmp(&b.found.event_id))
+    });
+    Ok(all)
+}
+
 const PAGE: usize = 32;
 
 /// Messages whose current text contains `term` (case-insensitive), newest
@@ -128,7 +144,7 @@ pub async fn search(
     before: Option<String>,
 ) -> Result<(Vec<Found>, Option<String>), Failure> {
     let term = term.to_lowercase();
-    let mut hits = messages(client, room)
+    let mut hits = history(client, room)
         .await?
         .into_iter()
         .map(|s| s.found)
@@ -155,7 +171,7 @@ fn cursor_of(found: &Found) -> String {
 
 /// How many messages of a room are stored, and the oldest one's time.
 pub async fn coverage(client: &Client, room: &str) -> Result<(usize, Option<i64>), Failure> {
-    let all = messages(client, room).await?;
+    let all = history(client, room).await?;
     Ok((all.len(), all.last().map(|s| s.found.time)))
 }
 

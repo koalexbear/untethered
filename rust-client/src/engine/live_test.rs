@@ -1237,3 +1237,226 @@ async fn matrix_sdk_rooms_spaces_and_moderation() {
     }
     stop(app, engine).await;
 }
+
+/// Upgraded rooms as one channel (upgrades.rs); `scripts/qa_room_upgrades.py`
+/// seeds the rooms and documents them.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "run scripts/qa_room_upgrades.py (disposable Synapse)"]
+async fn matrix_sdk_room_upgrades() {
+    let fixture: Value =
+        serde_json::from_slice(&std::fs::read(env::var("UNTETHERED_QA_FIXTURE").unwrap()).unwrap())
+            .unwrap();
+    let base = PathBuf::from(env::var_os("UNTETHERED_QA_PROFILES").unwrap());
+    let ids = |key: &str| -> Vec<String> {
+        fixture[key]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(rooms::string)
+            .collect()
+    };
+    let (general, before, after) = (ids("general"), ids("before"), ids("after"));
+    let (lounge, archive) = (ids("lounge"), ids("archive"));
+    let space = rooms::string(&fixture["space"]);
+    let newest = general[2].clone();
+    let (mut app, rx, engine) = sign_in(
+        &base.join("upgrades"),
+        fixture["server"].as_str().unwrap(),
+        &rooms::string(&fixture["username"]),
+        &rooms::string(&fixture["password"]),
+    )
+    .await;
+    wait(&mut app, &rx, "recovery state known", |a| {
+        a.sdk_ui.recovery != super::Recovery::Unknown
+    })
+    .await;
+    let _ = app.update(Msg::Sdk(Action::Password(rooms::string(
+        &fixture["password"],
+    ))));
+    let _ = app.update(Msg::Sdk(Action::SetUpRecovery));
+    wait(&mut app, &rx, "recovery set up", |a| {
+        a.sdk_ui.recovery_key.is_some() && a.verified && a.sdk_ui.jobs.is_empty()
+    })
+    .await;
+    std::fs::write(
+        base.join("upgrades/recovery-key"),
+        app.sdk_ui.recovery_key.take().unwrap(),
+    )
+    .unwrap();
+
+    // The list: one "general", also in the space that lists its first
+    // version; the lounge waits for us to join its new room.
+    wait(&mut app, &rx, "rooms listed", |a| {
+        [&newest, &space, &lounge[0], &archive[1]]
+            .iter()
+            .all(|id| a.live.list.contains_key(*id))
+            && a.live.list[&lounge[0]].successor.is_some()
+            && a.live
+                .ordered_spaces
+                .get(&space)
+                .is_some_and(|c| !c.is_empty())
+    })
+    .await;
+    assert!(!app.live.list.contains_key(&general[0]) && !app.live.list.contains_key(&general[1]));
+    assert_eq!(app.live.newest(&general[0]), newest);
+    assert_eq!(
+        app.live.ordered_spaces[&space],
+        std::slice::from_ref(&newest)
+    );
+    let names: Vec<_> = app
+        .live
+        .ordered_rooms
+        .iter()
+        .map(|id| app.live.list[id].name.as_str())
+        .collect();
+    assert_eq!(
+        names.iter().filter(|n| **n == "general").count(),
+        1,
+        "{names:?}"
+    );
+    assert_eq!(
+        app.live.list[&lounge[0]].successor.as_deref(),
+        Some(lounge[1].as_str())
+    );
+    assert!(!app.live.list.contains_key(&lounge[1]), "only invited");
+    println!(
+        "matrix-sdk: the list shows one general (also in the space that lists its first version); the lounge offers its new room"
+    );
+
+    // A link into the first version opens the newest at that message, which
+    // the engine finds in the older room before any history is loaded.
+    let _ = app.update(Msg::Section(crate::Section::All));
+    let link = format!(
+        "https://matrix.to/#/{}/{}?via=test.invalid",
+        general[0], before[9]
+    );
+    let _ = app.update(Msg::OpenLink(link));
+    assert_eq!(app.selected, newest);
+    wait(
+        &mut app,
+        &rx,
+        "message context from the first version",
+        |a| a.original.as_ref().and_then(|o| o.slice.as_ref()).is_some(),
+    )
+    .await;
+    let slice = app.original.as_ref().unwrap().slice.as_ref().unwrap();
+    let target = slice.by_id(&before[9]).expect("the linked message");
+    assert_eq!(target.text(), "before 10");
+    assert_eq!(target.from.as_deref(), Some(general[0].as_str()));
+    assert!(!target.reactable, "older rooms' messages are read-only");
+    let _ = app.update(Msg::Latest);
+    println!("matrix-sdk: a link into the first version opened the merged channel at that message");
+
+    // Scrolling back past the newest room's start continues into both
+    // older rooms, with a divider at each upgrade.
+    paginate_to_start(&mut app, &rx, &newest).await;
+    let r = &app.live.list[&newest];
+    let posts: Vec<_> = r.posts().collect();
+    let text = |i: usize| posts[i].text().to_owned();
+    assert_eq!(text(0), "before 1");
+    assert_eq!(posts.last().unwrap().text(), "after 5");
+    assert_eq!(posts.len(), 60 + 3 + 5, "every message once");
+    assert_eq!(r.seams.len(), 2, "a divider at each upgrade");
+    assert!(r.seams.iter().all(|s| s.readable && s.time.is_some()));
+    assert_eq!(
+        (r.seams[0].older.as_str(), r.seams[0].index),
+        (general[0].as_str(), 60)
+    );
+    assert_eq!(
+        (r.seams[1].newer.as_str(), r.seams[1].index),
+        (newest.as_str(), 63)
+    );
+    assert_eq!(text(60), "between 1");
+    assert_eq!(text(63), "after 1");
+    assert_eq!(posts[0].from.as_deref(), Some(general[0].as_str()));
+    assert_eq!(posts[60].from.as_deref(), Some(general[1].as_str()));
+    assert!(posts[63].from.is_none() && posts[63].reactable);
+    assert!(posts[..63].iter().all(|p| !p.reactable && !p.text_message));
+    let count = posts.len();
+    // Read state follows the live room only: a marker on an older room's
+    // message is in no read order, one on the live room's is.
+    let read = |a: &mut App, marker: &str| {
+        let r = a.live.list.get_mut(&newest).unwrap();
+        let saved = r.read.fully_read.replace(marker.to_owned());
+        let divider = r.read.divider(r).map(str::to_owned);
+        r.read.fully_read = saved;
+        divider
+    };
+    assert_eq!(read(&mut app, &before[0]), None);
+    assert_eq!(
+        read(&mut app, &after[0]).as_deref(),
+        Some(after[1].as_str())
+    );
+    println!(
+        "matrix-sdk: scrolling back reached the first version past two dividers ({count} messages)"
+    );
+
+    // Search covers the older rooms, now that their history is stored.
+    let _ = app.search_ready(newest.clone(), crate::search::Bookmark::default());
+    app.search.as_mut().unwrap().input = "before 4".into();
+    app.submit_search(false);
+    wait(&mut app, &rx, "search", |a| {
+        a.search.as_ref().is_some_and(|s| !s.busy)
+    })
+    .await;
+    let hits: Vec<_> = app
+        .search
+        .as_ref()
+        .unwrap()
+        .hits
+        .iter()
+        .map(|h| h.id.clone())
+        .collect();
+    assert!(hits.contains(&before[3]), "{hits:?}");
+    assert!(hits.contains(&before[39]), "{hits:?}");
+    app.clear_search();
+    println!("matrix-sdk: search found the first version's messages from the newest room");
+
+    // New messages go to the newest room.
+    app.editor = text_editor::Content::with_text("hello from the newest room");
+    let _ = app.update(Msg::Send);
+    wait(&mut app, &rx, "sent to the newest room", |a| {
+        a.live.list[&newest].posts().any(|p| {
+            p.text() == "hello from the newest room" && p.event_id.is_some() && p.from.is_none()
+        })
+    })
+    .await;
+
+    // The lounge: joining its new room hides it and opens the new one.
+    let _ = app.update(Msg::Open(lounge[0].clone()));
+    assert_eq!(app.selected, lounge[0]);
+    let _ = app.update(Msg::FollowUpgrade(lounge[0].clone()));
+    wait(&mut app, &rx, "joined the lounge's new room", |a| {
+        a.live.list.contains_key(&lounge[1]) && !a.live.list.contains_key(&lounge[0])
+    })
+    .await;
+    assert_eq!(app.selected, lounge[1]);
+    paginate_to_start(&mut app, &rx, &lounge[1]).await;
+    let r = &app.live.list[&lounge[1]];
+    assert!(
+        r.posts()
+            .any(|p| p.text() == "lounge before" && p.from.is_some())
+    );
+    assert_eq!(r.seams.len(), 1);
+    println!(
+        "matrix-sdk: Join the new room joined the lounge's successor, hid the old room and kept its history"
+    );
+
+    // The patio keeps its offer for a look at the UI.
+    let patio = ids("patio");
+    assert_eq!(
+        app.live.list[&patio[0]].successor.as_deref(),
+        Some(patio[1].as_str())
+    );
+
+    // The archive was upgraded before we joined: no history to read.
+    let _ = app.update(Msg::Open(archive[1].clone()));
+    paginate_to_start(&mut app, &rx, &archive[1]).await;
+    let r = &app.live.list[&archive[1]];
+    assert!(r.posts().all(|p| p.text() != "archive secret"));
+    assert!(r.posts().any(|p| p.text() == "archive after"));
+    assert_eq!(r.seams.len(), 1);
+    assert!(!r.seams[0].readable && r.seams[0].index == 0);
+    println!("matrix-sdk: the archive's divider says its older history isn't available");
+    stop(app, engine).await;
+}

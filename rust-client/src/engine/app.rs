@@ -272,6 +272,15 @@ impl App {
             self.status = "This room is read-only for your account.".into();
             return;
         }
+        if self
+            .live
+            .list
+            .get(&room)
+            .is_some_and(|r| r.successor.is_some())
+        {
+            self.status = "This room was upgraded. Join the new room to keep chatting.".into();
+            return;
+        }
         // Do not send just the caption if Enter races PNG encoding.
         #[cfg(not(target_arch = "wasm32"))]
         if self.pasting {
@@ -336,6 +345,7 @@ impl App {
                 if let Some(r) = self.live.list.get_mut(&t.room) {
                     r.apply_engine(t.messages, t.start_reached);
                     r.read.set_latest(t.latest_event);
+                    r.seams = t.seams;
                 }
             }
             Event::Done { id, result } => self.engine_done(id, result),
@@ -578,6 +588,7 @@ impl App {
                 self.read_result(room, event, result.is_ok())
             }
             (Request::LeaveRoom(room), result) => self.left_room(&room, result.is_ok()),
+            (Request::FollowUpgrade(_), result) => self.followed(result.is_ok()),
             (Request::Context(..), Ok(())) => {}
             (Request::Context(..), Err(_)) => {
                 self.status =
@@ -969,9 +980,11 @@ mod tests {
                 edit_time: None,
                 receipts: vec![("@you:example".into(), 1)],
                 media: None,
+                from: None,
             }],
             // An edit of "hello" came last; it has no message of its own.
             latest_event: Some("$edit".into()),
+            seams: Vec::new(),
         }));
         app.engine_event(Event::Done { id, result: Ok(()) });
         let r = &app.live.list[&room];
@@ -1045,6 +1058,7 @@ mod tests {
                 edit_time: None,
                 receipts: vec![],
                 media: None,
+                from: None,
             }],
         });
         let original = app.original.as_ref().expect("the original opens");

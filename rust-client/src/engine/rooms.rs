@@ -145,6 +145,8 @@ async fn summary(room: &Room) -> RoomSummary {
             .flatten()
             .and_then(|raw| raw.deserialize_as::<Value>().ok())
             .map(|e| e["content"].clone()),
+        successor: room.successor_room().map(|s| s.room_id.to_string()),
+        predecessor: room.predecessor_room().map(|p| p.room_id.to_string()),
         id,
     }
 }

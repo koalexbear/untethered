@@ -52,6 +52,7 @@ mod transfers;
 #[cfg(not(target_arch = "wasm32"))]
 mod tray;
 mod typing;
+mod upgrades;
 mod view;
 mod viewer;
 #[cfg(target_os = "linux")]
@@ -194,6 +195,8 @@ enum Msg {
     Stopped(String),
     Section(Section),
     Open(String),
+    /// Join the room that replaced this one in an upgrade (upgrades.rs).
+    FollowUpgrade(String),
     Setup(community::Input),
     CheckReading,
     /// Scrolled the timeline: away from the bottom, and far enough for Jump to present.
@@ -350,6 +353,7 @@ enum Request {
     ShareReads(bool, u64),
     ShareTyping(bool, u64),
     LeaveRoom(String),
+    FollowUpgrade(String),
 }
 struct App {
     setup: Option<community::Form>,
@@ -615,6 +619,8 @@ impl App {
     }
 
     fn open(&mut self, id: String) {
+        // A room replaced in an upgrade opens as its newest room (upgrades.rs).
+        let id = self.rooms().newest(&id).to_owned();
         if self.selected == id {
             return;
         }
@@ -663,13 +669,23 @@ impl App {
         }
     }
     fn reconcile(&mut self) {
-        if matches!(&self.section,Section::Space(s) if !self.rooms().list.contains_key(s)) {
-            self.section = Section::All;
+        if let Section::Space(s) = &self.section
+            && !self.rooms().list.contains_key(s)
+        {
+            // A space replaced in an upgrade gives way to the new space.
+            let newest = self.rooms().newest(s);
+            self.section = match self.rooms().list.get(newest) {
+                Some(r) if r.space => Section::Space(newest.to_owned()),
+                _ => Section::All,
+            };
         }
         if !self.visible().any(|(id, _)| id == &self.selected) {
+            // An upgraded room gives way to the room that replaced it.
+            let newest = self.rooms().newest(&self.selected);
             let first = self
                 .visible()
-                .next()
+                .find(|(id, _)| *id == newest)
+                .or_else(|| self.visible().next())
                 .map(|(id, _)| id.clone())
                 .unwrap_or_default();
             self.open(first);
@@ -1769,7 +1785,14 @@ impl App {
                 self.copied_code = Some(code.clone());
                 return context_menu::copy(code);
             }
-            Msg::OpenLink(url) => rich::open(&url),
+            Msg::OpenLink(url) => {
+                if !self.open_permalink(&url) {
+                    rich::open(&url)
+                } else if self.original.is_some() {
+                    return self.anchor_history();
+                }
+            }
+            Msg::FollowUpgrade(room) => self.follow_upgrade(room),
             Msg::RevealSpoiler(event, spoiler) => {
                 self.spoilers.entry(event).or_default().insert(spoiler);
             }

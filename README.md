@@ -98,6 +98,20 @@ screen before you reach the top, and a room opens with at least a screenful.
 you're a screen or more above the newest message, a **Jump to present** bar
 appears above the composer.
 
+**Upgraded rooms:** A room upgraded in Element (or any client) stays one
+channel, like a Discord channel's single history. Once you've joined the new
+room, the old one leaves the rail, channel lists, DMs, unread counts, the tray
+badge and `#` suggestions, and a space that lists the old room shows the new
+one. Scrolling back past the new room's first message continues into the old
+room's history below a **Room upgraded on …** divider, through any number of
+upgrades. Messages from before an upgrade are read-only: you can copy them,
+copy their link and see their reactions, but you reply, react and edit in the
+current room, where new messages go. Search, reply quotes and Matrix links
+that point into the old room open it in the merged channel. If you weren't a
+member of the old room, the divider says older history isn't available. Until
+you join the new room, the old room stays in the list, read-only, with
+**Join the new room** above the composer.
+
 **Linux desktop notifications:** Click the bell (**Notification Settings**) in
 the room header. **All
 messages** enables ordinary message alerts; **Mute ordinary** quiets them
