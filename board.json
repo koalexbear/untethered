@@ -25,6 +25,19 @@
    "title": "Message deletion and persistent drafts",
    "updated": "2026-11-27T10:31:47Z",
    "worktree": "../../../../../tmp/untethered-m6"
+  },
+  "roadmap-parity": {
+   "branch": "roadmap-parity",
+   "claimed": "2026-11-27T10:32:26Z",
+   "notes": [],
+   "owner": "main-session",
+   "paths": [
+    "ROADMAP.md"
+   ],
+   "status": "working",
+   "title": "Roadmap: status refresh and new Discord-parity steps",
+   "updated": "2026-11-27T10:32:26Z",
+   "worktree": "."
   }
  },
  "done": [
