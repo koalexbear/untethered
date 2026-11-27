@@ -84,10 +84,30 @@ async fn snapshot(client: &Client) -> RoomList {
     list
 }
 
+/// A room's notification and highlight counts. The homeserver's can be
+/// wrong in encrypted rooms, and some homeservers don't reset them for a
+/// private read receipt, so a room read here stayed marked unread. The
+/// SDK's own, from read receipts, are right once it knows where this
+/// account read up to; before that (right after signing in, say) only the
+/// homeserver's say anything.
+fn alert_counts(room: &Room) -> (u64, u64) {
+    let receipts = room.read_receipts();
+    let server = room.unread_notification_counts();
+    pick_counts(
+        receipts.latest_active.is_some(),
+        (receipts.num_notifications, receipts.num_mentions),
+        (server.notification_count, server.highlight_count),
+    )
+}
+
+fn pick_counts(known: bool, client: (u64, u64), server: (u64, u64)) -> (u64, u64) {
+    if known { client } else { server }
+}
+
 async fn summary(room: &Room) -> RoomSummary {
     let id = room.room_id().to_string();
     let dm = room.is_direct().await.unwrap_or(false);
-    let counts = room.unread_notification_counts();
+    let (notifications, highlights) = alert_counts(room);
     let voice = room.is_call();
     // A group DM has no one peer.
     let targets = room.direct_targets();
@@ -129,8 +149,8 @@ async fn summary(room: &Room) -> RoomSummary {
         encrypted: room.encryption_state().is_encrypted(),
         unread_messages: room.num_unread_messages(),
         unread_mentions: room.num_unread_mentions(),
-        notifications: counts.notification_count,
-        highlights: counts.highlight_count,
+        notifications,
+        highlights,
         marked_unread: room.is_marked_unread(),
         fully_read: room
             .account_data_static::<FullyReadEventContent>()
@@ -208,4 +228,19 @@ async fn children(space: &Room) -> BTreeSet<String> {
             _ => None,
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pick_counts;
+
+    #[test]
+    fn a_read_room_stays_read_whatever_the_homeserver_still_counts() {
+        // Read here, privately: the homeserver still counts two highlights.
+        assert_eq!(pick_counts(true, (0, 0), (2, 2)), (0, 0));
+        // New messages after the receipt count as the SDK sees them.
+        assert_eq!(pick_counts(true, (3, 1), (3, 0)), (3, 1));
+        // Before the SDK knows where this account read up to.
+        assert_eq!(pick_counts(false, (0, 0), (5, 1)), (5, 1));
+    }
 }
