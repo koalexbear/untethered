@@ -45,6 +45,29 @@
    "title": "Pinned messages and Matrix threads",
    "updated": "2026-11-27T15:03:37Z",
    "worktree": "../../../../../tmp/untethered-n3"
+  },
+  "P3": {
+   "branch": "p3-viewer-polish",
+   "claimed": "2026-11-27T15:40:52Z",
+   "notes": [],
+   "owner": "main-session",
+   "paths": [
+    "README.md",
+    "ROADMAP.md",
+    "rust-client/src/inline.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/media.rs",
+    "rust-client/src/preview.rs",
+    "rust-client/src/view.rs",
+    "rust-client/src/view/viewer.rs",
+    "rust-client/src/view/zoom.rs",
+    "rust-client/src/viewer.rs",
+    "scripts/qa_viewer_polish.py"
+   ],
+   "status": "working",
+   "title": "Viewer polish: preloading, thumbnail strip, gallery, sharper zoom",
+   "updated": "2026-11-27T15:40:52Z",
+   "worktree": "."
   }
  },
  "done": [

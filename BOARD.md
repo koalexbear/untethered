@@ -5,6 +5,7 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
 | N3 | Pinned messages and Matrix threads | codex-n3 | `codex/n3-pins-threads` | working | 2026-11-27T15:03:37Z | `rust-client/src/engine/account_ui.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/live_test.rs`, `rust-client/src/engine/messaging.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/pins.rs`, `rust-client/src/engine/threads.rs`, `scripts/qa_matrix_sdk.py` |
+| P3 | Viewer polish: preloading, thumbnail strip, gallery, sharper zoom | main-session | `p3-viewer-polish` | working | 2026-11-27T15:40:52Z | `README.md`, `ROADMAP.md`, `rust-client/src/inline.rs`, `rust-client/src/main.rs`, `rust-client/src/media.rs`, `rust-client/src/preview.rs`, `rust-client/src/view.rs`, `rust-client/src/view/viewer.rs`, `rust-client/src/view/zoom.rs`, `rust-client/src/viewer.rs`, `scripts/qa_viewer_polish.py` |
 
 ## Done
 
