@@ -45,31 +45,6 @@
    "title": "Pinned messages and Matrix threads",
    "updated": "2026-11-27T15:03:37Z",
    "worktree": "../../../../../tmp/untethered-n3"
-  },
-  "P3": {
-   "branch": "p3-viewer-polish",
-   "claimed": "2026-11-27T15:40:52Z",
-   "notes": [],
-   "owner": "main-session",
-   "paths": [
-    "README.md",
-    "ROADMAP.md",
-    "rust-client/src/engine/media.rs",
-    "rust-client/src/inline.rs",
-    "rust-client/src/main.rs",
-    "rust-client/src/media.rs",
-    "rust-client/src/preview.rs",
-    "rust-client/src/view.rs",
-    "rust-client/src/view/gallery.rs",
-    "rust-client/src/view/viewer.rs",
-    "rust-client/src/view/zoom.rs",
-    "rust-client/src/viewer.rs",
-    "scripts/qa_viewer_polish.py"
-   ],
-   "status": "review",
-   "title": "Viewer polish: preloading, thumbnail strip, gallery, sharper zoom",
-   "updated": "2026-11-27T15:52:28Z",
-   "worktree": "."
   }
  },
  "done": [
@@ -306,6 +281,15 @@
    "owner": "main-session",
    "result": "merged as 372e13d",
    "title": "Copy Image, and zoom in the viewer (part of P3)"
+  },
+  {
+   "branch": "p3-viewer-polish",
+   "claimed": "2026-11-27T15:40:52Z",
+   "finished": "2026-11-27T15:56:06Z",
+   "id": "P3",
+   "owner": "main-session",
+   "result": "merged as 1b74b10",
+   "title": "Viewer polish: preloading, thumbnail strip, gallery, sharper zoom"
   }
  ]
 }

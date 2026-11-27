@@ -5,10 +5,10 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
 | N3 | Pinned messages and Matrix threads | codex-n3 | `codex/n3-pins-threads` | working | 2026-11-27T15:03:37Z | `rust-client/src/engine/account_ui.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/live_test.rs`, `rust-client/src/engine/messaging.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/pins.rs`, `rust-client/src/engine/threads.rs`, `scripts/qa_matrix_sdk.py` |
-| P3 | Viewer polish: preloading, thumbnail strip, gallery, sharper zoom | main-session | `p3-viewer-polish` | review | 2026-11-27T15:52:28Z | `README.md`, `ROADMAP.md`, `rust-client/src/engine/media.rs`, `rust-client/src/inline.rs`, `rust-client/src/main.rs`, `rust-client/src/media.rs`, `rust-client/src/preview.rs`, `rust-client/src/view.rs`, `rust-client/src/view/gallery.rs`, `rust-client/src/view/viewer.rs`, `rust-client/src/view/zoom.rs`, `rust-client/src/viewer.rs`, `scripts/qa_viewer_polish.py` |
 
 ## Done
 
+- 2026-11-27 **P3** Viewer polish: preloading, thumbnail strip, gallery, sharper zoom (main-session): merged as 1b74b10
 - 2026-11-27 **copy-image-zoom** Copy Image, and zoom in the viewer (part of P3) (main-session): merged as 372e13d
 - 2026-11-27 **N7** Search across a space (main-session): merged as eeda711
 - 2026-11-27 **fix-unread-counts** Unread badges trust the client's counts (main-session): merged as 93e2e7d
