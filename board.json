@@ -19,6 +19,7 @@
    "paths": [
     "README.md",
     "ROADMAP.md",
+    "rust-client/src/account.rs",
     "rust-client/src/backend/mod.rs",
     "rust-client/src/engine/*",
     "rust-client/src/main.rs",
@@ -26,11 +27,15 @@
     "rust-client/src/typing.rs",
     "rust-client/src/view.rs",
     "rust-client/src/view/typing.rs",
-    "scripts/qa_typing*"
+    "scripts/qa_replies.py",
+    "scripts/qa_typing*",
+    "scripts/qa_typing.py",
+    "scripts/replies-element.md",
+    "scripts/test-media-interop.py"
    ],
    "status": "working",
    "title": "Typing indicators",
-   "updated": "2026-11-26T23:47:37Z",
+   "updated": "2026-11-27T00:02:55Z",
    "worktree": ".claude/worktrees/m3-typing"
   },
   "room-upgrades": {
