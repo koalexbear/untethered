@@ -269,6 +269,11 @@
      "at": "2026-11-27T21:43:12Z",
      "by": "main-session",
      "text": "[M11] shares README.md, ROADMAP.md, rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: engine/mod.rs+app.rs: packs module, three Commands, Event::Packs, a Live sender, one Paginate line, two app.rs arms and emote pills in send/edit; main.rs: mod emotes, Msg::Emote/EmoteReady, Request::Pack, an App field, two update arms, an Escape branch, schedule_emotes beside schedule_avatars; view.rs: mod emotes and a sticker button in the composer row; icons.rs: Icon::Sticker; README/ROADMAP: M11 row and an Emoji paragraph"
+    },
+    {
+     "at": "2026-11-27T21:46:54Z",
+     "by": "claude/n5-order-211d5e",
+     "text": "n5-order: implemented (channel_order.rs, view/channel_order.rs, engine/arrange.rs); unit tests + 5 checks pass; running live fixture scripts/qa_channel_order.py now. Not committed yet."
     }
    ],
    "owner": "n5-order",
