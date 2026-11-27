@@ -35,6 +35,10 @@ pub struct Typing {
     incoming: Incoming,
 }
 impl Typing {
+    /// Stop showing someone typing, as when they're blocked (dms.rs).
+    pub fn forget_user(&mut self, user: &str) {
+        self.incoming.forget_user(user);
+    }
     /// Forget who is typing and our own typing, without notices: the
     /// engine or the sync has gone away.
     pub fn forget(&mut self) {
@@ -139,6 +143,13 @@ impl Incoming {
     }
     pub fn users(&self, room: &str) -> &[String] {
         self.0.get(room).map(Vec::as_slice).unwrap_or_default()
+    }
+    /// Stop showing someone typing anywhere, as when they're blocked.
+    pub fn forget_user(&mut self, user: &str) {
+        self.0.retain(|_, users| {
+            users.retain(|u| u != user);
+            !users.is_empty()
+        });
     }
 }
 
@@ -289,7 +300,7 @@ impl App {
     }
 
     pub fn typing_seen(&mut self, room: String, mut users: Vec<String>) {
-        users.retain(|u| *u != self.matrix_id);
+        users.retain(|u| *u != self.matrix_id && !self.blocked.contains(u));
         self.typing.incoming.set(room, users);
     }
 

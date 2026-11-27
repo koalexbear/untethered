@@ -223,7 +223,12 @@ impl App {
         {
             self.clear_ring();
         }
-        if self.call.is_some() || !self.verified || self.closing || e["sender"] != peer {
+        if self.call.is_some()
+            || !self.verified
+            || self.closing
+            || e["sender"] != peer
+            || self.blocked.contains(&peer)
+        {
             return;
         }
         let Some(id) = e["event_id"].as_str() else {

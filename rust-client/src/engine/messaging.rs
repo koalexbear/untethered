@@ -272,8 +272,8 @@ pub(super) async fn set_preference(
         .map_err(|e| http(&e))
 }
 
-/// Report the read-sharing and typing notice preferences and the push
-/// rules now and whenever they sync.
+/// Report the read-sharing and typing notice preferences, the push rules
+/// and who this account blocks, now and whenever they sync.
 pub async fn account_data(client: Client, events: Sender<Event>) {
     let current = |kind: GlobalAccountDataEventType| {
         let client = client.clone();
@@ -298,6 +298,11 @@ pub async fn account_data(client: Client, events: Sender<Event>) {
     if let Some(rules) = current(GlobalAccountDataEventType::PushRules).await {
         let _ = events.send(Event::PushRules(rules)).await;
     }
+    let blocked = current(GlobalAccountDataEventType::IgnoredUserList)
+        .await
+        .map(|v| super::dms::blocked(&v))
+        .unwrap_or_default();
+    let _ = events.send(Event::Blocked(blocked)).await;
     // The handler lives as long as the client, i.e. this session.
     client.add_event_handler(move |raw: Raw<AnyGlobalAccountDataEvent>| {
         let events = events.clone();
@@ -309,6 +314,9 @@ pub async fn account_data(client: Client, events: Sender<Event>) {
                 Some(READ_SHARING) => Event::ReadSharing(value["content"]["public"] == true),
                 Some(typing::SHARING) => Event::TypingSharing(typing::sends(&value["content"])),
                 Some("m.push_rules") => Event::PushRules(value["content"].clone()),
+                Some("m.ignored_user_list") => {
+                    Event::Blocked(super::dms::blocked(&value["content"]))
+                }
                 _ => return,
             };
             let _ = events.send(event).await;

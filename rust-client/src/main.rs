@@ -16,6 +16,7 @@ mod community;
 mod context_menu;
 #[cfg(target_os = "linux")]
 mod desktop_call;
+mod dms;
 mod drafts;
 mod edits;
 mod emoji;
@@ -227,6 +228,8 @@ enum Msg {
     ClosePreview,
     JoinAddressInput(String),
     JoinAddress,
+    /// New message (dms.rs).
+    Dm(dms::Input),
     /// Scrolled near the top of what's loaded: fetch older messages.
     /// Page Up (true) or Page Down: scroll the timeline by most of a screen.
     PageScroll(bool),
@@ -390,6 +393,10 @@ enum Request {
     DeclineInvite(String),
     /// Joining a room by link or address (joining.rs).
     JoinRoom(String),
+    /// Starting a DM with these people, and blocking or unblocking someone
+    /// (dms.rs).
+    StartDm,
+    Block(String, bool),
     FollowUpgrade(String),
 }
 struct App {
@@ -453,6 +460,11 @@ struct App {
     /// (joining.rs).
     room_preview: Option<joining::Preview>,
     join_address: String,
+    /// New message, a DM it started to open once listed, and who this
+    /// account blocks (dms.rs).
+    new_message: Option<dms::NewMessage>,
+    started_dm: Option<String>,
+    blocked: BTreeSet<String>,
     avatars: avatars::Avatars,
     viewer: Option<viewer::Viewer>,
     /// The account's profile picture (mxc URI).
@@ -571,6 +583,9 @@ impl App {
             joined_event: None,
             room_preview: None,
             join_address: String::new(),
+            new_message: None,
+            started_dm: None,
+            blocked: BTreeSet::new(),
             avatars: Default::default(),
             viewer: None,
             own_avatar: None,
@@ -1592,6 +1607,7 @@ impl App {
             Msg::ClosePreview => self.close_preview(),
             Msg::JoinAddressInput(s) => self.join_address = s,
             Msg::JoinAddress => self.join_address(),
+            Msg::Dm(input) => return self.new_message(input),
             Msg::AcceptInvite(id) => self.accept_invite(id),
             Msg::DeclineInvite(id) => self.decline_invite(id),
             Msg::ReadingScroll(room, at) if room == self.selected && self.original.is_none() => {
@@ -1643,6 +1659,8 @@ impl App {
             Msg::Escape => {
                 if self.viewer.is_some() {
                     self.close_viewer();
+                } else if self.new_message.is_some() {
+                    return self.new_message(dms::Input::Close);
                 } else if self.server_menu {
                     self.server_menu = false;
                 } else if self.setup.is_some() && !self.setup_busy() {

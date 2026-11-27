@@ -2,13 +2,14 @@
 
 **2026-11-27 · `main`**
 
-**Next: finish Phase 1 (M6 is in progress, then M7), then let people in.**
-Messages now feel like Discord. What stops a community moving over is
-getting in: invites don't show yet, Matrix links open in the browser and a
-new DM can only start from a profile card. Phase 2 (J1–J3 first) comes
-before navigation; then N1–N3 and search across a space (N7). Calls
-continue in their own plan
-([calls-parity-plan.md](rust-client/docs/calls-parity-plan.md)).
+**Next: navigation (N1–N3), then search across a space (N7).**
+Messages feel like Discord, and people can get in: invites show with
+Accept and Decline, Matrix links open in the app, and New message starts
+DMs and group DMs. What a community misses next is finding its way around:
+a quick switcher, coming back to where you were, pins and threads. Explore
+(J4) and sign-in everywhere (J5) finish Phase 2 after that, and the rest of
+Phase 1 (M8 onwards) fills in around them. Calls continue in their own
+plan ([calls-parity-plan.md](rust-client/docs/calls-parity-plan.md)).
 
 ## Where it stands
 
@@ -20,10 +21,15 @@ continue in their own plan
 - **Messaging:** formatted messages (code blocks, quotes, lists, spoilers),
   `@`, `#` and `:` autocomplete with real mentions, typing indicators,
   right-click menus, profile cards and editing your own profile, replies
-  with jump-to-original, edits, reactions with a floating picker,
-  selectable and copyable text, mentions inbox, room search, read markers
-  and unread divider, reports, moderation, permissions, space and room
-  alerts.
+  with jump-to-original, edits, deleting messages, drafts that survive a
+  restart, link previews, reactions with a floating picker, selectable and
+  copyable text, mentions inbox, room search, read markers and unread
+  divider, reports, moderation, permissions, space and room alerts.
+- **Getting in:** invites to spaces, rooms and DMs with Accept and Decline;
+  `matrix.to` links and `#room:server` addresses open in the app with a
+  preview and Join, also from Join a Server; New message finds people in
+  the user directory and starts encrypted DMs and group DMs; blocking
+  someone keeps their messages, invites and calls away.
 - **History:** older messages keep loading as you scroll up, rooms open at
   their newest messages with a screenful, Page Up/Down, and a Jump to
   present bar. Rooms you leave let go of the history you loaded. A room
@@ -86,8 +92,8 @@ doesn't:
 | **M3. Typing indicators** · done | Spec | Send typing notices while composing (with a privacy toggle) and show "Mira is typing…" / "Several people are typing…" under the composer. | Typing in Element shows the indicator within a second and it clears when they stop or send. |
 | **M4. Right-click menus** · done | Client | Context menus for messages (Reply, Edit, Delete, Copy text, Copy link, Mark unread, Pin, Report), users (Profile, Message, Mention, Kick/Ban by permission) and channels (Mark read, Notifications, Copy link, Leave). | Every action in the hover toolbar is also reachable by right-click and keyboard (Shift+F10 / menu key). |
 | **M5. Profiles** · done | Spec (profiles; extra fields since v1.16) | Click an avatar or name for a profile card (picture, name, user ID, power level, Message button); edit your own display name and picture in User Settings. | Changing your picture here updates it in Element and in this client's member list. |
-| **M6. Delete and drafts** · in progress | Spec (redactions); drafts per device | Delete (redact) your own messages and, with permission, others'; drafts and staged-file captions survive a restart; a "N new messages since 14:02" bar at the top with Mark as read. | A redaction from either client removes the message in both; a draft typed before quitting is still there after restarting. |
-| **M7. Link previews** | Spec (the server's `preview_url`); opt-in where encrypted | URL embeds through the homeserver's `preview_url`, off by default in encrypted rooms, with a per-room switch; image links show inline. | A link to a page with Open Graph tags shows its title, description and image; turning previews off stops the request. |
+| **M6. Delete and drafts** · done | Spec (redactions); drafts per device | Delete (redact) your own messages and, with permission, others'; drafts and staged-file captions survive a restart; a "N new messages since 14:02" bar at the top with Mark as read. | A redaction from either client removes the message in both; a draft typed before quitting is still there after restarting. |
+| **M7. Link previews** · done | Spec (the server's `preview_url`); opt-in where encrypted | URL embeds through the homeserver's `preview_url`, off by default in encrypted rooms, with a per-room switch; image links show inline. | A link to a page with Open Graph tags shows its title, description and image; turning previews off stops the request. |
 | **M8. Forward** | Spec (content sent again) | Forward a message, attachments included, to another room or DM from its toolbar and right-click menu. Encrypted attachments are sent again with the same file and key, not uploaded again. | A message and an image forwarded from an encrypted room show in Element's DM as ordinary messages from you, and no new upload happens. |
 | **M9. Polls** | Accepted MSC3381 (stable `m.poll.*`) | Show, vote in and end polls (MSC3381, as Element does), with live results; create one from the composer's **+**. | A poll started in Element shows here; a vote here moves Element's count; ending it shows the same final tally in both. |
 | **M10. Voice messages** | Unstable MSC3245, as Element sends it | Record and send a voice message (MSC3245) from the composer, with a waveform; playing received ones is P2. | A voice message recorded here plays in Element with its waveform and length. |
@@ -101,9 +107,9 @@ doesn't:
 
 | Step | Matrix | Deliverable | Done when |
 |---|---|---|---|
-| **J1. Invites** | Spec | Invites to spaces, rooms and DMs, shown with who sent them, in the server rail and DM list with **Accept** and **Decline**. Today the room list shows joined rooms only, so invites never appear. | An invite from Element to a space, a room and a DM each shows here within a sync; **Accept** joins and opens it, **Decline** removes it in both clients. |
-| **J2. Join by link** | Spec (`matrix.to`, `matrix:` links); previews as the server allows | `matrix.to` links and `#room:server` addresses open in the app: rooms you're in open, others show a preview (name, topic, members) with **Join**. **Join a server** in the server rail's **+** takes a link or address. | A link to a room you're not in shows its preview and joins on a click; pasting `#room:server` into **Join a server** does the same; nothing opens a browser. |
-| **J3. DMs and blocking** | Spec (`m.direct`, user directory, `m.ignored_user_list`) | **New message** with user-directory search for a DM or a group DM, and blocking people (`m.ignored_user_list`): their messages, invites and calls stay away. | A DM and a group DM started here are encrypted rooms Element lists as DMs; blocking someone hides them here and in Element. |
+| **J1. Invites** · done | Spec | Invites to spaces, rooms and DMs, shown with who sent them, in the server rail and DM list with **Accept** and **Decline**. Today the room list shows joined rooms only, so invites never appear. | An invite from Element to a space, a room and a DM each shows here within a sync; **Accept** joins and opens it, **Decline** removes it in both clients. |
+| **J2. Join by link** · done | Spec (`matrix.to`, `matrix:` links); previews as the server allows | `matrix.to` links and `#room:server` addresses open in the app: rooms you're in open, others show a preview (name, topic, members) with **Join**. **Join a server** in the server rail's **+** takes a link or address. | A link to a room you're not in shows its preview and joins on a click; pasting `#room:server` into **Join a server** does the same; nothing opens a browser. |
+| **J3. DMs and blocking** · done | Spec (`m.direct`, user directory, `m.ignored_user_list`) | **New message** with user-directory search for a DM or a group DM, and blocking people (`m.ignored_user_list`): their messages, invites and calls stay away. | A DM and a group DM started here are encrypted rooms Element lists as DMs; blocking someone hides them here and in Element. |
 | **J4. Explore** | Spec (public room directory) | The homeserver's public rooms and spaces, searchable, with a preview before joining. | A public space found here joins and shows its channels. |
 | **J5. Sign-in everywhere** | Spec v1.15 (OAuth 2.0; matrix.org runs MAS) | OIDC through the Matrix Authentication Service, which matrix.org and other homeservers are moving to, single sign-on in the browser too (desktop-only now), and creating an account where the homeserver allows it. | Signing in to a homeserver that uses MAS works on the desktop and in Chromium, and a new account can be created and verified. |
 

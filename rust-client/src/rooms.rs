@@ -139,6 +139,11 @@ pub fn real_send_error(e: &Value) -> bool {
             .is_some_and(|s| !s.is_empty() && s != "not sent")
 }
 impl Room {
+    /// Forget loaded posts' rows, after their posts left `history`.
+    pub(crate) fn forget_rows(&mut self, rows: &BTreeSet<i64>) {
+        self.order.retain(|(_, row)| !rows.contains(row));
+        self.event_rows.retain(|_, row| !rows.contains(row));
+    }
     pub fn update_member_profile(&mut self, user: &str, member: &crate::moderation::Member) {
         self.profile_members.insert(user.to_owned());
         if member.name.is_empty() {

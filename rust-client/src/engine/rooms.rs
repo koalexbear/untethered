@@ -89,9 +89,11 @@ async fn summary(room: &Room) -> RoomSummary {
     let dm = room.is_direct().await.unwrap_or(false);
     let counts = room.unread_notification_counts();
     let voice = room.is_call();
-    let peer = dm
+    // A group DM has no one peer.
+    let targets = room.direct_targets();
+    let peer = (dm && targets.len() == 1)
         .then(|| {
-            room.direct_targets()
+            targets
                 .iter()
                 .find_map(|t| t.as_user_id().map(ToOwned::to_owned))
         })

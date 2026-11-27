@@ -127,6 +127,19 @@ impl App {
         ))
     }
 
+    /// Asks before blocking someone, as Discord does.
+    pub(super) fn block_dialog(&self) -> Option<El<'_>> {
+        let user = self.context_menu.blocking.as_ref()?;
+        let name = self.someone(user);
+        Some(self.confirm_destructive(
+            format!("Block {name}"),
+            format!("Block {name}? Their messages, invites and calls will stay away."),
+            "Other Matrix apps you use hide them too. They aren't told.",
+            "Block",
+            (self.connected && !self.blocking(user)).then_some(Menu::ConfirmBlock),
+        ))
+    }
+
     fn confirm_destructive(
         &self,
         title: String,

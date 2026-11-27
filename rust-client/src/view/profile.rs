@@ -1,8 +1,11 @@
 //! Member cards and account profile editing.
 use super::{
-    ACTIVE, App, BODY, BOLD, El, FLOAT, MUTED, TEXT, TRAY, face, input_style, nav, surface,
+    ACTIVE, App, BODY, BOLD, El, FLOAT, MUTED, Msg, TEXT, TRAY, face, input_style, nav, surface,
 };
-use crate::engine::profile::{Action, msg};
+use crate::{
+    context_menu::Event as Menu,
+    engine::profile::{Action, msg},
+};
 use iced::{
     Alignment::Center,
     Color, Fill,
@@ -68,17 +71,27 @@ pub(super) fn card(app: &App) -> Option<El<'_>> {
     ]
     .spacing(14);
     if user != &app.matrix_id {
-        details = details.push(
-            button(
-                text(if ui.opening_dm() {
-                    "Opening conversation…"
+        let message = button(
+            text(if ui.opening_dm() {
+                "Opening conversation…"
+            } else {
+                "Message"
+            })
+            .size(14),
+        )
+        .on_press_maybe((app.connected && !ui.opening_dm()).then_some(msg(Action::Message)));
+        // Blocking asks first (context_menu.rs); unblocking doesn't.
+        let blocked = app.is_blocked(user);
+        let block = button(text(if blocked { "Unblock" } else { "Block" }).size(14))
+            .style(nav(false))
+            .on_press_maybe((app.connected && !app.blocking(user)).then(|| {
+                Msg::ContextMenu(if blocked {
+                    Menu::Unblock(user.clone())
                 } else {
-                    "Message"
+                    Menu::Block(user.clone())
                 })
-                .size(14),
-            )
-            .on_press_maybe((app.connected && !ui.opening_dm()).then_some(msg(Action::Message))),
-        );
+            }));
+        details = details.push(row![message, block].spacing(8));
     }
     if let Some(note) = ui.card_error {
         details = details.push(text(note).size(13).color(BODY));
