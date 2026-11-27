@@ -5,6 +5,7 @@ mod autocomplete;
 mod call_controls;
 #[cfg(target_os = "linux")]
 mod call_stage;
+mod channel_order;
 mod community;
 mod context_menu;
 mod dms;
@@ -1603,7 +1604,7 @@ impl App {
     fn category<'a>(
         &self,
         key: &str,
-        title: &'a str,
+        title: impl text::IntoFragment<'a>,
         create: Option<(Msg, &'static str)>,
     ) -> El<'a> {
         let open = !self.collapsed.contains(key);
@@ -1678,6 +1679,10 @@ impl App {
             ..Padding::ZERO
         });
         list = list.extend(self.invite_rows(&self.section));
+        // A space's channels by category, to drag where allowed (N5).
+        if let Some((_, groups)) = self.open_groups() {
+            return self.space_channel_list(list, groups, create);
+        }
         let groups = [
             (
                 "text",

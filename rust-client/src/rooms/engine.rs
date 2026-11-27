@@ -20,9 +20,21 @@ impl Rooms {
             self.hierarchy_revision += 1;
             order_changed = true;
         }
-        if self.children != list.children {
-            self.children = list.children;
+        // Edges written here show until sync brings them back (channel_order.rs).
+        let edges = list
+            .rooms
+            .iter_mut()
+            .filter(|r| r.space)
+            .map(|r| (r.id.clone(), std::mem::take(&mut r.child_order)))
+            .collect();
+        let (children, edges) = self.arranging.synced(list.children, edges);
+        if self.children != children {
+            self.children = children;
             self.hierarchy_revision += 1;
+            order_changed = true;
+        }
+        if self.edges != edges {
+            self.edges = edges;
             order_changed = true;
         }
         let joined: BTreeSet<&str> = list.rooms.iter().map(|r| r.id.as_str()).collect();

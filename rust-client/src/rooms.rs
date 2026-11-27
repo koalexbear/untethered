@@ -21,6 +21,12 @@ pub struct Rooms {
     pub(super) ordered_direct: Vec<String>,
     pub(super) ordered_spaces: BTreeMap<String, Vec<String>>,
     pub children: BTreeMap<String, BTreeSet<String>>,
+    /// Spaces' edges with what orders them, and each space's sidebar
+    /// groups: its own channels, then its categories (channel_order.rs).
+    pub edges: BTreeMap<String, Vec<crate::engine::ChildEdge>>,
+    pub groups: BTreeMap<String, Vec<crate::channel_order::Group>>,
+    /// Edges written here, shown until sync brings them back.
+    pub(crate) arranging: crate::channel_order::Arranging,
     pub hierarchy_revision: u64,
     /// Old rooms and the joined rooms that replaced them in an upgrade; the
     /// old ones aren't in `list` (upgrades.rs).
@@ -466,7 +472,7 @@ impl Rooms {
         }
         channels
     }
-    fn sort_rooms(&mut self) {
+    pub(crate) fn sort_rooms(&mut self) {
         let mut rooms: Vec<_> = self.list.iter().filter(|(_, r)| !r.space).collect();
         rooms.sort_by_cached_key(|(id, r)| (r.name.to_lowercase(), *id));
         self.ordered_direct = rooms
@@ -474,26 +480,18 @@ impl Rooms {
             .filter(|(_, room)| room.dm)
             .map(|(id, _)| (*id).clone())
             .collect();
-        let rank: BTreeMap<_, _> = rooms
-            .iter()
-            .enumerate()
-            .map(|(index, (id, _))| (id.as_str(), index))
+        self.ordered_rooms = rooms.into_iter().map(|(id, _)| id.clone()).collect();
+        // A space's channels in its sidebar's order (channel_order.rs).
+        self.groups = self
+            .children
+            .keys()
+            .map(|space| (space.clone(), self.groups(space)))
             .collect();
         self.ordered_spaces = self
-            .children
+            .groups
             .iter()
-            .map(|(space, _)| {
-                let mut indexes: Vec<_> = self
-                    .channels(space)
-                    .into_keys()
-                    .filter_map(|id| rank.get(id).copied())
-                    .collect();
-                indexes.sort_unstable();
-                let children = indexes.into_iter().map(|i| rooms[i].0.clone()).collect();
-                (space.clone(), children)
-            })
+            .map(|(space, groups)| (space.clone(), self.flatten(groups)))
             .collect();
-        self.ordered_rooms = rooms.into_iter().map(|(id, _)| id.clone()).collect();
     }
 
     pub fn demo() -> Self {

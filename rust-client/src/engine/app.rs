@@ -615,6 +615,7 @@ impl App {
             }
             (Request::Forward(to), result) => self.forwarded(to, result.is_ok()),
             (Request::Poll(op), result) => self.poll_done(op, result.is_ok()),
+            (Request::Arrange, result) => self.arranged(id, result.is_ok()),
             (Request::Report, result) => self.report_result(result.is_ok()),
             (Request::ReadState(room, event), result) => {
                 self.read_result(room, event, result.is_ok())
