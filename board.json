@@ -53,16 +53,22 @@
    "owner": "main-session",
    "paths": [
     "README.md",
+    "ROADMAP.md",
     "rust-client/src/context_menu.rs",
+    "rust-client/src/copy_image.rs",
+    "rust-client/src/engine/app.rs",
     "rust-client/src/main.rs",
+    "rust-client/src/view.rs",
     "rust-client/src/view/context_menu.rs",
     "rust-client/src/view/viewer.rs",
+    "rust-client/src/view/zoom.rs",
     "rust-client/src/viewer.rs",
+    "rust-client/vendor/smithay-clipboard",
     "scripts/qa_copy_zoom.py"
    ],
    "status": "working",
    "title": "Copy Image, and zoom in the viewer (part of P3)",
-   "updated": "2026-11-27T15:20:26Z",
+   "updated": "2026-11-27T15:32:42Z",
    "worktree": "."
   }
  },
