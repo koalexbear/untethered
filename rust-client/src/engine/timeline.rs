@@ -553,6 +553,64 @@ impl Timelines {
             .map_err(|_| Failure::Failed)
     }
 
+    /// Send a sticker from an image pack (ROADMAP M11).
+    pub async fn send_sticker(
+        &self,
+        room: &str,
+        image: &super::packs::Image,
+    ) -> Result<(), Failure> {
+        self.get(room)
+            .await?
+            .timeline()
+            .send(super::packs::sticker(image)?)
+            .await
+            .map(|_| ())
+            .map_err(|_| Failure::Failed)
+    }
+
+    /// React with a custom emoji, or take that reaction back. The SDK's
+    /// toggle sends only the key, so a new one goes out raw with its
+    /// shortcode beside it (engine/packs.rs).
+    pub async fn react_emote(
+        &self,
+        room: &str,
+        event: &str,
+        url: &str,
+        shortcode: &str,
+    ) -> Result<(), Failure> {
+        let item = Self::item(event)?;
+        let TimelineEventItemId::EventId(id) = &item else {
+            return Err(Failure::Unavailable);
+        };
+        let timeline = self.owner(room, &item).await?;
+        let found = timeline
+            .item_by_event_id(id)
+            .await
+            .ok_or(Failure::Unavailable)?;
+        let me = self.client.user_id().ok_or(Failure::Unavailable)?;
+        let ours = found
+            .reactions()
+            .get(url)
+            .is_some_and(|senders| senders.contains_key(me));
+        if ours {
+            return timeline
+                .toggle_reaction(&item, url)
+                .await
+                .map(|_| ())
+                .map_err(|_| Failure::Failed);
+        }
+        timeline
+            .room()
+            .send_queue()
+            .send_raw(
+                super::packs::reaction(id.clone(), url, shortcode),
+                "m.reaction".to_owned(),
+            )
+            .await
+            .map(|_| ())
+            .map_err(|_| Failure::Failed)
+    }
+
     /// Start a poll in `room` (ROADMAP M9), through its timeline like text.
     pub async fn create_poll(
         &self,

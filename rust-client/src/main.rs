@@ -22,6 +22,7 @@ mod dms;
 mod drafts;
 mod edits;
 mod emoji;
+mod emotes;
 mod engine;
 mod explore;
 #[cfg(not(target_arch = "wasm32"))]
@@ -260,6 +261,9 @@ enum Msg {
     Dm(dms::Input),
     /// Forwarding a message (forward.rs).
     Forward(forward::Input),
+    /// Custom emoji and stickers (emotes.rs), and a picture of one fetched.
+    Emote(emotes::Input),
+    EmoteReady(String, Option<preview::Picture>),
     /// Voting, ending and creating polls (polls.rs).
     Poll(polls::Input),
     /// The composer's + menu: Upload a File, Create Poll.
@@ -491,6 +495,8 @@ enum Request {
     Explore(engine::explore::DirectoryQuery),
     /// Starting, voting in or ending a poll (polls.rs).
     Poll(polls::Op),
+    /// Sending a sticker or using a pack everywhere (emotes.rs).
+    Pack(emotes::Op),
 }
 struct App {
     setup: Option<community::Form>,
@@ -562,6 +568,8 @@ struct App {
     explore: explore::State,
     /// Create a Poll, and the composer's + menu that opens it (polls.rs).
     polling: Option<polls::Form>,
+    /// Image packs, their pictures and the sticker picker (emotes.rs).
+    emotes: emotes::Emotes,
     composer_menu: bool,
     started_dm: Option<String>,
     /// Ctrl+K's quick switcher (switcher.rs).
@@ -716,6 +724,7 @@ impl App {
             forwarding: None,
             explore: Default::default(),
             polling: None,
+            emotes: Default::default(),
             composer_menu: false,
             started_dm: None,
             switcher: None,
@@ -886,6 +895,7 @@ impl App {
             text_editor::Content::with_text(self.drafts.get(&id).map(String::as_str).unwrap_or(""));
         let left = std::mem::replace(&mut self.selected, id.clone());
         self.release_timeline(left);
+        self.emotes.stickers = false;
         #[cfg(target_os = "linux")]
         self.stop_inline();
         self.snap_to_newest = true;
@@ -1805,6 +1815,8 @@ impl App {
             Msg::Dm(input) => return self.new_message(input),
             Msg::Forward(input) => return self.forward(input),
             Msg::Poll(input) => return self.poll(input),
+            Msg::Emote(input) => self.emote(input),
+            Msg::EmoteReady(url, picture) => self.emotes.complete(url, picture),
             Msg::ComposerMenu(open) => self.composer_menu = open && self.can_stage(),
             Msg::Switcher(input) => return self.switcher(input),
             Msg::Escape if self.shortcuts.open => self.shortcuts.open = false,
@@ -1876,6 +1888,8 @@ impl App {
                     return self.poll(polls::Input::Close);
                 } else if self.composer_menu {
                     self.composer_menu = false;
+                } else if self.emotes.stickers {
+                    self.emotes.stickers = false;
                 } else if self.presence.dialog.is_some() || self.presence.menu {
                     self.presence.dialog = None;
                     self.presence.menu = false;
@@ -1954,7 +1968,8 @@ impl App {
                 if emoji {
                     self.composer_changed();
                 }
-                return task;
+                // An opened picker or popup shows custom emoji (emotes.rs).
+                return Task::batch([task, self.schedule_emotes()]);
             }
             Msg::Typing(input) => self.typing_input(input),
             Msg::Presence(input) => return self.presence_input(input),
@@ -1979,8 +1994,14 @@ impl App {
             Msg::SearchHit(room, id) => return self.open_hit(room, id),
             Msg::SearchResults => self.close_original(),
             Msg::ReturnToReading => return self.return_to_reading(),
-            Msg::ReactionPicker(id) => return self.toggle_reaction_picker(id, false),
-            Msg::ReactionPickerChips(id) => return self.toggle_reaction_picker(id, true),
+            Msg::ReactionPicker(id) => {
+                let task = self.toggle_reaction_picker(id, false);
+                return Task::batch([task, self.schedule_emotes()]);
+            }
+            Msg::ReactionPickerChips(id) => {
+                let task = self.toggle_reaction_picker(id, true);
+                return Task::batch([task, self.schedule_emotes()]);
+            }
             Msg::ReactionInput(s) => {
                 if let Some(p) = &mut self.reaction_picker {
                     p.custom = s;
@@ -2233,7 +2254,7 @@ impl App {
         self.fill_history();
         self.sync_presence();
         self.schedule_link_previews();
-        let task = Task::batch([task, self.schedule_avatars()]);
+        let task = Task::batch([task, self.schedule_avatars(), self.schedule_emotes()]);
         #[cfg(target_os = "linux")]
         let task = Task::batch([task, self.start_ringtone(), self.play_sounds()]);
         #[cfg(any(target_os = "linux", target_arch = "wasm32"))]

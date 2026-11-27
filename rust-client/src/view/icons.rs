@@ -33,6 +33,8 @@ pub(super) enum Icon {
     Poll,
     /// A tick: a picked answer in a multiple-choice poll.
     Check,
+    /// A sticker with a peeled corner: the composer's sticker picker.
+    Sticker,
     Smile,
     Pencil,
     Flag,
@@ -198,6 +200,20 @@ fn outline(icon: Icon) -> Path {
             b.line_to(p(20., 12.));
         }
         Icon::Check => poly(b, &[(5., 12.5), (10., 17.5), (19., 7.)]),
+        Icon::Sticker => {
+            b.move_to(p(14., 21.));
+            b.line_to(p(6., 21.));
+            b.quadratic_curve_to(p(3., 21.), p(3., 18.));
+            b.line_to(p(3., 6.));
+            b.quadratic_curve_to(p(3., 3.), p(6., 3.));
+            b.line_to(p(18., 3.));
+            b.quadratic_curve_to(p(21., 3.), p(21., 6.));
+            b.line_to(p(21., 14.));
+            b.close();
+            poly(b, &[(21., 14.), (14., 14.), (14., 21.)]);
+            b.move_to(p(8., 13.));
+            b.quadratic_curve_to(p(10., 15.5), p(12.5, 14.5));
+        }
         Icon::Poll => {
             poly(b, &[(5., 6.), (14., 6.)]);
             poly(b, &[(5., 12.), (19., 12.)]);

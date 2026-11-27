@@ -93,6 +93,22 @@ impl App {
                 .align_y(Center)
                 .height(24)
                 .into(),
+                Candidate::Emote {
+                    shortcode,
+                    url,
+                    pack,
+                } => row![
+                    self.emote_image(&url, 22.),
+                    text(format!(":{shortcode}:"))
+                        .size(15)
+                        .color(TEXT)
+                        .width(Fill),
+                    text(pack.clone()).size(12).color(super::CHANNEL),
+                ]
+                .spacing(10)
+                .align_y(Center)
+                .height(24)
+                .into(),
             };
             rows = rows.push(
                 button(content)
@@ -141,11 +157,21 @@ impl App {
     /// The emoji button's picker: picking inserts at the composer's cursor.
     fn composer_picker(&self) -> Option<El<'_>> {
         let search = self.completion.picker.as_deref()?;
-        let first = crate::emoji::search(search, 1).first().map(|f| f.emoji);
+        // Enter picks the best match: the room's custom emoji first.
+        let first = self
+            .emote_search(&self.selected, search, 1)
+            .first()
+            .map(|(_, i)| format!(":{}: ", i.shortcode))
+            .filter(|_| !search.trim().is_empty())
+            .or_else(|| {
+                crate::emoji::search(search, 1)
+                    .first()
+                    .map(|f| f.emoji.to_owned())
+            });
         let input = text_input("Search emoji", search)
             .id("emoji-search")
             .on_input(|s| Msg::Autocomplete(Input::PickerSearch(s)))
-            .on_submit_maybe(first.map(|e| Msg::Autocomplete(Input::PickEmoji(e.into()))))
+            .on_submit_maybe(first.map(|e| Msg::Autocomplete(Input::PickEmoji(e))))
             .size(14)
             .padding(7)
             .style(input_style);
@@ -154,7 +180,18 @@ impl App {
             search,
             input.into(),
             None,
-            true,
+            // A custom emoji stands as its shortcode, sent as its picture.
+            self.emote_sections(
+                &self.selected,
+                search,
+                |i| {
+                    Some(Msg::Autocomplete(Input::PickEmoji(format!(
+                        ":{}: ",
+                        i.shortcode
+                    ))))
+                },
+                |_| false,
+            ),
             |e| Some(Msg::Autocomplete(Input::PickEmoji(e.into()))),
             |_| false,
         );

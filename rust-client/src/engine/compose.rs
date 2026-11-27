@@ -131,4 +131,23 @@ mod tests {
         );
         assert_eq!(sent["m.mentions"], json!({}));
     }
+
+    #[test]
+    fn a_custom_emoji_is_an_image_in_the_html_and_its_shortcode_in_the_body() {
+        let blob = Pill {
+            label: ":blob:".into(),
+            target: Target::Emote {
+                url: "mxc://h/blob".into(),
+            },
+        };
+        let sent = json(markdown("**hi** :blob:".into(), &[blob]));
+        assert_eq!(sent["body"], "**hi** :blob:");
+        let html = sent["formatted_body"].as_str().unwrap();
+        assert!(html.contains("<strong>hi</strong>"), "{html}");
+        assert!(
+            html.contains("<img data-mx-emoticon src=\"mxc://h/blob\" alt=\":blob:\""),
+            "{html}"
+        );
+        assert_eq!(sent["m.mentions"], json!({}));
+    }
 }

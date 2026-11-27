@@ -174,6 +174,20 @@ Now…**), and then everyone sees the final results. Polls are Element's
 (MSC3381, sent under its `org.matrix.msc3381.poll.*` names), so polls and
 votes go both ways between Untethered and Element.
 
+**Custom emoji and stickers:** A space's image packs serve all its
+channels, as a Discord server's emoji do; a room's own packs and your own
+pack work there too. They show in the emoji picker (by pack), in `:`
+autocomplete (before Unicode's), in the reaction picker, and as pictures in
+messages and reaction chips. A custom emoji you send goes out as Cinny and
+FluffyChat send one: its picture in the message's HTML, its `:shortcode:`
+in the plain text, so a client without image packs shows the shortcode.
+The sticker button beside the emoji button sends a pack's stickers. Tick
+**Use everywhere** on a pack's header to use a room's pack in every room.
+Packs are read under the spec's names (`m.room.image_pack`,
+`m.image_pack.rooms`) and the unstable ones Cinny writes (`im.ponies.*`);
+"Use everywhere" is saved under both. Making or editing packs isn't here
+yet: use Cinny or FluffyChat for that.
+
 **Replies:** Hover a message, click **Reply**, type your response, and send.
 The bar above the composer shows who you’re replying to; its **×** (Cancel
 reply) keeps your text. Click the quoted line above a reply to jump to the
