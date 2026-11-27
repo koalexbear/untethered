@@ -50,6 +50,7 @@ enum ToWorker {
     Download {
         id: i64,
         media: Media,
+        play: bool,
     },
 }
 
@@ -65,10 +66,11 @@ enum FromWorker {
     Inline {
         request: u64,
     },
-    /// A download's bytes in `bytes`.
+    /// A download's bytes in `bytes`: to save, or to play.
     Download {
         id: i64,
         name: String,
+        play: bool,
     },
     Stopped(String),
     /// Debug builds: an entry of the QA event log (`qa.rs`). The page ignores
@@ -180,13 +182,8 @@ async fn relay(
     }
     let session = super::web::saved_session();
     post_to(worker, &ToWorker::Start { session }, None)?;
-    let mut previews: HashMap<
-        u64,
-        (
-            Sender<Option<iced::widget::image::Handle>>,
-            crate::media::Fit,
-        ),
-    > = HashMap::new();
+    let mut previews: HashMap<u64, (Sender<Option<crate::preview::Picture>>, crate::media::Fit)> =
+        HashMap::new();
     let mut next = 0;
     loop {
         tokio::select! {
@@ -210,15 +207,21 @@ async fn relay(
                             let image = bytes(&data);
                             rt::spawn(async move {
                                 let handle = match image {
-                                    Some(image) => crate::preview::inline(image, fit).await,
+                                    Some(image) => crate::preview::inline(image, fit)
+                                        .await
+                                        .map(crate::preview::Picture::Still),
                                     None => None,
                                 };
                                 let _ = result.send(handle).await;
                             });
                         }
                     }
-                    Some(FromWorker::Download { id, name }) => {
+                    Some(FromWorker::Download { id, name, play }) => {
                         let result = match bytes(&data) {
+                            Some(file) if play => {
+                                crate::web_files::show_video(&file, &name);
+                                Ok(())
+                            }
                             Some(file) => {
                                 crate::web_files::save_bytes(&file, &name);
                                 Ok(())
@@ -252,8 +255,8 @@ async fn relay(
                         let _ = post_to(&worker, &ToWorker::Release { id }, None);
                     });
                 }
-                Ok(crate::backend::Command::Download { id, media }) => {
-                    post_to(worker, &ToWorker::Download { id, media }, None)?;
+                Ok(crate::backend::Command::Download { id, media, play }) => {
+                    post_to(worker, &ToWorker::Download { id, media, play }, None)?;
                 }
                 Err(_) => return Ok(()),
             },
@@ -354,13 +357,13 @@ pub fn untethered_engine_worker() {
                 // Dropping the lease cancels the upload if it's still running.
                 leases.borrow_mut().remove(&id);
             }
-            Some(ToWorker::Download { id, media }) => {
+            Some(ToWorker::Download { id, media, play }) => {
                 let (result, answer) = async_channel::bounded(1);
                 let name = media.name.clone();
                 let _ = to_transfers.try_send(Transfer::Download { media, result });
                 rt::spawn(async move {
                     match answer.recv().await {
-                        Ok(Ok(file)) => post(&FromWorker::Download { id, name }, Some(file)),
+                        Ok(Ok(file)) => post(&FromWorker::Download { id, name, play }, Some(file)),
                         Ok(Err(failure)) => post(
                             &FromWorker::Event(Event::Done {
                                 id,

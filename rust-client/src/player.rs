@@ -252,3 +252,77 @@ pub fn clock(t: Duration) -> String {
         format!("{}:{:02}", s / 60, s % 60)
     }
 }
+
+/// A video's first frame (RGBA, its own size) and duration, for the poster
+/// and `info` of a video being sent (ROADMAP P5).
+pub struct Poster {
+    pub width: u32,
+    pub height: u32,
+    pub pixels: Vec<u8>,
+    pub duration: Option<Duration>,
+}
+
+/// Read a video's first frame and duration without playing it.
+pub fn poster(path: &Path) -> Result<Poster, String> {
+    gst::init().map_err(|e| e.to_string())?;
+    let uri = gst::glib::filename_to_uri(path, None).map_err(|e| e.to_string())?;
+    let sink = gst_app::AppSink::builder()
+        .caps(
+            &gst_video::VideoCapsBuilder::new()
+                .format(gst_video::VideoFormat::Rgba)
+                .build(),
+        )
+        .max_buffers(1)
+        .build();
+    let silent = gst::ElementFactory::make("fakesink")
+        .build()
+        .map_err(|e| e.to_string())?;
+    let playbin = gst::ElementFactory::make("playbin")
+        .property("uri", uri.as_str())
+        .property("video-sink", &sink)
+        .property("audio-sink", &silent)
+        .build()
+        .map_err(|_| "GStreamer's playbin is missing (gst-plugins-base)".to_owned())?;
+    let stop = |e: String| {
+        let _ = playbin.set_state(gst::State::Null);
+        e
+    };
+    playbin
+        .set_state(gst::State::Paused)
+        .map_err(|_| stop("This video can't be read.".into()))?;
+    let bus = playbin
+        .bus()
+        .ok_or_else(|| stop("no GStreamer bus".into()))?;
+    let ready = bus.timed_pop_filtered(
+        gst::ClockTime::from_seconds(10),
+        &[gst::MessageType::AsyncDone, gst::MessageType::Error],
+    );
+    if !matches!(
+        ready.as_ref().map(|m| m.view()),
+        Some(gst::MessageView::AsyncDone(_))
+    ) {
+        return Err(stop("This video can't be read.".into()));
+    }
+    let sample = sink
+        .pull_preroll()
+        .map_err(|_| stop("This video has no picture.".into()))?;
+    let duration = playbin
+        .query_duration::<gst::ClockTime>()
+        .map(|t| Duration::from_nanos(t.nseconds()));
+    let frame = rgba(&sample).ok_or_else(|| stop("This video has no picture.".into()))?;
+    let _ = playbin.set_state(gst::State::Null);
+    match frame {
+        Handle::Rgba {
+            width,
+            height,
+            pixels,
+            ..
+        } => Ok(Poster {
+            width,
+            height,
+            pixels: pixels.to_vec(),
+            duration,
+        }),
+        _ => Err("This video has no picture.".into()),
+    }
+}

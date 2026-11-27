@@ -3,7 +3,12 @@
 //! stay off the render loop, a few at a time; the window bounds the work and
 //! the decoded pictures kept, and a failed preview retries a couple of times
 //! on its own, and again once the connection comes back.
-use crate::{App, Msg, backend::Command, media::PreviewRef};
+use crate::{
+    App, Msg,
+    backend::Command,
+    media::PreviewRef,
+    preview::{Frames, Picture},
+};
 use iced::{Task, widget::image::Handle};
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
@@ -19,7 +24,7 @@ const ATTEMPTS: u8 = 3;
 pub struct InlineImages {
     epoch: u64,
     room: String,
-    cache: BTreeMap<PreviewRef, Option<Handle>>,
+    cache: BTreeMap<PreviewRef, Option<Picture>>,
     inflight: BTreeSet<(u64, PreviewRef)>,
     manual: VecDeque<PreviewRef>,
     /// Failed fetches so far, and the previews waiting to try again.
@@ -43,7 +48,17 @@ impl InlineImages {
         // they return, even across rapid room switches.
     }
     pub fn ready(&self, source: &PreviewRef) -> Option<&Handle> {
-        self.cache.get(source).and_then(Option::as_ref)
+        self.cache
+            .get(source)
+            .and_then(Option::as_ref)
+            .map(Picture::still)
+    }
+    /// An animated preview's frames (ROADMAP P1).
+    pub fn moving(&self, source: &PreviewRef) -> Option<&std::sync::Arc<Frames>> {
+        match self.cache.get(source)? {
+            Some(Picture::Moving(frames)) => Some(frames),
+            _ => None,
+        }
     }
     /// Not shown yet, and not given up on.
     pub fn pending(&self, source: &PreviewRef) -> bool {
@@ -58,7 +73,12 @@ impl InlineImages {
         self.manual.push_front(source);
         self.manual.truncate(8);
     }
-    pub fn complete(&mut self, epoch: u64, source: PreviewRef, image: Option<Handle>) -> Task<Msg> {
+    pub fn complete(
+        &mut self,
+        epoch: u64,
+        source: PreviewRef,
+        image: Option<Picture>,
+    ) -> Task<Msg> {
         if !self.inflight.remove(&(epoch, source.clone())) || epoch != self.epoch {
             return Task::none();
         }
@@ -221,7 +241,7 @@ mod tests {
             fit: Fit::Inline,
         }
     }
-    fn finish(images: &mut InlineImages, image: Option<Handle>) {
+    fn finish(images: &mut InlineImages, image: Option<Picture>) {
         images.inflight.insert((images.epoch, key()));
         let _ = images.complete(images.epoch, key(), image);
     }
@@ -241,7 +261,10 @@ mod tests {
         // Back online, it loads again; then it shows.
         images.forget_failures();
         assert!(images.pending(&key()) && images.attempts.is_empty());
-        finish(&mut images, Some(Handle::from_rgba(1, 1, vec![0; 4])));
+        finish(
+            &mut images,
+            Some(Picture::Still(Handle::from_rgba(1, 1, vec![0; 4]))),
+        );
         assert!(images.ready(&key()).is_some());
     }
 
@@ -251,7 +274,11 @@ mod tests {
         images.inflight.insert((images.epoch, key()));
         let old = images.epoch;
         images.reset();
-        let _ = images.complete(old, key(), Some(Handle::from_rgba(1, 1, vec![0; 4])));
+        let _ = images.complete(
+            old,
+            key(),
+            Some(Picture::Still(Handle::from_rgba(1, 1, vec![0; 4]))),
+        );
         assert!(images.ready(&key()).is_none() && images.inflight.is_empty());
     }
 }

@@ -11,7 +11,7 @@ pub enum Command {
     },
     Inline {
         source: crate::media::PreviewRef,
-        result: Sender<Option<iced::widget::image::Handle>>,
+        result: Sender<Option<crate::preview::Picture>>,
     },
     Upload {
         id: i64,
@@ -26,8 +26,14 @@ pub enum Command {
         media: crate::media::Media,
         destination: std::path::PathBuf,
     },
+    /// The browser: saved as a file, or with `play`, played in the viewer
+    /// (ROADMAP P4).
     #[cfg(target_arch = "wasm32")]
-    Download { id: i64, media: crate::media::Media },
+    Download {
+        id: i64,
+        media: crate::media::Media,
+        play: bool,
+    },
     /// Save an attachment (decrypted) for the media viewer to play.
     #[cfg(target_os = "linux")]
     Fetch {

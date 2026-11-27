@@ -1,4 +1,5 @@
 use super::{App, Msg, Request, Section, rooms::Room};
+mod animated;
 mod autocomplete;
 #[cfg(target_os = "linux")]
 mod call_controls;
@@ -14,6 +15,8 @@ mod icons;
 mod invites;
 mod joining;
 mod link_preview;
+#[cfg(target_os = "linux")]
+mod players;
 mod switcher;
 mod zoom;
 pub(crate) use link_preview::image_source as link_preview_image;
@@ -712,6 +715,13 @@ impl App {
                 .into()
         };
         if file.kind == Kind::Video {
+            // Linux plays it here, as Discord does (inline_player.rs).
+            #[cfg(target_os = "linux")]
+            if let Some(event) = event
+                && let Some(playing) = self.inline_video(event, file, shown.unwrap_or((400., 225.)))
+            {
+                return playing;
+            }
             let poster: El = match file.preview.as_ref().and_then(|s| self.inline.ready(s)) {
                 Some(handle) => picture(handle).into(),
                 None => placeholder(shown.unwrap_or((400., 225.))),
@@ -725,9 +735,36 @@ impl App {
             let video = container(stack![poster, play])
                 .max_width(400)
                 .max_height(300);
+            #[cfg(target_os = "linux")]
+            if let Some(event) = event {
+                let play = mouse_area(video)
+                    .on_press(Msg::PlayInline(event.to_owned(), file.clone()))
+                    .interaction(iced::mouse::Interaction::Pointer);
+                return iced::widget::hover(play, tools());
+            }
             return iced::widget::hover(clickable(video.into()), tools());
         }
+        // Audio files and voice messages play here (inline_player.rs).
+        #[cfg(target_os = "linux")]
+        if file.kind == Kind::Audio
+            && let Some(event) = event
+        {
+            return self.audio_card(
+                event,
+                file,
+                tool(Icon::Download, "Download", false, Some(save.clone())),
+            );
+        }
         if let Some(source) = &file.preview {
+            // An animated GIF or WebP plays, while it's on screen (P1).
+            if let Some(frames) = self.inline.moving(source) {
+                let mut playing = animated::animated(frames.clone()).border_radius(8.);
+                if let Some((w, h)) = shown {
+                    playing = playing.width(w).height(h);
+                }
+                let playing = container(playing).max_width(400).max_height(300);
+                return iced::widget::hover(clickable(playing.into()), tools());
+            }
             if let Some(handle) = self.inline.ready(source) {
                 let picture = container(picture(handle)).max_width(400).max_height(300);
                 return iced::widget::hover(clickable(picture.into()), tools());
@@ -1645,6 +1682,18 @@ impl App {
         user: &str,
     ) -> Option<&iced::widget::image::Handle> {
         self.avatars.get(r.avatars.get(user).map(String::as_str))
+    }
+    /// A member's profile picture in `r`, playing if it's animated (P1).
+    pub(super) fn user_face(&self, r: &Room, user: &str, name: &str, size: f32) -> El<'static> {
+        let mxc = r.avatars.get(user).map(String::as_str);
+        match self.avatars.moving(mxc) {
+            Some(frames) => animated::animated(frames.clone())
+                .width(size)
+                .height(size)
+                .content_fit(iced::ContentFit::Cover)
+                .into(),
+            None => face(name, self.avatars.get(mxc), size),
+        }
     }
     fn room_face(&self, r: &Room, size: f32) -> El<'static> {
         face(&r.name, self.avatars.get(r.avatar.as_deref()), size)
@@ -2895,11 +2944,7 @@ impl App {
                     container(self.user_area(
                         &p.sender,
                         format!("picture {place}"),
-                        profile::link(
-                            self,
-                            &p.sender,
-                            face(name, self.user_picture(r, &p.sender), 40.)
-                        )
+                        profile::link(self, &p.sender, self.user_face(r, &p.sender, name, 40.))
                     ))
                     .padding(Padding {
                         top: 2.,

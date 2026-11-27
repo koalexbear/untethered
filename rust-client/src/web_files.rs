@@ -18,6 +18,11 @@ extern "C" {
     ) -> Result<js_sys::Uint8Array, JsValue>;
     /// Offer bytes the engine fetched as a download.
     pub fn save_bytes(bytes: &[u8], name: &str);
+    /// Play a video's bytes over the media viewer's stage, `bottom` pixels
+    /// above the window's foot, and take it away again (ROADMAP P4).
+    pub fn show_video(bytes: &[u8], name: &str);
+    pub fn place_video(bottom: f64);
+    pub fn hide_video();
 }
 pub fn listen() -> iced::Task<Msg> {
     let (tx, rx) = async_channel::unbounded();

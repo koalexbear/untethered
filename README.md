@@ -354,8 +354,21 @@ paste elsewhere: in a message's right-click menu, and as the copy button in the
 viewer (desktop only). On Linux, videos play in the viewer through
 GStreamer with play/pause (**Space** or a click on the picture), seeking and
 mute; common codecs need `gst-plugins-good` and `gst-libav`. The decrypted
-copy lives in `$XDG_RUNTIME_DIR` only while the viewer shows it. Elsewhere
-the viewer shows the video's thumbnail and a Download button.
+copy lives in `$XDG_RUNTIME_DIR` only while the viewer shows it. In the
+browser, the viewer plays videos in the browser's own player over the
+picture; on Windows it still shows the video's thumbnail and a Download button.
+**Animated pictures:** GIFs and animated WebPs play in the timeline, in
+galleries and in the viewer, and so do stickers and animated profile pictures
+(the homeserver sends animated thumbnails); a picture scrolled out of sight
+stops, so it costs nothing until it's back (desktop; the browser shows them
+still).
+**Playing in the timeline:** on Linux, a click on a video plays it where it is,
+with play/pause, time, a seek bar, mute and **Open in viewer**; audio files and
+voice messages get a player card with the same controls. One thing plays at a
+time; opening the viewer or another room stops it.
+**Sending video:** a video you send goes with its width, height, duration and
+a poster frame (its first frame, as a JPEG thumbnail), so other clients such
+as Element show a picture before it plays (Linux, through GStreamer).
 Uploads are sequential, with up to 10 staged files per room and a 64 MiB/file cap
 (lower if the homeserver advertises a smaller limit). Click a received file’s
 name or its **Download** button to save it. Preview mode simulates a send locally; it never uploads.

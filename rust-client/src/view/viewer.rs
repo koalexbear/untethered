@@ -101,6 +101,14 @@ fn image_stage<'a>(app: &'a App, v: &'a Viewer, media: &'a Media, room: Size) ->
         .as_ref()
         .or(v.image.as_ref())
         .or_else(|| media.preview.as_ref().and_then(|p| app.inline.ready(p)));
+    // An animated picture plays, fitted (it doesn't zoom).
+    if let Some(frames) = &v.moving {
+        return super::animated::animated(frames.clone())
+            .width(Fill)
+            .height(Fill)
+            .content_fit(iced::ContentFit::ScaleDown)
+            .into();
+    }
     match shown {
         Some(h) => {
             let natural = if v.image.is_some() {
@@ -217,7 +225,31 @@ fn video_stage<'a>(app: &'a App, v: &'a Viewer, media: &'a Media, room: Size) ->
     )
 }
 
-#[cfg(not(target_os = "linux"))]
+/// The browser: the page's own player covers the stage once the video is
+/// fetched (ROADMAP P4); until then, its poster.
+#[cfg(target_arch = "wasm32")]
+fn video_stage<'a>(app: &'a App, v: &'a Viewer, media: &'a Media, room: Size) -> El<'a> {
+    if v.web_video {
+        return Space::new().into();
+    }
+    if v.failed {
+        return note("This video can't be played here.", media);
+    }
+    let loading = text("Loading video…").size(15).color(TEXT);
+    match media.preview.as_ref().and_then(|p| app.inline.ready(p)) {
+        Some(h) => {
+            let natural = media
+                .dims
+                .map(|(w, h)| (w as f32, h as f32))
+                .or_else(|| dims(h));
+            let size = fit(natural.unwrap_or((room.width, room.height)), room);
+            stack![picture(h, size), container(loading).center(Fill)].into()
+        }
+        None => loading.into(),
+    }
+}
+
+#[cfg(not(any(target_os = "linux", target_arch = "wasm32")))]
 fn video_stage<'a>(app: &'a App, _: &'a Viewer, media: &'a Media, room: Size) -> El<'a> {
     match media.preview.as_ref().and_then(|p| app.inline.ready(p)) {
         Some(h) => {
