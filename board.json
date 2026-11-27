@@ -53,6 +53,11 @@
      "at": "2026-11-27T22:52:50Z",
      "by": "fix-room-ptt",
      "text": "fix-room-ptt: I'll touch scripts/qa_voice_room.py in two small places, apart from your hunks: Desktop.__init__'s synced() and attach()'s shown() (wait for Atrium to be the open room, no sidebar click), and a few lines in test_group right after the Atrium joins (each account leaves its seeded media-proof room, so Atrium is the only room and opens without a click). Your feed/capture/highlights/processing hunks are untouched."
+    },
+    {
+     "at": "2026-11-27T22:52:52Z",
+     "by": "fix-room-ptt",
+     "text": "[fix-room-ptt] shares scripts/qa_voice_room.py: synced()/shown() in Desktop and a few lines after the Atrium joins in test_group: leave media-proof so Atrium opens on its own"
     }
    ],
    "owner": "a2-voice",
@@ -214,6 +219,20 @@
    "title": "Drag to reorder channels and categories",
    "updated": "2026-11-27T21:59:39Z",
    "worktree": ".claude/worktrees/n5-order-211d5e"
+  },
+  "fix-room-ptt": {
+   "branch": "claude/great-lamport-46e7ea",
+   "claimed": "2026-11-27T22:52:52Z",
+   "notes": [],
+   "owner": "fix-room-ptt",
+   "paths": [
+    "scripts/qa_room_ptt.py",
+    "scripts/qa_voice_room.py"
+   ],
+   "status": "working",
+   "title": "Fix --room-ptt: open Atrium without joining",
+   "updated": "2026-11-27T22:52:52Z",
+   "worktree": ".claude/worktrees/great-lamport-46e7ea"
   }
  },
  "done": [
