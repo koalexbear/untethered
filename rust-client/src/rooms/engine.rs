@@ -331,6 +331,31 @@ mod tests {
         assert_eq!(room.read.divider(&room), None);
     }
 
+    /// Messages from an older room above an upgrade's seam (upgrades.rs):
+    /// shown, but read-only and outside the live room's read order.
+    #[test]
+    fn older_rooms_messages_are_read_only_and_never_unread() {
+        let mut room = Room::default();
+        let editable = |m: Message| Message {
+            editable: true,
+            ..m
+        };
+        let old = Message {
+            from: Some("!old".into()),
+            ..editable(message(1, 100, "before"))
+        };
+        room.apply_engine(vec![old, editable(message(2, 200, "after"))], true);
+        let (before, after) = (&room.history[&1], &room.history[&2]);
+        assert_eq!(before.from.as_deref(), Some("!old"));
+        assert!(!before.reactable && !before.text_message);
+        assert!(after.reactable && after.text_message && after.from.is_none());
+        room.read.fully_read = Some("$1".into());
+        assert_eq!(room.read.divider(&room), None);
+        room.read.fully_read = Some("$0".into());
+        room.read.set_latest(Some("$2".into()));
+        assert_eq!(room.read.target(), Some("$2"));
+    }
+
     #[test]
     fn room_list_fills_spaces_dms_and_unread_state() {
         let mut rooms = Rooms::default();
