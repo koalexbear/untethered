@@ -105,7 +105,7 @@ doesn't:
 | **M6. Delete and drafts** · done | Spec (redactions); drafts per device | Delete (redact) your own messages and, with permission, others'; drafts and staged-file captions survive a restart; a "N new messages since 14:02" bar at the top with Mark as read. | A redaction from either client removes the message in both; a draft typed before quitting is still there after restarting. |
 | **M7. Link previews** · done | Spec (the server's `preview_url`); opt-in where encrypted | URL embeds through the homeserver's `preview_url`, off by default in encrypted rooms, with a per-room switch; image links show inline. | A link to a page with Open Graph tags shows its title, description and image; turning previews off stops the request. |
 | **M8. Forward** · done | Spec (content sent again) | Forward a message, attachments included, to another room or DM from its toolbar and right-click menu. Encrypted attachments are sent again with the same file and key, not uploaded again. | A message and an image forwarded from an encrypted room show in Element's DM as ordinary messages from you, and no new upload happens. |
-| **M9. Polls** | Accepted MSC3381 (stable `m.poll.*`) | Show, vote in and end polls (MSC3381, as Element does), with live results; create one from the composer's **+**. | A poll started in Element shows here; a vote here moves Element's count; ending it shows the same final tally in both. |
+| **M9. Polls** · done | Accepted MSC3381 (sent and read under its unstable `org.matrix.msc3381.poll.*` names, as Element does) | Show, vote in and end polls (MSC3381, as Element does), with live results; create one from the composer's **+**. | A poll started in Element shows here; a vote here moves Element's count; ending it shows the same final tally in both. |
 | **M10. Voice messages** | Unstable MSC3245, as Element sends it | Record and send a voice message (MSC3245) from the composer, with a waveform; playing received ones is P2. | A voice message recorded here plays in Element with its waveform and length. |
 | **M11. Custom emoji and stickers** | Spec v1.19 (MSC2545 image packs) | Image packs (MSC2545) for a space and for your account, in the emoji picker, autocomplete and reactions, with a sticker picker. Packs work anywhere, as Discord sells with Nitro: your own packs, and packs from rooms you choose to use everywhere (`m.image_pack.rooms`). Animated ones play (P1). Cinny, FluffyChat, Nheko and SchildiChat show them; check Element before relying on it, and send the `:shortcode:` as fallback text. | An emoji pack added to a space appears in its rooms' picker, and in every room once you choose to use it everywhere; a custom emoji sent here renders in Cinny, and a client without image packs shows its `:shortcode:`. |
 | **M12. Names** | Spec (per-room names); badges and colours client-side | Per-server nicknames (Matrix's per-room display names) and an Admin or Moderator badge, or a name colour, from the sender's power level, standing in for Discord's role colours. | A nickname set in one space shows only there, also in Element; a moderator's badge shows wherever their name does. |
@@ -187,6 +187,10 @@ source's resolution, with no tier to pay for.
 - Profile pictures of members who never posted come from their membership
   event, so they appear once the member list has loaded.
 - A text selection stays within one paragraph (M14).
+- Polls under MSC3381's stable `m.poll.*` names don't show: matrix-sdk's
+  timeline reads only the unstable `org.matrix.msc3381.poll.*` events
+  Element sends, which is also what Untethered sends. Editing a poll before
+  anyone votes, as Element allows, isn't offered yet (M9).
 - Fetching an older room's keys from backup isn't covered by a live test
   yet: `scripts/qa_room_upgrades.py` has no encrypted rooms with keys only
   in backup.

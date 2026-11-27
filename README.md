@@ -153,6 +153,17 @@ Element forwards. A file is sent with the same encrypted copy and key, not
 uploaded again, and nobody it mentions is notified again. Forwarding from an
 encrypted room to one that isn't says first that its server can read it.
 
+**Polls:** Click **+** beside the composer and **Create Poll**: ask a
+question with two to twenty answers, choose whether people may pick several,
+and whether the results stay hidden until you end it. A poll shows as a card
+in the timeline; click an answer to vote, click another to change your vote,
+or **Remove vote**. Once you've voted you see how the votes stand, with a
+bar and percentage per answer, unless the poll keeps its results for the
+end. Its creator ends it from the card or its right-click menu (**End Poll
+Now…**), and then everyone sees the final results. Polls are Element's
+(MSC3381, sent under its `org.matrix.msc3381.poll.*` names), so polls and
+votes go both ways between Untethered and Element.
+
 **Replies:** Hover a message, click **Reply**, type your response, and send.
 The bar above the composer shows who you’re replying to; its **×** (Cancel
 reply) keeps your text. Click the quoted line above a reply to jump to the
@@ -351,7 +362,7 @@ same message when its text is edited. In encrypted rooms, Untethered and Element
 use standard `m.reaction` events: the reaction key and target ID are visible
 to the homeserver, while the message text remains encrypted.
 
-**Files:** Drop files onto a room or click **+** to stage them, optionally type
+**Files:** Drop files onto a room, or click **+** and **Upload a File**, to stage them, optionally type
 a caption for the first attachment, then press **Send** or Enter: the
 composer keeps the keyboard through a drop or paste. A local preview strip
 shows image thumbnails or file-type cards; use **×** to remove a file. PNG,
