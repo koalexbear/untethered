@@ -1,59 +1,5 @@
 {
  "claims": {
-  "J4": {
-   "branch": "claude/j4-explore-c19f11",
-   "claimed": "2026-11-27T20:07:05Z",
-   "notes": [
-    {
-     "at": "2026-11-27T20:10:54Z",
-     "by": "n9-sounds",
-     "text": "[N9] shares README.md, ROADMAP.md, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: N9: main.rs gets 'mod sounds; mod shortcuts;', two Msg variants (Sound(..), Shortcut(..)) with one dispatch arm each, sounds/shortcut fields on App, one 'self.play_sounds()' line in update's tail next to sync_tray(), one shortcuts subscription line, and the Escape listener skips Shift+Escape (it becomes 'mark server read'). The Msg::Escape arm itself is untouched. view.rs: one line adding the SOUNDS section in User Settings and one stack layer for the Ctrl+/ shortcuts list. engine/mod.rs: Alert gains 'highlight: bool' (serde default), set in alerts.rs. README/ROADMAP: N9 row marked done and a Sounds/shortcuts paragraph."
-    },
-    {
-     "at": "2026-11-27T20:12:06Z",
-     "by": "v2-simulcast",
-     "text": "[V2] shares README.md, ROADMAP.md, rust-client/src/main.rs: main.rs: one Msg::CallScroll variant + dispatch arm next to FocusVideo, one post-update line next to sync_tray; ROADMAP/README: call video lines only"
-    },
-    {
-     "at": "2026-11-27T20:12:43Z",
-     "by": "n4-presence",
-     "text": "[N4] shares README.md, ROADMAP.md, rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: [N4] small separate hooks: engine/mod.rs: 'pub mod presence;', Command::{PublishPresence, WatchPresence, SaveStatus} with dispatch arms next to Command::ShareTyping, Event::{Presence, PresenceSupport, OwnStatus} after Event::TypingSharing, one task spawn in go_live and a sender in Live; engine/app.rs: three engine_event arms after Event::TypingSharing and one engine_done arm (Request::SaveStatus) next to ShareTyping; main.rs: 'mod presence;', Msg::Presence(presence::Input), Request::SaveStatus, App field 'presence', one update arm, one subscription line; view.rs: dots on DM rows (channel_row), user panel status + menu, one overlay line for the status dialog; README/ROADMAP: N4 row and a Presence paragraph."
-    },
-    {
-     "at": "2026-11-27T20:17:45Z",
-     "by": "main-session",
-     "text": "main-session: M9 (polls) is merged to main as 76cfdc8. It touches main.rs (Msg::Poll, Msg::ComposerMenu, Request::Poll, App fields polling/composer_menu, an Escape branch), view.rs (the composer's + is now a popover menu, a poll card branch, two dialog slots), engine/mod.rs (Kind::Poll, Message.poll, three Commands) and context_menu.rs. Merge main into your branch before handing over."
-    },
-    {
-     "at": "2026-11-27T20:34:16Z",
-     "by": "j4-explore",
-     "text": "[J4] ready for review on claude/j4-explore-c19f11 (916ddcf, 4f48f3d, merge of main a95bdad incl. M9). fmt/clippy (rooms.rs only)/test (232)/wasm32/windows-gnu pass; scripts/qa_explore.py passes on the merged tree. Hand-over: side-session-notes/<group>/j4-explore.md."
-    }
-   ],
-   "owner": "j4-explore",
-   "paths": [
-    "README.md",
-    "ROADMAP.md",
-    "rust-client/src/avatars.rs",
-    "rust-client/src/engine/app.rs",
-    "rust-client/src/engine/explore.rs",
-    "rust-client/src/engine/mod.rs",
-    "rust-client/src/explore.rs",
-    "rust-client/src/invites.rs",
-    "rust-client/src/joining.rs",
-    "rust-client/src/main.rs",
-    "rust-client/src/mentions.rs",
-    "rust-client/src/view.rs",
-    "rust-client/src/view/explore.rs",
-    "rust-client/src/view/icons.rs",
-    "rust-client/src/view/joining.rs",
-    "scripts/qa_explore.py"
-   ],
-   "status": "review",
-   "title": "Explore public rooms and spaces",
-   "updated": "2026-11-27T20:34:16Z",
-   "worktree": ".claude/worktrees/j4-explore-c19f11"
-  },
   "N3": {
    "branch": "codex/n3-pins-threads",
    "claimed": "2026-11-27T14:09:26Z",
@@ -617,6 +563,15 @@
    "owner": "main-session",
    "result": "merged as 76cfdc8",
    "title": "Polls (MSC3381): show, vote, end, create"
+  },
+  {
+   "branch": "claude/j4-explore-c19f11",
+   "claimed": "2026-11-27T20:07:05Z",
+   "finished": "2026-11-27T21:03:01Z",
+   "id": "J4",
+   "owner": "j4-explore",
+   "result": "merged as 45a60c3",
+   "title": "Explore public rooms and spaces"
   }
  ]
 }
