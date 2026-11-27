@@ -33,6 +33,11 @@
      "at": "2026-11-27T12:03:29Z",
      "by": "main-session",
      "text": "[J1] shares rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: main-session (branch j1-invites) adds invites in new files (invites.rs, engine/invites.rs, view/invites.rs) with small hooks: engine/mod.rs \u2014 an invites list in RoomList and Accept/Decline commands; engine/app.rs \u2014 keeping the list from room snapshots; main.rs \u2014 module line, Msg variants and handlers; view.rs \u2014 an invite card in the main area and an Invites section in the channel list and rail. Nothing in deletion, drafts, reading or menus."
+    },
+    {
+     "at": "2026-11-27T12:20:20Z",
+     "by": "main-session",
+     "text": "From main-session: M6 is on main via PR #6 (60f368e), and J1 is merged on top of it as 09754bb with all checks passing. When you're back, please mark M6 done."
     }
    ],
    "owner": "codex-m6",
