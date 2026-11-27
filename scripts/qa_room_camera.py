@@ -70,6 +70,89 @@ def grant_camera(kde,published):
     wait_for("camera published",publishing,25)
 
 
+def check_layers(sender,peers,secret,palettes,show):
+    """Simulcast (V2): each tile gets the layer its size needs, hidden video
+    stops flowing, and it comes back fresh when shown again.
+
+    Layer and byte checks need the debug build's video stats; the release
+    build still checks the SFU's layers and the pixels after reopening."""
+    from qa_room_layout import pattern_box
+    from qa_ui import CHAT_X
+    from qa_window_share import debug_stats,video_stats
+    tracks=[t for p in sfu_participants(secret) for t in p.get("tracks",[]) if t.get("type")=="VIDEO"]
+    assert len(tracks)==1,tracks
+    layers=sorted((l.get("width",0),l.get("height",0)) for l in tracks[0].get("layers",[]))
+    assert tracks[0].get("simulcast") and layers==[(320,180),(640,360),(1280,720)],tracks[0]
+    print("Simulcast: the SFU lists the GCM camera track with 320x180, 640x360 and 1280x720 layers.",flush=True)
+    bruno,clara=peers
+    stats=all([debug_stats(d) for d in (sender,*peers)])
+    def inbound(peer):
+        got=list(video_stats(peer,"inbound","camera").values())
+        return got[0] if len(got)==1 else None
+    def receiving(peer,fits):
+        got=inbound(peer)
+        return got if got and got["fps"]>0 and fits(got["width"]) else None
+    def sending():
+        return {k.rsplit("/",1)[-1]:v for k,v in video_stats(sender,"outbound","camera").items() if v["fps"]>0}
+    def expect(label,check):
+        try:return wait_for(label,check,20)
+        except RuntimeError:
+            print("Sender outbound:",video_stats(sender,"outbound","camera"),
+                  "Receivers inbound:",[inbound(p) for p in peers],flush=True)
+            raise
+    def stage_words(peer):
+        return {w for w,x,_ in peer.words() if x>CHAT_X}
+    if stats:
+        expect("both peers' grid tiles take the 640x360 layer",lambda:all(receiving(p,lambda w:w==640) for p in peers))
+        print("Grid of three: both peers receive the camera's 640x360 layer; the sender encodes "
+              +", ".join(f"{rid} {v['width']}x{v['height']}" for rid,v in sorted(sending().items()))+".",flush=True)
+    box=wait_for("Alice's camera tile on Bruno's stage",lambda:pattern_box(bruno.image(),palettes[0]),10)
+    bruno.press((box[0]+box[2])//2,(box[1]+box[3])//2)
+    wait_for("Bruno focuses Alice's camera",lambda:"focus" in stage_words(bruno),10)
+    if stats:
+        expect("Bruno's focused tile takes the 1280x720 layer while Clara's grid tile keeps 640x360",
+               lambda:receiving(bruno,lambda w:w>=1280) and receiving(clara,lambda w:w==640) and "f" in sending())
+        print(f"Focus: Bruno receives {inbound(bruno)['width']}x{inbound(bruno)['height']}, Clara "
+              f"{inbound(clara)['width']}x{inbound(clara)['height']}; the sender's top layer runs for Bruno alone.",flush=True)
+    bruno.click("grid")
+    if stats:
+        expect("back in the grid, Bruno's tile takes 640x360 again",lambda:receiving(bruno,lambda w:w==640))
+    # Open chat collapses the stage: the dock previews the camera, small.
+    bruno.click("chat")
+    wait_for("Bruno's stage collapsed to the dock",lambda:"theater" not in {w for w,_,_ in bruno.words()},10)
+    if stats:
+        expect("Bruno's dock preview takes the 320x180 layer",lambda:receiving(bruno,lambda w:w<=320))
+        print("Dock: with the stage collapsed, Bruno's preview receives the 320x180 layer.",flush=True)
+    bruno.click("hide")
+    hidden=time.monotonic()
+    before=None
+    if stats:
+        # The first sample printed 2 s after hiding, and no bytes after it.
+        samples=lambda:len(re.findall(r"^RTC video inbound .*source=camera",bruno.stats.read_text(errors="replace"),re.M))
+        time.sleep(max(0,hidden+2-time.monotonic()))
+        n=samples()
+        wait_for("a stats sample 2 s after hiding",lambda:samples()>n,5)
+        before=inbound(bruno)["bytes"]
+        time.sleep(3)
+        assert inbound(bruno)["bytes"]==before,("bytes after hiding",before,inbound(bruno))
+        assert receiving(clara,lambda w:w==640),inbound(clara)
+        print(f"Hidden: Bruno's camera bytes stopped within 2 s of hiding the preview ({before} bytes, unchanged "
+              "3 s later) while Clara's grid tile kept flowing.",flush=True)
+    show(1)
+    wait_for("Clara renders the new pattern while Bruno's camera is paused",lambda:area(clara,palettes[1]),18)
+    assert before is None or inbound(bruno)["bytes"]==before
+    spot=wait_for("Open call view in Bruno's dock",lambda:next(((x,y) for w,x,y in bruno.words() if w=="open" and x<CHAT_X),None),10)
+    bruno.press(*spot)
+    opened=time.monotonic()
+    def restored():
+        taken=time.monotonic()
+        return (taken-opened,time.monotonic()-opened) if area(bruno,palettes[1]) else None
+    first,seen=wait_for("Bruno's reopened stage shows the new pattern",restored,10)
+    assert first<=1,f"fresh pixels {first:.2f} s after reopening"
+    print(f"Reopened: Bruno's stage showed the new pattern in a screenshot started {first:.2f} s after the click "
+          f"(confirmed {seen:.2f} s).",flush=True)
+
+
 def room_camera(stack,desks,secret,original,publications):
     sender,*peers=desks
     kde=sender.kde
@@ -126,19 +209,8 @@ def room_camera(stack,desks,secret,original,publications):
     assert links and all(x["info"]["state"]=="active" for x in links) and len(reader_pids())==1
     wait_for("both camera tiles decode the first pattern",lambda:all(area(p,palettes[0]) for p in peers),18)
     print("Camera on: private Camera portal authorized the capture; both peers rendered the green/magenta pattern on one GCM CAMERA track.",flush=True)
-    if sender.stats:
-        from qa_window_share import video_stats
-        def sent():
-            out=list(video_stats(sender,"outbound","camera").values())
-            return out[0] if len(out)==1 and (out[0]["width"],out[0]["height"])==(1280,720) else None
-        try:out=wait_for("sender encodes the camera at 1280x720",sent,30)
-        except RuntimeError:
-            print("Sender outbound:",video_stats(sender,"outbound"),flush=True);raise
-        inbound=[next(iter(video_stats(p,"inbound","camera").values()),None) for p in peers]
-        print(f"Camera video: sender encodes {out['width']}x{out['height']} at {out['fps']:.1f} fps from the 12 fps "
-              "synthetic source; receivers decode "+" / ".join(f"{i['width']}x{i['height']} at {i['fps']:.1f} fps"
-              if i else "n/a" for i in inbound)+".",flush=True)
-    show(1)
+    # Ends with the second pattern on both peers, Bruno's after a pause.
+    check_layers(sender,peers,secret,palettes,show)
     desks[0].tone=3;desks[1].tone=4
     fresh=({830,1030},{530,1030},{530,830})
     wait_for("both camera tiles render changed frames",lambda:all(area(p,palettes[1]) for p in peers),18)

@@ -37,7 +37,7 @@ mod share_audio;
 use audio::{AudioIo, Kind, Mixer};
 pub(crate) use cameras::{CameraChoice, list_cameras};
 use recovery::{LeaseWatch, Lost, Rejoin, Step, close, encrypted_tracks, select_key, select_one};
-pub(super) use room_video::{Feed, Previews, VideoInput};
+pub(super) use room_video::{Feed, Layer, Previews, VideoInput};
 
 /// The microphones, speakers and shareable app streams of this platform.
 pub(super) fn list_devices() -> futures_util::future::BoxFuture<'static, Result<Catalog>> {
@@ -177,6 +177,15 @@ pub struct ActiveCall {
     pub stage_open: bool,
     pub theater: bool,
     pub speaking: watch::Receiver<std::collections::BTreeSet<String>>,
+    /// Where the stage's scrolling thumbnail strip and grid are scrolled
+    /// to, once they overflow: tiles scrolled away get no video.
+    pub stage_scroll: [Option<iced::widget::scrollable::Viewport>; 2],
+}
+/// The stage's two scrolling areas.
+#[derive(Clone, Copy, Debug)]
+pub enum StageScroll {
+    Thumbnails,
+    Grid,
 }
 struct GroupViews {
     previews: Previews,
@@ -188,6 +197,36 @@ pub struct Controls {
     views: GroupViews,
 }
 impl crate::App {
+    /// Build the window's view, noting which call video it draws: video
+    /// nobody can see pauses, and each tile gets the layer its size needs.
+    /// The media viewer covers everything under it.
+    pub(super) fn watch_video<T>(&self, view: impl FnOnce() -> T) -> T {
+        let Some(call) = &self.call else {
+            return view();
+        };
+        call.previews.start_view();
+        let view = view();
+        call.previews.finish_view(self.viewer.is_some());
+        view
+    }
+    /// The window closed to the tray: no video is on screen.
+    pub(super) fn hide_video(&self) {
+        if let Some(call) = &self.call {
+            call.previews.hide_all();
+        }
+    }
+    pub(super) fn stage_scrolled(
+        &mut self,
+        id: uuid::Uuid,
+        area: StageScroll,
+        viewport: iced::widget::scrollable::Viewport,
+    ) {
+        if let Some(call) = &mut self.call
+            && call.id == id
+        {
+            call.stage_scroll[area as usize] = Some(viewport);
+        }
+    }
     /// Upload the newest frame of each video tile on screen. A tile swaps to
     /// a frame only once it's on the GPU (`room_video::Feed`), so it never
     /// draws an empty frame while iced uploads a large image in the
@@ -196,25 +235,10 @@ impl crate::App {
         let Some(call) = &self.call else {
             return iced::Task::none();
         };
-        let only = if call.stage_open && call.room == self.selected {
-            None
-        } else if !call.stage_open && !call.preview_hidden {
-            match call.previews.docked() {
-                Some(feed) => Some(feed.sid),
-                None => return iced::Task::none(),
-            }
-        } else {
-            return iced::Task::none();
-        };
-        iced::Task::batch(
-            call.previews
-                .uploads(only.as_deref())
-                .into_iter()
-                .map(|(sid, frame)| {
-                    iced_runtime::image::allocate(frame)
-                        .map(move |done| crate::Msg::VideoUploaded(sid.clone(), done))
-                }),
-        )
+        iced::Task::batch(call.previews.uploads().into_iter().map(|(sid, frame)| {
+            iced_runtime::image::allocate(frame)
+                .map(move |done| crate::Msg::VideoUploaded(sid.clone(), done))
+        }))
     }
     pub(super) fn video_uploaded(
         &mut self,
@@ -333,6 +357,7 @@ impl crate::App {
                 stage_open: false,
                 theater: false,
                 speaking,
+                stage_scroll: [None; 2],
             });
         } else {
             self.status = "Could not queue the voice call.".into();
@@ -1000,6 +1025,9 @@ async fn talk<S: CallSignal>(
     camera.local_preview = Some(previews.clone());
     let mut media_jobs = JoinSet::new();
     let mut subscriptions = std::collections::BTreeMap::<String, tokio::task::AbortHandle>::new();
+    // What the window shows: hidden video pauses, each tile gets its layer.
+    let mut viewer = room_video::Viewer::default();
+    let mut sight = previews.watch();
     audio.spawn(capture(publication));
     let mut playing = false;
     // Whether the dock says "Connected" for this connection.
@@ -1065,6 +1093,7 @@ async fn talk<S: CallSignal>(
             )
             .await?;
         let mut live = std::collections::BTreeSet::new();
+        let shown = sight.borrow_and_update().clone();
         if recovering.is_none()
             && let Some(p) = lk.remote_participants().get(&peer_id.clone().into())
         {
@@ -1078,6 +1107,7 @@ async fn talk<S: CallSignal>(
                         source @ (TrackSource::Camera | TrackSource::Screenshare),
                         Some(RemoteTrack::Video(track)),
                     ) => {
+                        viewer.ask(&pubn, &shown);
                         live.insert(sid.clone());
                         subscriptions.entry(sid).or_insert_with(|| {
                             media_jobs.spawn(room_video::display(
@@ -1117,8 +1147,11 @@ async fn talk<S: CallSignal>(
                 false
             }
         });
+        viewer.retain(|sid| live.contains(sid.as_str()));
         let interrupted = tokio::select! {
             changed=mode.changed()=>{changed.map_err(|_|ENDED)?;false}
+            changed=sight.changed()=>{changed.map_err(|_|ENDED)?;false}
+            _=viewer.settled()=>{viewer.repeat(lk);false}
             update=camera.next()=>{camera.update(update,lk,keys.key.index,events,w.room,&mode).await?;false}
             update=share.next()=>{share.update(update,lk,keys.key.index,events,w.room,&mode).await?;false}
             ended=sound.ended()=>{sound.finish(ended,lk,events,w.room).await?;false}
@@ -1198,6 +1231,8 @@ async fn talk<S: CallSignal>(
                     audio.spawn(playback(track));playing=true;false
                 }
                 Some(RoomEvent::TrackUnsubscribed{track:RemoteTrack::Audio(_),participant,publication,..}) if participant.identity().0==peer_id && publication.source()==TrackSource::Microphone=>true,
+                // A video track subscribed anew starts at the SFU's defaults.
+                Some(RoomEvent::TrackSubscribed{track:RemoteTrack::Video(_),publication,..})=>{viewer.forget(&publication.sid());false}
                 Some(RoomEvent::ParticipantConnected(p)) if p.identity().0==peer_id=>{hung_up=false;false}
                 Some(RoomEvent::ParticipantDisconnected(p)) if p.identity().0==peer_id=>{
                     // A hangup leaves LiveKit on request before the membership goes.
@@ -1350,6 +1385,10 @@ async fn publish_mic<'a>(
 )> {
     let mut options = RoomOptions::default();
     options.auto_subscribe = auto_subscribe;
+    // Publishers stop encoding simulcast layers no subscriber asked for.
+    // Layers are asked for explicitly (`room_video::Viewer`), not by
+    // adaptive stream, which relies on a browser's element sizes.
+    options.dynacast = true;
     options.encryption = Some(E2eeOptions {
         encryption_type: EncryptionType::Gcm,
         key_provider: provider.clone(),

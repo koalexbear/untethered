@@ -350,7 +350,7 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
                 env["UNTETHERED_QA_RECOVERY"]="1"
                 log=stack.enter_context(logs[i].open("w"))
             if share or camera:
-                # Debug builds print per-track video stats every heartbeat.
+                # Debug builds print per-track video stats every second.
                 env["UNTETHERED_QA_VIDEO_STATS"]="1"
                 # KWIN_QA_DEBUG keeps the logs after the disposable home is removed.
                 logs=Path(os.environ.get("KWIN_QA_DEBUG") or d)/f"native-{i}.log"
