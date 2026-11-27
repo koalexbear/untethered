@@ -170,6 +170,7 @@
     "rust-client/src/engine/presence.rs",
     "rust-client/src/main.rs",
     "rust-client/src/presence.rs",
+    "rust-client/src/tray.rs",
     "rust-client/src/view.rs",
     "rust-client/src/view/presence.rs",
     "rust-client/src/view/profile.rs",
@@ -178,7 +179,7 @@
    ],
    "status": "working",
    "title": "Presence and custom status",
-   "updated": "2026-11-27T20:12:43Z",
+   "updated": "2026-11-27T20:21:44Z",
    "worktree": ".claude/worktrees/n4-presence-13e26f"
   },
   "N9": {
