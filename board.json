@@ -8,6 +8,11 @@
      "at": "2026-11-27T21:28:55Z",
      "by": "claude/m12-names-fc018c",
      "text": "m12-names: M12 touches main.rs (mod names; Msg::Names; App.names field; Request::Nickname; one update arm and one Escape arm) and view.rs (a dialog slot, an 'Edit Server Profile' server-menu item, and the timeline header name gets a role colour/tag via view/names.rs). README/ROADMAP: the M12 row and a short Names paragraph only."
+    },
+    {
+     "at": "2026-11-27T21:28:57Z",
+     "by": "m12-names",
+     "text": "[M12] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: M12: engine/mod.rs+app.rs: Command::SetNickname, RoomSummary.own_name, one engine_done arm; main.rs/view.rs: Msg::Names, App.names, Request::Nickname, dialog slot, server-menu item, timeline name label; README/ROADMAP M12 row and a Names note"
     }
    ],
    "owner": "a2-voice",
@@ -31,6 +36,36 @@
    "title": "Voice processing and input sensitivity",
    "updated": "2026-11-27T21:28:20Z",
    "worktree": ".claude/worktrees/a2-voice-a94df8"
+  },
+  "M12": {
+   "branch": "claude/m12-names-fc018c",
+   "claimed": "2026-11-27T21:28:57Z",
+   "notes": [],
+   "owner": "m12-names",
+   "paths": [
+    "README.md",
+    "ROADMAP.md",
+    "rust-client/src/context_menu.rs",
+    "rust-client/src/engine/app.rs",
+    "rust-client/src/engine/mod.rs",
+    "rust-client/src/engine/names.rs",
+    "rust-client/src/engine/rooms.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/names.rs",
+    "rust-client/src/rooms.rs",
+    "rust-client/src/rooms/engine.rs",
+    "rust-client/src/view.rs",
+    "rust-client/src/view/context_menu.rs",
+    "rust-client/src/view/gallery.rs",
+    "rust-client/src/view/names.rs",
+    "rust-client/src/view/profile.rs",
+    "rust-client/src/view/room_people.rs",
+    "scripts/qa_names.py"
+   ],
+   "status": "working",
+   "title": "Per-server nicknames and role badges",
+   "updated": "2026-11-27T21:28:57Z",
+   "worktree": ".claude/worktrees/m12-names-fc018c"
   },
   "N3": {
    "branch": "codex/n3-pins-threads",
@@ -125,6 +160,11 @@
      "at": "2026-11-27T21:28:53Z",
      "by": "claude/m12-names-fc018c",
      "text": "m12-names: M12 (per-server nicknames, role badges) adds small separate pieces to your files: engine/mod.rs gains 'pub mod names;', Command::SetNickname {id, rooms, name} with one dispatch arm near the polls arms, and RoomSummary.own_name (serde default); engine/app.rs one engine_done arm (Request::Nickname(..), result) after the Poll arm. Nothing else of yours."
+    },
+    {
+     "at": "2026-11-27T21:28:57Z",
+     "by": "m12-names",
+     "text": "[M12] shares rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs: M12: engine/mod.rs+app.rs: Command::SetNickname, RoomSummary.own_name, one engine_done arm; main.rs/view.rs: Msg::Names, App.names, Request::Nickname, dialog slot, server-menu item, timeline name label; README/ROADMAP M12 row and a Names note"
     }
    ],
    "owner": "codex-n3",
