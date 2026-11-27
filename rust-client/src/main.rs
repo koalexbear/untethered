@@ -56,6 +56,7 @@ mod rooms;
 #[cfg(not(target_arch = "wasm32"))]
 mod runtime;
 mod search;
+mod switcher;
 mod transfers;
 #[cfg(not(target_arch = "wasm32"))]
 mod tray;
@@ -230,6 +231,8 @@ enum Msg {
     JoinAddress,
     /// New message (dms.rs).
     Dm(dms::Input),
+    /// The quick switcher (switcher.rs).
+    Switcher(switcher::Input),
     /// Scrolled near the top of what's loaded: fetch older messages.
     /// Page Up (true) or Page Down: scroll the timeline by most of a screen.
     PageScroll(bool),
@@ -464,6 +467,8 @@ struct App {
     /// account blocks (dms.rs).
     new_message: Option<dms::NewMessage>,
     started_dm: Option<String>,
+    /// Ctrl+K's quick switcher (switcher.rs).
+    switcher: Option<switcher::Switcher>,
     blocked: BTreeSet<String>,
     avatars: avatars::Avatars,
     viewer: Option<viewer::Viewer>,
@@ -585,6 +590,7 @@ impl App {
             join_address: String::new(),
             new_message: None,
             started_dm: None,
+            switcher: None,
             blocked: BTreeSet::new(),
             avatars: Default::default(),
             viewer: None,
@@ -1608,6 +1614,7 @@ impl App {
             Msg::JoinAddressInput(s) => self.join_address = s,
             Msg::JoinAddress => self.join_address(),
             Msg::Dm(input) => return self.new_message(input),
+            Msg::Switcher(input) => return self.switcher(input),
             Msg::AcceptInvite(id) => self.accept_invite(id),
             Msg::DeclineInvite(id) => self.decline_invite(id),
             Msg::ReadingScroll(room, at) if room == self.selected && self.original.is_none() => {
@@ -1657,7 +1664,9 @@ impl App {
             }
             Msg::ContextMenu(e) => return self.context_menu_event(e),
             Msg::Escape => {
-                if self.viewer.is_some() {
+                if self.switcher.is_some() {
+                    return self.switcher(switcher::Input::Close);
+                } else if self.viewer.is_some() {
                     self.close_viewer();
                 } else if self.new_message.is_some() {
                     return self.new_message(dms::Input::Close);
@@ -2177,6 +2186,31 @@ fn main() -> iced::Result {
                     iced::time::every(std::time::Duration::from_millis(500)).map(|_| Msg::SaveDrafts)
                 } else { iced::Subscription::none() },
                 app.typing_subscription(),
+                // Ctrl+K opens the quick switcher, also while typing, as on
+                // Discord; while it's open, the arrow keys move through it.
+                iced::event::listen_with(|event, _, _| match event {
+                    iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                        key: iced::keyboard::Key::Character(c),
+                        modifiers,
+                        ..
+                    }) if modifiers.command() && c.as_str().eq_ignore_ascii_case("k") => {
+                        Some(Msg::Switcher(switcher::Input::Toggle))
+                    }
+                    _ => None,
+                }),
+                if app.switcher.is_some() {
+                    iced::event::listen_with(|event, _, _| match event {
+                        iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                            key: iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowUp),
+                            ..
+                        }) => Some(Msg::Switcher(switcher::Input::Step(-1))),
+                        iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                            key: iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowDown),
+                            ..
+                        }) => Some(Msg::Switcher(switcher::Input::Step(1))),
+                        _ => None,
+                    })
+                } else { iced::Subscription::none() },
                 #[cfg(not(target_arch = "wasm32"))]
                 iced::event::listen_with(|event, _, _| match event {
                     // Page Up and Down scroll the messages, also while typing, as on Discord.
