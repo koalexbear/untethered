@@ -174,17 +174,21 @@ class Desktop:
     def tooltip(self,x,y):
         """Hover a control and OCR only the tooltip that appears above it.
 
-        Status text can sit right behind the tooltip, so crop to the pixels
-        that changed between the pointer resting below the row and hovering."""
-        from PIL import ImageChops
+        Status text can sit right behind the tooltip ("In voice · 3 connected"
+        does in the dock), so read only the pixels that got brighter between
+        the pointer resting below the row and hovering: the tooltip's light
+        text, not the text it covers."""
+        from PIL import ImageChops,ImageOps
         area=(max(0,x-150),max(0,y-70),x+150,y-19)
         self.hover(x,y+60);time.sleep(.25)
         before=self.shot().crop(area)
         self.hover(x,y);time.sleep(.4)
         after=self.shot().crop(area)
-        box=ImageChops.difference(before,after).convert("L").point(lambda v:255 if v>24 else 0).getbbox()
-        if not box:return ""
-        im=after.crop(box)
+        if debug:=os.environ.get("KWIN_QA_DEBUG"):
+            before.save(Path(debug)/f"tooltip-{self.i}-{x}-before.png");after.save(Path(debug)/f"tooltip-{self.i}-{x}-after.png")
+        text=ImageChops.subtract(after.convert("L"),before.convert("L")).point(lambda v:255 if v>24 else 0)
+        if not (box:=text.getbbox()):return ""
+        im=ImageOps.invert(text.crop((max(0,box[0]-4),max(0,box[1]-4),min(text.width,box[2]+4),min(text.height,box[3]+4))))
         buf=io.BytesIO();im.resize((im.width*3,im.height*3)).save(buf,"PNG")
         return sp.run(["tesseract","stdin","stdout","--psm","7"],input=buf.getvalue(),capture_output=True).stdout.decode().lower()
 
@@ -206,16 +210,21 @@ class Desktop:
             return
         icons={"mute":[0],"unmute":[0],"start":[1],"camera":[1],"share":[2],"sharing":[2],
                "stop":[2,1],"cancel":[2,1],"leave":[3],"hang":[3]}
+        read={}
         def locate():
             if label in icons:
                 buttons=icon_buttons(self.shot())
                 # Try the usual slot first; the tooltip text decides.
                 order=[i for i in icons[label] if i<len(buttons)]
                 for i in order+[i for i in range(len(buttons)) if i not in order]:
-                    if re.search(r"\b"+label+r"\b",self.tooltip(*buttons[i])):return buttons[i]
+                    read[buttons[i]]=tip=self.tooltip(*buttons[i])
+                    if re.search(r"\b"+label+r"\b",tip):return buttons[i]
                 return None
             return next(((x,y) for word,x,y in self.words() if word==label),None)
-        x,y=wait_for(label,locate,12)
+        try:x,y=wait_for(label,locate,12)
+        except RuntimeError:
+            if label in icons:print(f"Desktop {self.i+1} dock tooltips:",{k:v.strip() for k,v in read.items()},flush=True)
+            raise
         self.press(x,y)
 
     def open_stage(self):
