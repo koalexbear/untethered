@@ -35,6 +35,15 @@ pub fn composer_offer() -> Option<Result<Option<PasteOffer>>> {
             .map_err(|_|std::io::Error::other("clipboard worker did not reply"))?))
 }
 
+/// `None` means Iced is not using a Wayland clipboard. Otherwise offer a PNG
+/// on the focused seat's clipboard, and say whether that worked.
+pub fn store_png(png: Vec<u8>) -> Option<bool> {
+    let sender=ACTIVE.lock().ok()?.upgrade()?;
+    let (tx,rx)=mpsc::channel();
+    sender.send(worker::Command::StorePng(png,tx)).ok()?;
+    Some(rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap_or(false))
+}
+
 /// File drag events from the existing data device. No clipboard selections
 /// are inspected. Untethered has one top-level window.
 pub enum FileDrag {
