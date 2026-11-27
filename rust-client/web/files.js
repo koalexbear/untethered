@@ -26,6 +26,13 @@ export function pick(room) {
     input.onchange = () => { if (input.files.length) stage(room, input.files); };
     input.click();
 }
+export function pick_avatar(request) {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/png,image/jpeg,image/gif,image/webp";
+    input.onchange = input.oncancel = () => stage(request, input.files);
+    input.click();
+}
 export async function thumbnail(file, width, height) {
     const bitmap = await createImageBitmap(file);
     try {

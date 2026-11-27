@@ -89,6 +89,10 @@ pub enum Event {
         room: String,
         user: String,
     },
+    MemberActions {
+        room: String,
+        user: String,
+    },
     Mention {
         room: String,
         user: String,
@@ -362,7 +366,13 @@ impl App {
                 if r.posting.can_moderate(&self.matrix_id, user, action)
                     && membership.is_none_or(|kind| action.applies(kind))
                 {
-                    items.push(item(entry, Some(profile())));
+                    items.push(item(
+                        entry,
+                        Some(act(Event::MemberActions {
+                            room: room.to_owned(),
+                            user: user.to_owned(),
+                        })),
+                    ));
                 }
             }
         }
@@ -437,20 +447,21 @@ impl App {
         }
     }
 
-    /// The other person in a direct message room. Only Linux keeps the
-    /// engine's answer (for calls); elsewhere it's whoever else has written.
+    /// Use the SDK's direct target even before the room's timeline is loaded.
     fn dm_peer<'a>(&self, r: &'a Room) -> Option<&'a str> {
-        #[cfg(target_os = "linux")]
         if let Some(peer) = &r.dm_peer {
             return Some(peer);
         }
-        r.members
+        let mut others = r
+            .members
             .keys()
             .map(String::as_str)
-            .find(|user| *user != self.matrix_id)
+            .filter(|user| *user != self.matrix_id);
+        let peer = others.next()?;
+        others.next().is_none().then_some(peer)
     }
 
-    fn direct_with(&self, user: &str) -> Option<&String> {
+    pub(crate) fn direct_with(&self, user: &str) -> Option<&String> {
         self.live
             .list
             .iter()
@@ -534,7 +545,10 @@ impl App {
             Event::CopyLink { room, event } => {
                 return copy(matrix_to(&room, event.as_deref(), &self.matrix_id));
             }
-            Event::Profile { room, user } => return self.show_profile(room, user),
+            Event::Profile { room, user } => {
+                return self.profile_action(crate::engine::profile::Action::Open { room, user });
+            }
+            Event::MemberActions { room, user } => return self.show_member_actions(room, user),
             Event::Mention { room, user } => return self.insert_mention(&room, &user),
             Event::Direct(room) if self.live.list.contains_key(&room) => {
                 // Open first, so the section doesn't open another DM on the way.
@@ -612,7 +626,7 @@ impl App {
 
     /// The member card for `user` in `room`'s member list, which also holds
     /// Kick and Ban with a reason.
-    fn show_profile(&mut self, room: String, user: String) -> Task<Msg> {
+    fn show_member_actions(&mut self, room: String, user: String) -> Task<Msg> {
         if !self.live.list.contains_key(&room) {
             return Task::none();
         }

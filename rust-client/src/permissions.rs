@@ -121,7 +121,7 @@ impl Posting {
                 .all(|k| c.get(k).is_none_or(Value::is_object)))
         .then_some(c)
     }
-    fn actor(&self, me: &str) -> Option<i64> {
+    pub(crate) fn actor(&self, me: &str) -> Option<i64> {
         if me.is_empty() {
             return None;
         }

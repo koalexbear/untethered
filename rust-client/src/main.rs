@@ -814,6 +814,7 @@ impl App {
         ) {
             self.server_menu = false;
             self.context_menu.open = None;
+            self.sdk_ui.profile.dismiss_card();
         }
         #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
         if matches!(msg, Msg::SpaceAlerts) {
@@ -1352,6 +1353,13 @@ impl App {
                 }
             }
             Msg::Files(mut room, files) => {
+                #[cfg(target_arch = "wasm32")]
+                if let Some(id) = room
+                    .strip_prefix(engine::profile::AVATAR_PICKER)
+                    .and_then(|id| id.parse().ok())
+                {
+                    return self.profile_picked(id, files.into_iter().next());
+                }
                 self.hover_files = false;
                 if room.is_empty() {
                     room = self.selected.clone();
@@ -1528,6 +1536,9 @@ impl App {
             }
             Msg::ServerMenu(open) => self.server_menu = open,
             Msg::Escape if self.context_menu.is_open() => self.context_menu.dismiss(),
+            Msg::Escape if self.sdk_ui.profile.card.is_some() => {
+                return self.profile_action(engine::profile::Action::Close);
+            }
             Msg::ContextMenu(e) => return self.context_menu_event(e),
             Msg::Escape => {
                 if self.viewer.is_some() {

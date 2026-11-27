@@ -327,6 +327,8 @@ impl App {
     pub(crate) fn engine_event(&mut self, event: Event) {
         match event {
             Event::Account(a) => self.engine_account(a),
+            Event::ProfileSaved { id, result } => self.profile_saved(id, result),
+            Event::ProfileDirect { id, result } => self.profile_direct(id, result),
             Event::Rooms(list) => {
                 for left in self.live.apply_engine(list) {
                     self.reply_drafts.remove(&left);
@@ -340,6 +342,7 @@ impl App {
                 self.sync_space_rules();
                 // A room community setup created opens once it's listed.
                 self.open_created();
+                self.open_profile_dm();
             }
             Event::Timeline(t) => {
                 if let Some(r) = self.live.list.get_mut(&t.room) {
@@ -429,10 +432,9 @@ impl App {
                 // loaded: the timeline and the typing line use it before
                 // their next message brings it.
                 if matches!(member.kind, crate::moderation::Kind::Joined)
-                    && !member.name.is_empty()
                     && let Some(r) = self.live.list.get_mut(&room)
                 {
-                    r.members.insert(user.clone(), member.name.clone());
+                    r.update_member_profile(&user, &member);
                 }
                 if self.people && self.selected == room {
                     self.directory.observe(&user, member);
@@ -678,9 +680,11 @@ impl App {
     fn members_loaded(&mut self, room: &str, state: RoomState) {
         self.completion.learn_roster(room, &state.members);
         if let Some(r) = self.live.list.get_mut(room) {
-            for (user, member) in state.members {
-                if !member.name.is_empty() {
-                    r.members.entry(user).or_insert(member.name);
+            for (user, member) in &state.members {
+                if member.kind == crate::moderation::Kind::Joined
+                    && !r.profile_members.contains(user)
+                {
+                    r.update_member_profile(user, member);
                 }
             }
         }

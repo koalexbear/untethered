@@ -38,7 +38,6 @@ pub struct Room {
     pub voice: bool,
     #[cfg(target_os = "linux")]
     pub voice_members: BTreeMap<String, (String, u64)>,
-    #[cfg(target_os = "linux")]
     pub dm_peer: Option<String>,
     pub unread: bool,
     pub read: crate::reading::State,
@@ -50,6 +49,8 @@ pub struct Room {
     pub avatar: Option<String>,
     /// Members' profile pictures (mxc URIs), as the timeline shows them.
     pub avatars: BTreeMap<String, String>,
+    /// Current membership has priority over profile data attached to old posts.
+    pub profile_members: BTreeSet<String>,
     /// The room that replaced this one, when this account hasn't joined it
     /// yet: the room is read-only and offers to join it (upgrades.rs).
     pub successor: Option<String>,
@@ -134,6 +135,20 @@ pub fn real_send_error(e: &Value) -> bool {
             .is_some_and(|s| !s.is_empty() && s != "not sent")
 }
 impl Room {
+    pub fn update_member_profile(&mut self, user: &str, member: &crate::moderation::Member) {
+        self.profile_members.insert(user.to_owned());
+        if member.name.is_empty() {
+            self.members.remove(user);
+        } else {
+            self.members.insert(user.to_owned(), member.name.clone());
+        }
+        if let Some(avatar) = &member.avatar {
+            self.avatars.insert(user.to_owned(), avatar.clone());
+        } else {
+            self.avatars.remove(user);
+        }
+    }
+
     pub fn by_id(&self, id: &str) -> Option<&Post> {
         self.event_rows.get(id).and_then(|r| self.history.get(r))
     }
