@@ -35,14 +35,19 @@ impl App {
             self.setup = None;
             self.pending.retain(|_, p| !matches!(p, Request::Setup(_)));
             self.close_mentions();
-            self.pending
-                .retain(|_, p| !matches!(p, Request::ShareReads(..) | Request::ReadState(..)));
+            self.pending.retain(|_, p| {
+                !matches!(
+                    p,
+                    Request::ShareReads(..) | Request::ShareTyping(..) | Request::ReadState(..)
+                )
+            });
         }
         // Account data can arrive before the first account state of a
         // restored session (the engine reads it from its store right away), so
         // forget it only when the account goes away, not when it shows up.
         if !self.logged_in || (!self.matrix_id.is_empty() && self.matrix_id != user) {
             self.read_sharing = Default::default();
+            self.typing = Default::default();
             #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
             self.alerts.reset();
         }
