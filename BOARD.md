@@ -5,7 +5,7 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
 | N3 | Pinned messages and Matrix threads | codex-n3 | `codex/n3-pins-threads` | working | 2026-11-27T15:03:37Z | `rust-client/src/engine/account_ui.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/live_test.rs`, `rust-client/src/engine/messaging.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/pins.rs`, `rust-client/src/engine/threads.rs`, `scripts/qa_matrix_sdk.py` |
-| copy-image-zoom | Copy Image, and zoom in the viewer (part of P3) | main-session | `copy-image-zoom` | working | 2026-11-27T15:32:42Z | `README.md`, `ROADMAP.md`, `rust-client/src/context_menu.rs`, `rust-client/src/copy_image.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/main.rs`, `rust-client/src/view.rs`, `rust-client/src/view/context_menu.rs`, `rust-client/src/view/viewer.rs`, `rust-client/src/view/zoom.rs`, `rust-client/src/viewer.rs`, `rust-client/vendor/smithay-clipboard`, `scripts/qa_copy_zoom.py` |
+| copy-image-zoom | Copy Image, and zoom in the viewer (part of P3) | main-session | `copy-image-zoom` | review | 2026-11-27T15:32:44Z | `README.md`, `ROADMAP.md`, `rust-client/src/context_menu.rs`, `rust-client/src/copy_image.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/main.rs`, `rust-client/src/view.rs`, `rust-client/src/view/context_menu.rs`, `rust-client/src/view/viewer.rs`, `rust-client/src/view/zoom.rs`, `rust-client/src/viewer.rs`, `rust-client/vendor/smithay-clipboard`, `scripts/qa_copy_zoom.py` |
 
 ## Done
 

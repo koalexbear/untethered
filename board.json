@@ -66,9 +66,9 @@
     "rust-client/vendor/smithay-clipboard",
     "scripts/qa_copy_zoom.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Copy Image, and zoom in the viewer (part of P3)",
-   "updated": "2026-11-27T15:32:42Z",
+   "updated": "2026-11-27T15:32:44Z",
    "worktree": "."
   }
  },
