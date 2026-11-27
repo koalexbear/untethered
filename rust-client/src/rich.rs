@@ -68,7 +68,15 @@ pub struct Style {
     pub link: Option<Link>,
     /// Hidden until revealed; numbered from 0 within the message.
     pub spoiler: Option<u16>,
+    /// A custom emoji (`<img data-mx-emoticon>`, ROADMAP M11) by its mxc
+    /// URI: the run's text is [`EMOTE`], which the view draws it over.
+    pub emote: Option<String>,
 }
+
+/// What makes room for a custom emoji in a line, drawn invisibly with its
+/// picture over it: an em dash, a square's width in most fonts, and unlike
+/// a space it keeps that width at the end of a line.
+pub const EMOTE: &str = "\u{2014}";
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Link {
@@ -85,6 +93,29 @@ const REASON: [u8; 3] = [0x94, 0x9b, 0xa4];
 const MAX_NESTING: usize = 12;
 
 impl Doc {
+    /// The custom emoji it shows, by mxc URI.
+    pub fn emotes(&self) -> Vec<&str> {
+        fn walk<'a>(blocks: &'a [Block], out: &mut Vec<&'a str>) {
+            for b in blocks {
+                match b {
+                    Block::Paragraph(runs) | Block::Heading(_, runs) => {
+                        out.extend(runs.iter().filter_map(|r| r.style.emote.as_deref()))
+                    }
+                    Block::Quote(inner) => walk(inner, out),
+                    Block::List { items, .. } => {
+                        for item in items {
+                            walk(item, out);
+                        }
+                    }
+                    Block::Code { .. } | Block::Rule => {}
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(&self.blocks, &mut out);
+        out
+    }
+
     /// `formatted` is an `org.matrix.custom.html` body. None when the message
     /// reads the same as its plain body, which the view then shows as text.
     pub fn message(formatted: Option<&str>, body: &str) -> Option<Self> {
@@ -347,9 +378,13 @@ fn walk(b: &mut Builder, node: &NodeRef, style: &Style) {
                 "br" => b.line_break(style),
                 "hr" => b.rule(),
                 "img" => {
-                    // Element shows only emoticons from the homeserver
-                    // inline; their description reads the same.
-                    if let Some(alt) = attr("alt").or_else(|| attr("title")) {
+                    // A custom emoji from an image pack shows as its picture
+                    // (ROADMAP M11); any other image as its description,
+                    // as Element shows only emoticons inline.
+                    let src = attr("src").filter(|s| s.starts_with("mxc://"));
+                    if let (Some(src), Some(_)) = (src, attr("data-mx-emoticon")) {
+                        b.emote(src, style);
+                    } else if let Some(alt) = attr("alt").or_else(|| attr("title")) {
                         b.text(&alt, style, true);
                     }
                 }
@@ -643,6 +678,17 @@ impl Builder {
             rest = &rest[at + 2..];
         }
         self.linked(rest, style);
+    }
+
+    /// A custom emoji: a run of its own, never merged with its neighbours.
+    fn emote(&mut self, url: String, style: &Style) {
+        self.line.push(Run {
+            text: EMOTE.into(),
+            style: Style {
+                emote: Some(url),
+                ..style.clone()
+            },
+        });
     }
 
     fn spoiler_marker(&mut self, style: &Style) {
@@ -1149,5 +1195,23 @@ mod tests {
                 plain("  ·  Sending…"),
             ])]
         );
+    }
+
+    #[test]
+    fn a_custom_emoji_is_its_picture_and_other_images_their_description() {
+        let doc = Doc::html(
+            "hi <img data-mx-emoticon src=\"mxc://h/blob\" alt=\":blob:\" height=\"32\"> \
+             <img src=\"mxc://h/photo\" alt=\"a photo\">",
+        );
+        assert_eq!(doc.emotes(), ["mxc://h/blob"]);
+        let Block::Paragraph(runs) = &doc.blocks[0] else {
+            panic!("{doc:?}")
+        };
+        let emote = runs.iter().find(|r| r.style.emote.is_some()).unwrap();
+        assert_eq!(emote.text, EMOTE);
+        assert!(runs.iter().any(|r| r.text.contains("a photo")));
+        // Not an mxc URI: just its description.
+        let web = Doc::html("<img data-mx-emoticon src=\"https://h/x.png\" alt=\":x:\">");
+        assert!(web.emotes().is_empty());
     }
 }

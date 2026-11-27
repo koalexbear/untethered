@@ -249,6 +249,8 @@ pub enum Fit {
     Inline,
     /// A profile picture or room icon: a small square thumbnail.
     Avatar,
+    /// A custom emoji or sticker (ROADMAP M11): scaled, never cropped.
+    Emote,
     /// The original, for the media viewer.
     Full,
     /// The original sharper, for zooming into a large picture in the viewer.
@@ -260,6 +262,7 @@ impl Fit {
         match self {
             Self::Inline => (crate::preview::INLINE_WIDTH, crate::preview::INLINE_HEIGHT),
             Self::Avatar => (160, 160),
+            Self::Emote => (160, 160),
             Self::Full => (2560, 1600),
             Self::Zoom => (4096, 4096),
         }

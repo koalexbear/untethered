@@ -13,15 +13,16 @@ use iced::{
 const GRID: usize = 40;
 
 /// `input` is the search field, built by the caller with its own messages;
-/// `extra` sits beside it. With `browse`, an empty search shows common
-/// emoji instead of nothing. `pick` is what clicking an emoji does and
-/// `active` highlights one, as our own reactions are.
+/// `extra` sits beside it, and `custom` (the image packs' emoji, emotes.rs)
+/// under it. Without `extra` (the composer's picker), an empty search shows
+/// common emoji instead of nothing. `pick` is what clicking an emoji does
+/// and `active` highlights one, as our own reactions are.
 pub(super) fn panel<'a>(
     title: &'static str,
     search: &str,
     input: El<'a>,
     extra: Option<El<'a>>,
-    browse: bool,
+    custom: Option<El<'a>>,
     pick: impl Fn(&str) -> Option<Msg>,
     active: impl Fn(&str) -> bool,
 ) -> El<'a> {
@@ -46,12 +47,12 @@ pub(super) fn panel<'a>(
     let query = search.trim();
     let found = if !query.is_empty() {
         emoji::search(query, GRID)
-    } else if browse {
+    } else if extra.is_none() {
         emoji::common(GRID)
     } else {
         Vec::new()
     };
-    let has_extra = extra.is_some();
+    let has_extra = extra.is_some() || custom.is_some();
     let mut body = Column::new()
         .push(text(title).size(12).font(BOLD).color(CHANNEL))
         .push(quick)
@@ -62,7 +63,8 @@ pub(super) fn panel<'a>(
                 .spacing(6)
                 .align_y(Center),
         )
-        .spacing(8);
+        .spacing(8)
+        .extend(custom);
     if !found.is_empty() {
         body = body.push(
             Row::with_children(

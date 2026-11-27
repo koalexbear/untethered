@@ -701,7 +701,7 @@ pub(super) fn view(app: &App) -> Option<El<'_>> {
                     .on_input(|query| Msg::Discussion(Action::EmojiQuery(query)))
                     .into(),
                 None,
-                true,
+                None,
                 |emoji| Some(Msg::Discussion(Action::Emoji(emoji.into()))),
                 |_| false,
             ));

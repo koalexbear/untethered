@@ -99,7 +99,7 @@ pub async fn inline_bytes(
 ) -> Option<Vec<u8>> {
     let source = sources.get(&preview.mxc, preview.encrypted)?;
     let media = client.media();
-    let whole_limit = if preview.fit == Fit::Avatar {
+    let whole_limit = if matches!(preview.fit, Fit::Avatar | Fit::Emote) {
         INLINE_BYTES
     } else {
         FULL_BYTES
@@ -114,6 +114,13 @@ pub async fn inline_bytes(
                 // Cropped to a square, at twice the largest size drawn.
                 MediaThumbnailSettings::with_method(
                     Method::Crop,
+                    UInt::from(160u32),
+                    UInt::from(160u32),
+                )
+            } else if preview.fit == Fit::Emote {
+                // A custom emoji or sticker keeps its shape.
+                MediaThumbnailSettings::with_method(
+                    Method::Scale,
                     UInt::from(160u32),
                     UInt::from(160u32),
                 )

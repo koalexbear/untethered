@@ -95,6 +95,10 @@ impl Toggle {
     pub fn parts(&self) -> (&str, &str, &str) {
         (&self.room, &self.target, &self.key)
     }
+    /// Adds our reaction, rather than taking it back.
+    pub fn adds(&self) -> bool {
+        self.remove.is_none()
+    }
     pub fn for_post(room: &str, post: &Post, key: &str) -> Option<Self> {
         if !post.reactable || !valid_key(key) {
             return None;
@@ -150,6 +154,13 @@ impl App {
         };
         if Toggle::for_post(&op.room, p, &op.key).as_ref() != Some(&op) {
             return;
+        }
+        // A custom emoji goes out with its shortcode beside it (emotes.rs).
+        if op.adds()
+            && op.key.starts_with("mxc://")
+            && let Some(name) = self.emote_name(&op.key).map(str::to_owned)
+        {
+            return self.react_emote(op, name);
         }
         self.reaction_picker = None;
         let (cmd, params) = if let Some(id) = &op.remove {

@@ -50,15 +50,28 @@ pub(super) fn view<'a>(app: &'a App, post: &'a Post) -> Option<El<'a>> {
     let mut chips = Row::new().spacing(4);
     for (key, chip) in &post.chips {
         let mine = own(key);
+        // A custom emoji's key is its picture's mxc URI (emotes.rs).
+        let custom = key.starts_with("mxc://");
+        let face: El = if custom {
+            app.emote_image(key, 18.)
+        } else {
+            text(key.to_string()).size(15).into()
+        };
         let caption = row![
-            text(key.to_string()).size(15),
+            face,
             text(chip.count.to_string()).size(14).font(super::BOLD)
         ]
         .spacing(6)
         .align_y(Center);
+        let name = if custom {
+            app.emote_name(key)
+                .map_or_else(|| "Custom emoji".to_owned(), |n| format!(":{n}:"))
+        } else {
+            label(key)
+        };
         let hint = format!(
             "{} · {} · {}",
-            label(key),
+            name,
             chip.count,
             if mine {
                 "Remove your reaction"
@@ -150,7 +163,20 @@ pub(super) fn panel<'a>(app: &'a App, post: &'a Post) -> Option<El<'a>> {
         &p.custom,
         input.into(),
         Some(add.into()),
-        false,
+        app.emote_sections(
+            &app.selected,
+            &p.custom,
+            |i| {
+                (app.connected && app.verified && !app.reaction_pending(id, &i.url)).then(|| {
+                    Msg::Emote(crate::emotes::Input::React {
+                        event: id.clone(),
+                        url: i.url.clone(),
+                        shortcode: i.shortcode.clone(),
+                    })
+                })
+            },
+            |i| own(post, &i.url),
+        ),
         |key| action(app, post, key),
         |key| own(post, key),
     );

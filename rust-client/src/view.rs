@@ -9,6 +9,7 @@ mod community;
 mod context_menu;
 mod dms;
 mod emoji_picker;
+mod emotes;
 mod explore;
 mod forward;
 mod gallery;
@@ -3652,7 +3653,7 @@ impl App {
             None => Space::new().into(),
         };
         let field = column![staged].push(
-            row![attach, editor, emoji, send]
+            row![attach, editor, emoji, self.sticker_button(restricted), send]
                 .spacing(14)
                 .align_y(Center)
                 .padding(Padding {

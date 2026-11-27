@@ -35,6 +35,7 @@ pub fn rich<'a, Link: Clone + 'static, Message>(
         wrapping: Wrapping::default(),
         hovered_link: None,
         on_link_click: None,
+        images: Vec::new(),
     }
 }
 
@@ -47,6 +48,8 @@ pub struct Selectable<'a, Link: Clone + 'static, Message> {
     wrapping: Wrapping,
     hovered_link: Option<usize>,
     on_link_click: Option<Box<dyn Fn(Link) -> Message + 'a>>,
+    /// Pictures drawn over spans that make room for them: custom emoji.
+    images: Vec<(usize, iced::widget::image::Handle)>,
 }
 
 impl<'a, Link: Clone + 'static, Message> Selectable<'a, Link, Message> {
@@ -72,6 +75,11 @@ impl<'a, Link: Clone + 'static, Message> Selectable<'a, Link, Message> {
     }
     pub fn on_link_click(mut self, on_link_click: impl Fn(Link) -> Message + 'a) -> Self {
         self.on_link_click = Some(Box::new(on_link_click));
+        self
+    }
+    /// Draw `handle` over span `index`, whose text only makes room for it.
+    pub fn images(mut self, images: Vec<(usize, iced::widget::image::Handle)>) -> Self {
+        self.images = images;
         self
     }
     fn spans(&self) -> &[Span<'a, Link, Font>] {
@@ -341,6 +349,28 @@ impl<Link: Clone + 'static, Message> Widget<Message, Theme, Renderer>
             style,
             viewport,
         );
+        // Each picture fills the square its span makes, centred on the line.
+        for (index, handle) in &self.images {
+            for bounds in state.paragraph.span_bounds(*index) {
+                let side = bounds.width.min(bounds.height);
+                if side < 1. {
+                    continue;
+                }
+                let square = Rectangle::new(
+                    Point::new(
+                        bounds.x + (bounds.width - side) / 2.,
+                        bounds.y + (bounds.height - side) / 2.,
+                    ),
+                    Size::new(side, side),
+                ) + translation;
+                iced::advanced::image::Renderer::draw_image(
+                    renderer,
+                    iced::advanced::image::Image::new(handle.clone()),
+                    square,
+                    *viewport,
+                );
+            }
+        }
     }
 
     fn update(

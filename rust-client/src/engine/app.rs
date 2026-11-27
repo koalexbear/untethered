@@ -80,9 +80,10 @@ impl App {
             Request::Edit(room, event) => {
                 let (room, event) = (room.clone(), event.clone());
                 let body = text(&data["content"]["m.new_content"]["body"]);
-                let pills = self
+                let mut pills = self
                     .completion
                     .pills(crate::autocomplete::Field::Edit, &event);
+                pills.extend(self.emote_pills(&room, &body));
                 self.command(
                     |id| Command::Edit {
                         id,
@@ -310,9 +311,10 @@ impl App {
             body.clone(),
             reply.as_ref().map(|q| q.id.clone()),
         );
-        let pills = self
+        let mut pills = self
             .completion
             .pills(crate::autocomplete::Field::Composer, &room);
+        pills.extend(self.emote_pills(&room, &body));
         self.command(
             |id| Command::Send {
                 id,
@@ -331,6 +333,7 @@ impl App {
             Event::Discussion { id, result } => self.discussion_response(id, result),
             Event::ProfileSaved { id, result } => self.profile_saved(id, result),
             Event::ProfileDirect { id, result } => self.profile_direct(id, result),
+            Event::Packs(packs) => self.set_packs(packs),
             Event::Rooms(list) => {
                 let left = self.live.apply_engine(list);
                 self.hide_blocked_invites();
@@ -618,6 +621,7 @@ impl App {
             }
             (Request::Forward(to), result) => self.forwarded(to, result.is_ok()),
             (Request::Poll(op), result) => self.poll_done(op, result.is_ok()),
+            (Request::Pack(op), result) => self.pack_done(op, result.is_ok()),
             (Request::Report, result) => self.report_result(result.is_ok()),
             (Request::ReadState(room, event), result) => {
                 self.read_result(room, event, result.is_ok())

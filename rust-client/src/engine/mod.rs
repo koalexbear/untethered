@@ -27,6 +27,7 @@ mod keyring;
 mod live_test;
 mod media;
 mod messaging;
+pub mod packs;
 pub mod pins;
 pub mod polls;
 mod presence;
@@ -216,6 +217,26 @@ pub enum Command {
         id: i64,
         room: String,
         event: String,
+    },
+    /// Use a room's image pack in every room, or stop (ROADMAP M11).
+    UsePack {
+        id: i64,
+        room: String,
+        key: String,
+        on: bool,
+    },
+    SendSticker {
+        id: i64,
+        room: String,
+        image: packs::Image,
+    },
+    /// React with a custom emoji, or take that reaction back.
+    ReactEmote {
+        id: i64,
+        room: String,
+        event: String,
+        url: String,
+        shortcode: String,
     },
     Report {
         id: i64,
@@ -498,6 +519,8 @@ pub enum Event {
     TypingSharing(bool),
     /// People's presence (N4), when it changed.
     Presence(Vec<(String, crate::presence::Presence)>),
+    /// Every image pack this account can use (ROADMAP M11).
+    Packs(packs::Packs),
     /// Whether the homeserver shares presence (N4): Unknown when the
     /// engine starts asking.
     PresenceSupport(crate::presence::Support),
@@ -1103,6 +1126,9 @@ struct Live {
     typing: Sender<(String, bool)>,
     /// Our status and the people shown, for `presence::run`.
     presence: Sender<presence::Request>,
+    /// Rooms whose history was asked for, whose image packs `packs::run`
+    /// reads.
+    packs: Sender<String>,
     profile: tokio::sync::watch::Sender<profile::Changes>,
     tasks: Tasks,
 }
@@ -1177,6 +1203,8 @@ impl Engine {
         tasks.spawn(typing::notices(client.clone(), notices));
         let (presence, requests) = async_channel::unbounded();
         tasks.spawn(presence::run(client.clone(), self.events.clone(), requests));
+        let (packs, opened) = async_channel::unbounded();
+        tasks.spawn(packs::run(client.clone(), self.events.clone(), opened));
         #[cfg(target_os = "linux")]
         calls::watch(&client, self.events.clone());
         alerts::register(&client, self.events.clone()).await;
@@ -1196,6 +1224,7 @@ impl Engine {
             verifier,
             typing,
             presence,
+            packs,
             profile,
             tasks,
         });
@@ -1287,6 +1316,8 @@ impl Engine {
                 let Some(live) = &self.live else {
                     return self.done(id, Err(Failure::Unavailable)).await;
                 };
+                // An opened room's own unstable image pack isn't synced.
+                let _ = live.packs.try_send(room.clone());
                 let (timelines, events) = (live.timelines.clone(), self.events.clone());
                 rt::spawn(async move {
                     let result = timelines.paginate(&room).await;
@@ -1494,6 +1525,30 @@ impl Engine {
             Command::EndPoll { id, room, event } => {
                 self.job(id, move |_, timelines, _| async move {
                     timelines.end_poll(&room, &event).await
+                })
+                .await
+            }
+            Command::UsePack { id, room, key, on } => {
+                self.job(id, move |client, _, _| async move {
+                    packs::use_everywhere(&client, &room, &key, on).await
+                })
+                .await
+            }
+            Command::SendSticker { id, room, image } => {
+                self.job(id, move |_, timelines, _| async move {
+                    timelines.send_sticker(&room, &image).await
+                })
+                .await
+            }
+            Command::ReactEmote {
+                id,
+                room,
+                event,
+                url,
+                shortcode,
+            } => {
+                self.job(id, move |_, timelines, _| async move {
+                    timelines.react_emote(&room, &event, &url, &shortcode).await
                 })
                 .await
             }
