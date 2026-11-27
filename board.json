@@ -138,9 +138,9 @@
     "rust-client/src/view/room_people.rs",
     "scripts/qa_names.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Per-server nicknames and role badges",
-   "updated": "2026-11-27T21:28:57Z",
+   "updated": "2026-11-27T21:56:30Z",
    "worktree": ".claude/worktrees/m12-names-fc018c"
   },
   "N3": {
