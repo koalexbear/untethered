@@ -633,6 +633,14 @@ impl Capture {
         };
         #[cfg(debug_assertions)]
         let mut probe = trace_video_enabled().then(|| RenderProbe::new(input.name()));
+        // The sharer's own tile, logged like a remote track's render rate.
+        #[cfg(debug_assertions)]
+        let mut shown = (trace_video_enabled() && preview.is_some()).then(|| {
+            RenderProbe::new(match input {
+                VideoInput::Window => "local-window",
+                VideoInput::Camera => "local-camera",
+            })
+        });
         loop {
             #[cfg(debug_assertions)]
             if let Some(probe) = &mut probe {
@@ -647,8 +655,14 @@ impl Capture {
             if let Some(tile) = preview
                 && last.is_none_or(|at: Instant| at.elapsed() >= Duration::from_millis(100))
             {
-                tile.views
-                    .frame(&tile.sid, "", input, rgba(&mut buf, pw, ph));
+                #[cfg(debug_assertions)]
+                let started = Instant::now();
+                let frame = rgba(&mut buf, pw, ph);
+                #[cfg(debug_assertions)]
+                if let Some(probe) = &mut shown {
+                    probe.frame(started.elapsed(), self.width, self.height);
+                }
+                tile.views.frame(&tile.sid, "", input, frame);
                 let _ = tile.events.try_send(json!({"command":"video_redraw"}));
                 last = Some(Instant::now());
             }

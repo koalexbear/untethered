@@ -1,6 +1,7 @@
 """Two real Wayland windows on the fixture compositor. Change only the selected one.
 
-Prism is 1600x900 so a 1080p-capable share keeps its full width. Two colour
+Prism is 1598x900 so a 1080p-capable share keeps its full width, and a width
+that isn't a multiple of 8 makes GStreamer pad every I420 row. Two colour
 fields fill the top; a bar sweeps the bottom band at 60 Hz so KWin's screencast
 delivers new frames continuously (an idle window yields no PipeWire buffers).
 """
@@ -46,7 +47,7 @@ class Pattern(QtWidgets.QWidget):
             x=int((time.monotonic()-self.start)*900)%(w+80)-80
             p.fillRect(x,h-band+20,80,band-40,QtGui.QColor("#f0f0f0"))
         p.end()
-target=Pattern("Prism",["#eb2477","#0ecc99"],(1600,900),moving=True)
+target=Pattern("Prism",["#eb2477","#0ecc99"],(1598,900),moving=True)
 other=Pattern("Decoy",["#ffff00","#ffff00"],(480,270))
 target.show();other.show()
 def change():

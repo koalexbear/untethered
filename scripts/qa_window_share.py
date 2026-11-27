@@ -119,6 +119,41 @@ def check_video_rate(sender,peers,others=()):
     print(f"Video rate: sender outbound {out['width']}x{out['height']} at {out['fps']:.1f} fps; receivers inbound "
           +" / ".join(f"{i['fps']:.1f} fps" for i in inbound)+".",flush=True)
 
+def evidence(desks,name):
+    """Save each client's screen as <name>-<n>.png under RTC_QA_SCREENSHOTS, if set."""
+    if not (dest:=os.getenv("RTC_QA_SCREENSHOTS")):return
+    path=Path(dest);path.mkdir(parents=True,exist_ok=True)
+    for i,d in enumerate(desks):
+        try:d.shot().save(path/f"{name}-{i+1}.png")
+        except Exception as e:print(f"Screenshot {name}-{i+1} failed: {e!r}",flush=True)
+
+def own_share(desks,sender):
+    """The sharer's own stage shows clean, upright fields at the capture rate.
+
+    Prism's width isn't a multiple of 8, so GStreamer pads its I420 rows; a
+    reader that assumes packed rows shears the picture and drifts through the
+    planes (colour errors and tearing) on the stage and at every receiver."""
+    from qa_room_layout import pattern_box
+    kde=sender.kde
+    sender.open_stage()
+    def stage():
+        box=pattern_box(kde.capture().crop((282,60,1180,700)),FIRST)
+        return box if box and box[2]-box[0]>700 else None
+    try:own=wait_for("sharer sees their own window upright on stage",stage,20)
+    except RuntimeError:
+        evidence(desks,"own-stage-failed");raise
+    evidence(desks,"own-stage")
+    if not sender.stats:
+        print(f"Sharer's own stage shows Prism {own[2]-own[0]} px wide.",flush=True);return
+    def smooth():
+        got=video_stats(sender,"render").get("local-window")
+        return got if got and got["fps"]>=24 else None
+    try:rate=wait_for("sharer's own preview redrawn at >=24 fps",smooth,20)
+    except RuntimeError:
+        print("Sharer's own preview:",video_stats(sender,"render"),flush=True);raise
+    print(f"Sharer's own stage shows Prism {own[2]-own[0]} px wide; its preview is converted at "
+          f"{rate['fps']:.1f} fps from {rate['width']}x{rate['height']}, {rate['convert_ms']} ms per frame.",flush=True)
+
 def pattern_window(stack,sender):
     kde=sender.kde
     source=sp.Popen(["/usr/bin/python",str(Path(__file__).with_name("qa_window_pattern.py"))],env=kde.env,stdin=sp.PIPE,stdout=sp.DEVNULL)
@@ -202,8 +237,11 @@ def window_share(stack,desks,secret,original,publications):
     try:wait_for("both receivers render Prism",lambda:all(area(p,FIRST) for p in peers),20)
     except RuntimeError:
         if sender.stats:print("Video stats:",[(video_stats(d,"outbound"),video_stats(d,"inbound"),video_stats(d,"render")) for d in desks],flush=True)
+        try:sender.open_stage();time.sleep(2)
+        finally:evidence(desks,"receivers-failed")
         raise
     print("Both peers rendered the selected pink/teal Prism window on one GCM screen track.",flush=True)
+    own_share(desks,sender)
     if sender.stats:check_video_rate(sender,peers,[("KWin",kde.kw.pid),("pattern window",source.pid)])
     sender.click("media-proof")
     wait_for("sharer is browsing another room",lambda:kde.window("Untethered.*media-proof"))
