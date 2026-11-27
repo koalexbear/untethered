@@ -97,6 +97,10 @@ impl App {
             Section::Space(id.clone())
         } else if room.dm {
             Section::Direct
+        } else if matches!(self.section, Section::Space(_)) && self.visible().any(|(r, _)| *r == id)
+        {
+            // A channel joined from its space's list stays there (explore.rs).
+            self.section.clone()
         } else {
             Section::All
         };

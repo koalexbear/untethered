@@ -363,6 +363,8 @@ impl App {
             Event::LinkPreview { url, preview } => self.link_previews.arrived(url, preview),
             Event::RoomPreview { target, result } => self.room_previewed(target, result),
             Event::People { term, result } => self.people_found(term, result),
+            Event::PublicRooms { id, result } => self.directory_found(id, result),
+            Event::SpaceRooms { space, result } => self.space_rooms_found(space, result),
             Event::Blocked(users) => self.blocked_changed(users),
             Event::Timeline(mut t) => {
                 // Blocked people's messages stay hidden (dms.rs).

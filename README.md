@@ -114,6 +114,16 @@ opens it. To use a link someone gave you, click **+** at the bottom of the
 server rail and paste it under **Have an invite already?**, then **Join a
 Server**.
 
+**Explore:** the compass under the server rail's **+** lists the public
+spaces and rooms your homeserver publishes in its room directory, with
+their picture, topic and member count. Type to search them; **Spaces** and
+**Rooms** in the sidebar narrow the list. Click one for its preview with
+**Join**, and **Back** for the list again; a space or room you're in opens
+instead. In a space, channels you haven't joined yet are listed after the
+ones you have, their icons dimmed: click one for its preview, and **Join**
+opens it in the space. Unlike on Discord, joining a space doesn't join all
+its channels: homeservers limit how fast an account joins rooms.
+
 **Direct messages and blocking:** in Direct Messages, the **+** beside the
 heading opens **New Message**. Type a name to search your homeserver's user
 directory, or a full Matrix ID like `@alex:example.org`, and pick one person

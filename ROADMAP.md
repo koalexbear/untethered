@@ -2,15 +2,16 @@
 
 **2026-11-27 · `main`**
 
-**Next: pins and threads (N3), then Explore (J4).**
+**Next: pins and threads (N3), then sign-in everywhere (J5).**
 Messages feel like Discord, and people can get in: invites show with
-Accept and Decline, Matrix links open in the app, and New message starts
-DMs and group DMs. Ctrl+K switches rooms, every room and server opens
-where you left it, and search covers a whole space with Discord's filters.
-What a community misses next is pinned messages and threads. Explore
-(J4) and sign-in everywhere (J5) finish Phase 2 after that, and the rest of
-Phase 1 (M8 onwards) fills in around them. Calls continue in their own
-plan ([calls-parity-plan.md](rust-client/docs/calls-parity-plan.md)).
+Accept and Decline, Matrix links open in the app, Explore finds the
+homeserver's public spaces, and New message starts DMs and group DMs.
+Ctrl+K switches rooms, every room and server opens where you left it, and
+search covers a whole space with Discord's filters. What a community misses
+next is pinned messages and threads. Sign-in everywhere (J5) finishes
+Phase 2 after that, and the rest of Phase 1 (M8 onwards) fills in around
+them. Calls continue in their own plan
+([calls-parity-plan.md](rust-client/docs/calls-parity-plan.md)).
 
 ## Where it stands
 
@@ -31,9 +32,11 @@ plan ([calls-parity-plan.md](rust-client/docs/calls-parity-plan.md)).
   room alerts.
 - **Getting in:** invites to spaces, rooms and DMs with Accept and Decline;
   `matrix.to` links and `#room:server` addresses open in the app with a
-  preview and Join, also from Join a Server; New message finds people in
-  the user directory and starts encrypted DMs and group DMs; blocking
-  someone keeps their messages, invites and calls away.
+  preview and Join, also from Join a Server; Explore searches the
+  homeserver's public spaces and rooms, and a space lists the channels you
+  haven't joined yet; New message finds people in the user directory and
+  starts encrypted DMs and group DMs; blocking someone keeps their messages,
+  invites and calls away.
 - **History:** older messages keep loading as you scroll up, rooms open at
   their newest messages with a screenful, Page Up/Down, and a Jump to
   present bar. A room you left scrolled up opens at the same message when
@@ -120,7 +123,7 @@ doesn't:
 | **J1. Invites** · done | Spec | Invites to spaces, rooms and DMs, shown with who sent them, in the server rail and DM list with **Accept** and **Decline**. Today the room list shows joined rooms only, so invites never appear. | An invite from Element to a space, a room and a DM each shows here within a sync; **Accept** joins and opens it, **Decline** removes it in both clients. |
 | **J2. Join by link** · done | Spec (`matrix.to`, `matrix:` links); previews as the server allows | `matrix.to` links and `#room:server` addresses open in the app: rooms you're in open, others show a preview (name, topic, members) with **Join**. **Join a server** in the server rail's **+** takes a link or address. | A link to a room you're not in shows its preview and joins on a click; pasting `#room:server` into **Join a server** does the same; nothing opens a browser. |
 | **J3. DMs and blocking** · done | Spec (`m.direct`, user directory, `m.ignored_user_list`) | **New message** with user-directory search for a DM or a group DM, and blocking people (`m.ignored_user_list`): their messages, invites and calls stay away. | A DM and a group DM started here are encrypted rooms Element lists as DMs; blocking someone hides them here and in Element. |
-| **J4. Explore** | Spec (public room directory) | The homeserver's public rooms and spaces, searchable, with a preview before joining. | A public space found here joins and shows its channels. |
+| **J4. Explore** · done | Spec (public room directory; space hierarchy) | The homeserver's public rooms and spaces, searchable, with a preview before joining; a joined space lists the channels you haven't joined yet. | A public space found here joins and shows its channels. |
 | **J5. Sign-in everywhere** | Spec v1.15 (OAuth 2.0; matrix.org runs MAS) | OIDC through the Matrix Authentication Service, which matrix.org and other homeservers are moving to, single sign-on in the browser too (desktop-only now), and creating an account where the homeserver allows it. | Signing in to a homeserver that uses MAS works on the desktop and in Chromium, and a new account can be created and verified. |
 
 ### Phase 3 — navigation and the desktop

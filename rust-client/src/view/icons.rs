@@ -60,6 +60,8 @@ pub(super) enum Icon {
     Lock,
     UserPlus,
     Send,
+    /// Explore (explore.rs).
+    Compass,
 }
 
 /// Interactive icon color, matching channel and header controls.
@@ -338,6 +340,14 @@ fn outline(icon: Icon) -> Path {
             poly(b, &[(22., 2.), (15., 22.), (11., 13.), (2., 9.)]);
             b.close();
             poly(b, &[(22., 2.), (11., 13.)]);
+        }
+        Icon::Compass => {
+            b.circle(p(12., 12.), 10.);
+            poly(
+                b,
+                &[(16.24, 7.76), (14.12, 14.12), (7.76, 16.24), (9.88, 9.88)],
+            );
+            b.close();
         }
     })
 }

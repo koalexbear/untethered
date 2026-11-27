@@ -18,6 +18,7 @@ pub mod browser;
 mod calls;
 mod compose;
 mod dms;
+pub mod explore;
 mod invites;
 mod joining;
 #[cfg(not(target_arch = "wasm32"))]
@@ -288,6 +289,16 @@ pub enum Command {
         target: String,
         via: Vec<String>,
     },
+    /// A page of the homeserver's public room directory, answered with
+    /// `Event::PublicRooms` (explore.rs).
+    PublicRooms {
+        id: i64,
+        query: explore::DirectoryQuery,
+    },
+    /// The rooms in a space, answered with `Event::SpaceRooms`.
+    SpaceRooms {
+        space: String,
+    },
     /// Join a room this account is invited to (invites.rs). Declining is
     /// `LeaveRoom`.
     AcceptInvite {
@@ -467,6 +478,16 @@ pub enum Event {
     People {
         term: String,
         result: Result<Vec<Person>, Failure>,
+    },
+    /// A page of the public room directory.
+    PublicRooms {
+        id: i64,
+        result: Result<explore::Directory, Failure>,
+    },
+    /// What a space contains, at any depth.
+    SpaceRooms {
+        space: String,
+        result: Result<Vec<explore::SpaceChild>, Failure>,
     },
     /// Who this account blocks, at startup and whenever it changes.
     Blocked(Vec<String>),
@@ -1483,6 +1504,26 @@ impl Engine {
                     joining::join(&client, &target, &via).await
                 })
                 .await
+            }
+            Command::PublicRooms { id, query } => {
+                let unavailable = Event::PublicRooms {
+                    id,
+                    result: Err(Failure::Unavailable),
+                };
+                self.answer(unavailable, move |client| async move {
+                    let result = explore::public_rooms(&client, query).await;
+                    Event::PublicRooms { id, result }
+                })
+                .await
+            }
+            Command::SpaceRooms { space } => {
+                if let Some(live) = &self.live {
+                    let (client, events) = (live.client.clone(), self.events.clone());
+                    rt::spawn(async move {
+                        let result = explore::space_rooms(&client, &space).await;
+                        let _ = events.send(Event::SpaceRooms { space, result }).await;
+                    });
+                }
             }
             Command::AcceptInvite { id, room } => {
                 self.job(id, move |client, _, _| async move {

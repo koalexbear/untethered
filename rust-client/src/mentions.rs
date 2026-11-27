@@ -41,8 +41,11 @@ impl Inbox {
     }
 }
 impl App {
+    /// Leave the mentions inbox, and Explore (explore.rs): every way to a
+    /// room, a space or another page calls this.
     pub fn close_mentions(&mut self) {
         self.mentions = None;
+        self.explore.page = None;
         self.pending.retain(|_, p| !matches!(p, Request::Mentions));
     }
     pub fn open_mentions(&mut self) {

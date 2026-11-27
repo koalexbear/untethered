@@ -23,6 +23,7 @@ mod drafts;
 mod edits;
 mod emoji;
 mod engine;
+mod explore;
 #[cfg(not(target_arch = "wasm32"))]
 mod fonts;
 mod forward;
@@ -242,6 +243,8 @@ enum Msg {
     ClosePreview,
     JoinAddressInput(String),
     JoinAddress,
+    /// Explore, the public room directory (explore.rs).
+    Explore(explore::Input),
     /// New message (dms.rs).
     Dm(dms::Input),
     /// Forwarding a message (forward.rs).
@@ -463,6 +466,8 @@ enum Request {
     FollowUpgrade(String),
     /// Forwarding a message to this room (forward.rs).
     Forward(String),
+    /// A page of the public room directory (explore.rs).
+    Explore(engine::explore::DirectoryQuery),
     /// Starting, voting in or ending a poll (polls.rs).
     Poll(polls::Op),
 }
@@ -532,6 +537,8 @@ struct App {
     new_message: Option<dms::NewMessage>,
     /// Forward To, for a message (forward.rs).
     forwarding: Option<forward::Form>,
+    /// Explore, and what spaces contain (explore.rs).
+    explore: explore::State,
     /// Create a Poll, and the composer's + menu that opens it (polls.rs).
     polling: Option<polls::Form>,
     composer_menu: bool,
@@ -676,6 +683,7 @@ impl App {
             join_address: String::new(),
             new_message: None,
             forwarding: None,
+            explore: Default::default(),
             polling: None,
             composer_menu: false,
             started_dm: None,
@@ -906,6 +914,8 @@ impl App {
                 .unwrap_or_default();
             self.open(first);
         }
+        // A space's channels this account hasn't joined (explore.rs).
+        self.ask_space_rooms();
     }
     fn verifying(&self) -> bool {
         self.pending
@@ -1753,6 +1763,7 @@ impl App {
             Msg::ClosePreview => self.close_preview(),
             Msg::JoinAddressInput(s) => self.join_address = s,
             Msg::JoinAddress => self.join_address(),
+            Msg::Explore(input) => return self.explore(input),
             Msg::Dm(input) => return self.new_message(input),
             Msg::Forward(input) => return self.forward(input),
             Msg::Poll(input) => return self.poll(input),
@@ -1829,6 +1840,8 @@ impl App {
                     return self.setup_input(community::Input::Close);
                 } else if self.account && self.logged_in && self.verified {
                     self.account = false;
+                } else if self.explore.page.is_some() {
+                    return self.explore(explore::Input::Close);
                 } else if self.reaction_picker.is_some() {
                     self.reaction_picker = None;
                 } else {
