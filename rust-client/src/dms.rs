@@ -402,6 +402,7 @@ mod tests {
             receipts: Vec::new(),
             media: None,
             from: None,
+            poll: None,
         }
     }
 

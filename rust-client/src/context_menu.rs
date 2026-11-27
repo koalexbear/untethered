@@ -50,6 +50,8 @@ pub struct State {
     /// The room waiting for Leave to be confirmed.
     pub leaving: Option<String>,
     pub deleting: Option<(String, String)>,
+    /// The poll waiting for End Poll to be confirmed (polls.rs).
+    pub ending: Option<(String, String)>,
     /// The person waiting for Block to be confirmed (dms.rs).
     pub blocking: Option<String>,
 }
@@ -59,12 +61,14 @@ impl State {
         self.open.is_some()
             || self.leaving.is_some()
             || self.deleting.is_some()
+            || self.ending.is_some()
             || self.blocking.is_some()
     }
     pub fn dismiss(&mut self) {
         self.open = None;
         self.leaving = None;
         self.deleting = None;
+        self.ending = None;
         self.blocking = None;
     }
 }
@@ -117,6 +121,12 @@ pub enum Event {
         event: String,
     },
     ConfirmDelete,
+    /// Ask before ending a poll (polls.rs).
+    EndPoll {
+        room: String,
+        event: String,
+    },
+    ConfirmEndPoll,
     /// Ask before blocking someone; unblocking doesn't ask.
     Block(String),
     ConfirmBlock,
@@ -134,6 +144,7 @@ pub enum Entry {
     Reply,
     Forward,
     Edit,
+    EndPoll,
     CopyText,
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     CopyImage,
@@ -166,6 +177,7 @@ impl Entry {
             Self::Reply => "Reply",
             Self::Forward => "Forward",
             Self::Edit => "Edit Message",
+            Self::EndPoll => "End Poll Now…",
             Self::CopyText => "Copy Text",
             Self::CopyImage => "Copy Image",
             Self::MarkUnread => "Mark Unread",
@@ -209,6 +221,7 @@ impl Entry {
             Self::Reply
             | Self::Forward
             | Self::Edit
+            | Self::EndPoll
             | Self::CopyText
             | Self::CopyImage
             | Self::MarkUnread
@@ -347,6 +360,17 @@ impl App {
             items.push(item(
                 Entry::Edit,
                 (self.connected && self.editing.is_none()).then(|| Msg::Edit(id.clone())),
+            ));
+        }
+        if self.may_end_poll(p) {
+            items.push(item(
+                Entry::EndPoll,
+                (!self.poll_ending()).then(|| {
+                    act(Event::EndPoll {
+                        room: room.to_owned(),
+                        event: id.clone(),
+                    })
+                }),
             ));
         }
         if (p.reactable || p.from.is_some()) && !p.text().trim().is_empty() {
@@ -724,6 +748,19 @@ impl App {
                     );
                 }
             }
+            Event::EndPoll { room, event } => {
+                if self.can_end_poll(&room, &event) {
+                    self.context_menu.dismiss();
+                    self.context_menu.ending = Some((room, event));
+                }
+            }
+            Event::ConfirmEndPoll => {
+                if let Some((room, event)) = self.context_menu.ending.take()
+                    && self.can_end_poll(&room, &event)
+                {
+                    self.end_poll(room, event);
+                }
+            }
             Event::Block(user) => {
                 if user != self.matrix_id && !self.is_blocked(&user) {
                     self.context_menu.open = None;
@@ -767,6 +804,14 @@ impl App {
             && !self.deleting_message(room, event)
     }
 
+    pub(super) fn can_end_poll(&self, room: &str, event: &str) -> bool {
+        room == self.selected
+            && !self.poll_ending()
+            && self
+                .visible_post(event)
+                .is_some_and(|post| self.may_end_poll(post))
+    }
+
     /// Close a menu whose message, person or room has gone (a removed
     /// message, a left room): nothing would draw it, yet toolbars stay hidden.
     pub fn prune_context_menu(&mut self) {
@@ -779,6 +824,11 @@ impl App {
             && !self.can_delete(room, event)
         {
             self.context_menu.deleting = None;
+        }
+        if let Some((room, event)) = &self.context_menu.ending
+            && !self.can_end_poll(room, event)
+        {
+            self.context_menu.ending = None;
         }
         if let Some(room) = &self.context_menu.leaving
             && !self.live.list.contains_key(room)
