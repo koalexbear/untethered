@@ -53,11 +53,12 @@
     "rust-client/src/view/emoji_picker.rs",
     "rust-client/src/view/popover.rs",
     "rust-client/src/view/reaction_bar.rs",
+    "scripts/qa_media_previews.py",
     "scripts/qa_ux_polish.py"
    ],
    "status": "working",
    "title": "Jump bar button, steady history loading, floating reaction picker, voice channel click joins",
-   "updated": "2026-11-27T09:01:21Z",
+   "updated": "2026-11-27T09:08:08Z",
    "worktree": "."
   }
  },
