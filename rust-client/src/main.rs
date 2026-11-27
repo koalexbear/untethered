@@ -33,6 +33,7 @@ mod mentions;
 mod moderation;
 #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
 mod notifications;
+mod paging;
 #[cfg(not(target_arch = "wasm32"))]
 mod paste;
 mod permissions;
@@ -137,6 +138,8 @@ enum Msg {
     DialDm(bool),
     #[cfg(target_os = "linux")]
     JoinVoice,
+    /// A voice channel clicked in the room list: open it and join its call.
+    OpenVoice(String),
     #[cfg(target_os = "linux")]
     EndCall,
     #[cfg(target_os = "linux")]
@@ -202,11 +205,9 @@ enum Msg {
     Setup(community::Input),
     CheckReading,
     /// Scrolled the timeline: away from the bottom, and far enough for Jump to present.
-    /// The timeline scrolled: away from the newest message, a screen or
-    /// more up, and how far up its shown window (0 to 1).
-    ReadingScroll(String, bool, bool, f32),
+    /// Where the room's timeline is scrolled to now.
+    ReadingScroll(String, paging::Scrolled),
     /// Scrolled near the top of what's loaded: fetch older messages.
-    AutoPage(String),
     /// Page Up (true) or Page Down: scroll the timeline by most of a screen.
     PageScroll(bool),
     ShareReads(bool),
@@ -227,6 +228,8 @@ enum Msg {
     SubmitReport,
     CancelReport,
     ReactionPicker(String),
+    /// The reaction picker, from the smile beside a message's reactions.
+    ReactionPickerChips(String),
     ReactionInput(String),
     ToggleReaction(reactions::Toggle),
     Edit(String),
@@ -367,6 +370,8 @@ struct App {
     scrolled_far: bool,
     /// The room whose automatic history load failed; Earlier messages retries.
     auto_page_failed: Option<String>,
+    /// Where the open room's timeline was last scrolled to (paging.rs).
+    scrolled: Option<(String, paging::Scrolled)>,
     /// Each room's message count when history was last loaded to fill the
     /// window, so a page that brings nothing doesn't repeat.
     filled: BTreeMap<String, usize>,
@@ -378,6 +383,9 @@ struct App {
     inbox: incoming::Inbox,
     #[cfg(target_os = "linux")]
     call: Option<desktop_call::ActiveCall>,
+    /// A voice channel to join once the call that's ending has ended.
+    #[cfg(target_os = "linux")]
+    join_after: Option<String>,
     #[cfg(target_os = "linux")]
     room_ptt: bool,
     #[cfg(target_os = "linux")]
@@ -474,6 +482,7 @@ impl App {
             scrolled_away: false,
             scrolled_far: false,
             auto_page_failed: None,
+            scrolled: None,
             filled: BTreeMap::new(),
             #[cfg(not(target_arch = "wasm32"))]
             focused: false,
@@ -481,6 +490,8 @@ impl App {
             alerts: Default::default(),
             #[cfg(target_os = "linux")]
             call: None,
+            #[cfg(target_os = "linux")]
+            join_after: None,
             #[cfg(target_os = "linux")]
             room_ptt: false,
             #[cfg(target_os = "linux")]
@@ -787,6 +798,8 @@ impl App {
                         self.call = None;
                         if self.closing {
                             self.stop_engine();
+                        } else if let Some(room) = self.join_after.take() {
+                            self.join_channel(room);
                         }
                     }
                 }
@@ -909,6 +922,7 @@ impl App {
                 #[cfg(target_os = "linux")]
                 {
                     self.call = None;
+                    self.join_after = None;
                     self.clear_ring();
                 }
                 self.stopped = true;
@@ -993,6 +1007,7 @@ impl App {
             }
             #[cfg(target_os = "linux")]
             Msg::EndCall => {
+                self.join_after = None;
                 if let Some(call) = &mut self.call {
                     call.cancel.close();
                     call.label = "Ending call…".into();
@@ -1462,6 +1477,12 @@ impl App {
                 self.close_mentions();
                 self.open(id);
             }
+            Msg::OpenVoice(id) => {
+                let task = self.update(Msg::Open(id.clone()));
+                #[cfg(target_os = "linux")]
+                self.join_channel(id);
+                return task;
+            }
             Msg::OpenMentions => {
                 #[cfg(target_os = "linux")]
                 self.minimize_call();
@@ -1469,12 +1490,11 @@ impl App {
                 self.open_mentions();
             }
             Msg::CheckReading => return self.check_reading(),
-            Msg::ReadingScroll(room, away, far, depth)
-                if room == self.selected && self.original.is_none() =>
-            {
-                self.scrolled_away = away;
-                self.scrolled_far = far;
-                self.inline.depth = depth;
+            Msg::ReadingScroll(room, at) if room == self.selected && self.original.is_none() => {
+                self.scrolled_away = at.away;
+                self.scrolled_far = at.far;
+                self.inline.depth = at.depth;
+                self.scrolled = Some((room, at));
             }
             Msg::PageScroll(up) if self.viewer.is_none() => {
                 // Anchored at the bottom, a positive offset moves toward older messages.
@@ -1486,10 +1506,6 @@ impl App {
                         y: if up { step } else { -step },
                     },
                 );
-            }
-            Msg::AutoPage(room) if room == self.selected && self.original.is_none() => {
-                self.scrolled_away = true;
-                self.page();
             }
             Msg::ShareReads(value) => self.set_read_sharing(value),
             Msg::ReadVisible(room, event, row, true)
@@ -1522,6 +1538,8 @@ impl App {
                     return self.setup_input(community::Input::Close);
                 } else if self.account && self.logged_in && self.verified {
                     self.account = false;
+                } else if self.reaction_picker.is_some() {
+                    self.reaction_picker = None;
                 } else {
                     self.completion.picker = None;
                 }
@@ -1620,18 +1638,8 @@ impl App {
             }
             Msg::SearchResults => self.close_original(),
             Msg::ReturnToReading => return self.return_to_reading(),
-            Msg::ReactionPicker(id) => {
-                if self.visible_post(&id).is_some_and(|p| p.reactable) {
-                    self.reaction_picker = (!self
-                        .reaction_picker
-                        .as_ref()
-                        .is_some_and(|p| p.target == id))
-                    .then(|| reactions::Picker {
-                        target: id,
-                        custom: String::new(),
-                    });
-                }
-            }
+            Msg::ReactionPicker(id) => return self.toggle_reaction_picker(id, false),
+            Msg::ReactionPickerChips(id) => return self.toggle_reaction_picker(id, true),
             Msg::ReactionInput(s) => {
                 if let Some(p) = &mut self.reaction_picker {
                     p.custom = s;
@@ -1864,7 +1872,7 @@ impl App {
         self.prune_context_menu();
         // Previews and pictures for what's on screen now, also once a room's
         // messages arrive after it opened; both skip what they have.
-        let task = self.schedule_inline();
+        let task = Task::batch([self.schedule_inline(), self.keep_paging()]);
         self.fill_history();
         let task = Task::batch([task, self.schedule_avatars()]);
         #[cfg(target_os = "linux")]

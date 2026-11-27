@@ -188,6 +188,30 @@ pub struct Controls {
     views: GroupViews,
 }
 impl crate::App {
+    /// A voice channel clicked in the room list joins its call, as on
+    /// Discord. Its call opens if you're in it already; a call elsewhere
+    /// ends first, and this one starts once it has.
+    pub(super) fn join_channel(&mut self, room: String) {
+        let joinable = self
+            .live
+            .list
+            .get(&room)
+            .is_some_and(|r| r.voice && r.encrypted);
+        if !joinable || !self.verified || !self.connected || self.inbox.ringing.is_some() {
+            return;
+        }
+        match &mut self.call {
+            Some(call) if call.room == room => call.stage_open = true,
+            Some(call) => {
+                if !call.cancel.is_closed() {
+                    call.cancel.close();
+                    call.label = "Ending call…".into();
+                }
+                self.join_after = Some(room);
+            }
+            None => self.start_voice(room, Target::Channel),
+        }
+    }
     pub(super) fn start_voice(&mut self, room: String, target: Target) {
         self.inbox.handled = None;
         let group = matches!(target, Target::Channel);
@@ -1477,6 +1501,48 @@ mod tests {
         let _ = app.update(crate::Msg::Open("!other".into()));
         let _ = app.update(crate::Msg::Open("!call".into()));
         assert!(!app.call.as_ref().unwrap().stage_open);
+    }
+
+    #[test]
+    fn clicking_a_voice_channel_joins_it_and_moves_over_from_another_call() {
+        let (commands, _backend) = async_channel::bounded(8);
+        let mut app = crate::App::new(commands);
+        app.logged_in = true;
+        app.verified = true;
+        app.connected = true;
+        for (id, voice) in [("!lounge", true), ("!stage", true), ("!chat", false)] {
+            app.live.list.insert(
+                id.into(),
+                crate::rooms::Room {
+                    name: id.into(),
+                    has_metadata: true,
+                    voice,
+                    encrypted: true,
+                    ..Default::default()
+                },
+            );
+        }
+        let in_call = |app: &crate::App| app.call.as_ref().map(|c| c.room.clone());
+        let _ = app.update(crate::Msg::OpenVoice("!lounge".into()));
+        assert_eq!(app.selected, "!lounge");
+        assert_eq!(in_call(&app).as_deref(), Some("!lounge"));
+        // Its own channel again: the call opens.
+        let _ = app.update(crate::Msg::Open("!chat".into()));
+        let _ = app.update(crate::Msg::OpenVoice("!lounge".into()));
+        assert!(app.call.as_ref().unwrap().stage_open);
+        // Another channel: this call ends first, then that one starts.
+        let _ = app.update(crate::Msg::OpenVoice("!stage".into()));
+        assert_eq!(app.selected, "!stage");
+        assert!(app.call.as_ref().unwrap().cancel.is_closed());
+        assert_eq!(app.join_after.as_deref(), Some("!stage"));
+        app.frame(json!({"command":"desktop_call","data":{"room":"!lounge","label":"Call ended","ended":true}}));
+        assert_eq!(in_call(&app).as_deref(), Some("!stage"));
+        assert_eq!(app.join_after, None);
+        // Hanging up while one is pending joins nothing afterwards.
+        let _ = app.update(crate::Msg::OpenVoice("!lounge".into()));
+        let _ = app.update(crate::Msg::EndCall);
+        app.frame(json!({"command":"desktop_call","data":{"room":"!stage","label":"Call ended","ended":true}}));
+        assert_eq!(in_call(&app), None);
     }
 
     #[test]

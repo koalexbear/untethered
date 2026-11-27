@@ -18,7 +18,12 @@ pub const QUICK: [(&str, &str); 6] = [
 pub struct Picker {
     pub target: String,
     pub custom: String,
+    /// Opened from the smile beside the message's reactions, which it
+    /// floats under; otherwise under the message's hover toolbar.
+    pub beside_chips: bool,
 }
+/// The picker's search field.
+pub const SEARCH: &str = "reaction-search";
 pub fn label(key: &str) -> String {
     if let Some((_, name)) = QUICK.iter().find(|(k, _)| *k == key) {
         format!("{key} {name}")
@@ -103,6 +108,31 @@ impl Toggle {
     }
 }
 impl App {
+    /// Open the reaction picker on a message, or close it if it's open
+    /// there; its search field takes the keyboard.
+    pub fn toggle_reaction_picker(
+        &mut self,
+        id: String,
+        beside_chips: bool,
+    ) -> iced::Task<crate::Msg> {
+        if !self.visible_post(&id).is_some_and(|p| p.reactable) {
+            return iced::Task::none();
+        }
+        if self
+            .reaction_picker
+            .as_ref()
+            .is_some_and(|p| p.target == id)
+        {
+            self.reaction_picker = None;
+            return iced::Task::none();
+        }
+        self.reaction_picker = Some(Picker {
+            target: id,
+            custom: String::new(),
+            beside_chips,
+        });
+        iced::widget::operation::focus(SEARCH)
+    }
     pub fn reaction_pending(&self, target: &str, key: &str) -> bool {
         self.pending.values().any(|r|matches!(r,Request::Reaction(op) if op.room==self.selected && op.target==target && op.key==key))
     }

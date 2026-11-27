@@ -106,20 +106,14 @@ def placeholders(im):
     return sum(n for n, c in im.getcolors(im.width * im.height) if c == (17, 18, 20))
 
 
-def main():
-    args = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    args.add_argument("--shots", type=Path)
-    args = args.parse_args()
-    os.umask(0o077)
-    tmp = Path(tempfile.mkdtemp(prefix="untethered-previews-", dir=os.environ.get("TMPDIR")))
-    synapse = None
-    try:
-        subprocess.run([sys.executable, "-m", "synapse.app.homeserver", "-c", "hs.yaml", "--generate-config",
-                        "-H", SERVER_NAME, "--report-stats", "no"], cwd=tmp, stdout=subprocess.DEVNULL, check=True)
-        port = free_port()
-        hs = f"http://127.0.0.1:{port}"
-        limit = "{per_second: 1000, burst_count: 1000}"
-        (tmp / "local.yaml").write_text(f"""listeners:
+def homeserver(tmp):
+    """A disposable Synapse in `tmp`: its process and address."""
+    subprocess.run([sys.executable, "-m", "synapse.app.homeserver", "-c", "hs.yaml", "--generate-config",
+                    "-H", SERVER_NAME, "--report-stats", "no"], cwd=tmp, stdout=subprocess.DEVNULL, check=True)
+    port = free_port()
+    hs = f"http://127.0.0.1:{port}"
+    limit = "{per_second: 1000, burst_count: 1000}"
+    (tmp / "local.yaml").write_text(f"""listeners:
   - port: {port}
     type: http
     tls: false
@@ -135,16 +129,28 @@ rc_room_creation: {limit}
 rc_joins: {{local: {limit}, remote: {limit}}}
 rc_login: {{address: {limit}, account: {limit}, failed_attempts: {limit}}}
 """)
-        synapse = subprocess.Popen([sys.executable, "-m", "synapse.app.homeserver", "-c", "hs.yaml", "-c", "local.yaml"],
-                                   cwd=tmp, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        for _ in range(300):
-            if synapse.poll() is not None:
-                raise RuntimeError("Disposable homeserver exited")
-            try:
-                http("GET", hs + "/_matrix/client/versions")
-                break
-            except requests.ConnectionError:
-                time.sleep(.1)
+    synapse = subprocess.Popen([sys.executable, "-m", "synapse.app.homeserver", "-c", "hs.yaml", "-c", "local.yaml"],
+                               cwd=tmp, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for _ in range(300):
+        if synapse.poll() is not None:
+            raise RuntimeError("Disposable homeserver exited")
+        try:
+            http("GET", hs + "/_matrix/client/versions")
+            break
+        except requests.ConnectionError:
+            time.sleep(.1)
+    return synapse, hs
+
+
+def main():
+    args = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    args.add_argument("--shots", type=Path)
+    args = args.parse_args()
+    os.umask(0o077)
+    tmp = Path(tempfile.mkdtemp(prefix="untethered-previews-", dir=os.environ.get("TMPDIR")))
+    synapse = None
+    try:
+        synapse, hs = homeserver(tmp)
         fixture, hdr = interop().seed(tmp, hs, encrypted=False)
         room = fixture["room"]
 
