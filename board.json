@@ -82,9 +82,9 @@
     "rust-client/src/view/players.rs",
     "scripts/qa_phase4.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Inline video: controls over the video, auto-hiding",
-   "updated": "2026-11-27T18:14:26Z",
+   "updated": "2026-11-27T18:16:42Z",
    "worktree": "."
   }
  },

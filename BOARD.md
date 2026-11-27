@@ -5,7 +5,7 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
 | N3 | Pinned messages and Matrix threads | codex-n3 | `codex/n3-pins-threads` | working | 2026-11-27T15:03:37Z | `rust-client/src/engine/account_ui.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/live_test.rs`, `rust-client/src/engine/messaging.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/pins.rs`, `rust-client/src/engine/threads.rs`, `scripts/qa_matrix_sdk.py` |
-| inline-video-overlay | Inline video: controls over the video, auto-hiding | main-session | `inline-video-overlay` | working | 2026-11-27T18:14:26Z | `README.md`, `rust-client/src/engine/media.rs`, `rust-client/src/inline_player.rs`, `rust-client/src/main.rs`, `rust-client/src/media.rs`, `rust-client/src/view.rs`, `rust-client/src/view/icons.rs`, `rust-client/src/view/players.rs`, `scripts/qa_phase4.py` |
+| inline-video-overlay | Inline video: controls over the video, auto-hiding | main-session | `inline-video-overlay` | review | 2026-11-27T18:16:42Z | `README.md`, `rust-client/src/engine/media.rs`, `rust-client/src/inline_player.rs`, `rust-client/src/main.rs`, `rust-client/src/media.rs`, `rust-client/src/view.rs`, `rust-client/src/view/icons.rs`, `rust-client/src/view/players.rs`, `scripts/qa_phase4.py` |
 
 ## Done
 
