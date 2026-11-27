@@ -4,7 +4,7 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
-| fix-media-previews | Image previews always load; the viewer keeps the scroll position | main-session | `fix-media-previews` | working | 2026-11-27T08:15:28Z | `rust-client/src/engine/media.rs`, `rust-client/src/inline.rs`, `rust-client/src/main.rs`, `rust-client/src/media.rs`, `rust-client/src/view.rs`, `rust-client/src/view/upgrades.rs`, `rust-client/src/view/viewer.rs` |
+| fix-media-previews | Image previews always load; the viewer keeps the scroll position | main-session | `fix-media-previews` | working | 2026-11-27T08:25:17Z | `rust-client/src/engine/media.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/inline.rs`, `rust-client/src/main.rs`, `rust-client/src/media.rs`, `rust-client/src/view.rs`, `rust-client/src/view/upgrades.rs`, `rust-client/src/view/viewer.rs`, `scripts/qa_media_previews.py` |
 
 ## Done
 
