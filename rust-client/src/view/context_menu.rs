@@ -228,7 +228,7 @@ fn glyph(entry: Entry) -> Option<Icon> {
         Entry::AddReaction => Some(Icon::Smile),
         Entry::Reply => Some(Icon::Reply),
         Entry::Forward => Some(Icon::Forward),
-        Entry::Edit => Some(Icon::Pencil),
+        Entry::Edit | Entry::EditServerProfile => Some(Icon::Pencil),
         Entry::EndPoll => Some(Icon::Poll),
         Entry::CopyText | Entry::CopyImage => Some(Icon::Copy),
         Entry::Mention => Some(Icon::At),

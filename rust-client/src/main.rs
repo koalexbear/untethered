@@ -12,6 +12,7 @@ mod backend;
 mod browser_verification;
 #[cfg(target_os = "linux")]
 mod call_devices;
+mod channel_order;
 mod community;
 mod context_menu;
 #[cfg(not(target_arch = "wasm32"))]
@@ -43,6 +44,7 @@ mod link_previews;
 mod media;
 mod mentions;
 mod moderation;
+mod names;
 #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
 mod notifications;
 mod paging;
@@ -268,6 +270,10 @@ enum Msg {
     EmoteReady(String, Option<preview::Picture>),
     /// Voting, ending and creating polls (polls.rs).
     Poll(polls::Input),
+    /// Dragging channels and categories in a space's sidebar (channel_order.rs).
+    Order(channel_order::Input),
+    /// Edit Server Profile (names.rs).
+    Names(names::Input),
     /// The composer's + menu: Upload a File, Create Poll.
     ComposerMenu(bool),
     /// The quick switcher (switcher.rs).
@@ -499,6 +505,10 @@ enum Request {
     Poll(polls::Op),
     /// Sending a sticker or using a pack everywhere (emotes.rs).
     Pack(emotes::Op),
+    /// Reordering or moving channels and categories (channel_order.rs).
+    Arrange,
+    /// Setting a server nickname (names.rs).
+    Nickname(names::Write),
 }
 struct App {
     setup: Option<community::Form>,
@@ -567,12 +577,17 @@ struct App {
     new_message: Option<dms::NewMessage>,
     /// Forward To, for a message (forward.rs).
     forwarding: Option<forward::Form>,
+    /// Edit Server Profile, and rooms that took their server's nickname
+    /// (names.rs).
+    names: names::State,
     /// Explore, and what spaces contain (explore.rs).
     explore: explore::State,
     /// Create a Poll, and the composer's + menu that opens it (polls.rs).
     polling: Option<polls::Form>,
     /// Image packs, their pictures and the sticker picker (emotes.rs).
     emotes: emotes::Emotes,
+    /// A channel or category being dragged in the sidebar (channel_order.rs).
+    order: channel_order::Drag,
     composer_menu: bool,
     started_dm: Option<String>,
     /// Ctrl+K's quick switcher (switcher.rs).
@@ -726,9 +741,11 @@ impl App {
             join_address: String::new(),
             new_message: None,
             forwarding: None,
+            names: Default::default(),
             explore: Default::default(),
             polling: None,
             emotes: Default::default(),
+            order: Default::default(),
             composer_menu: false,
             started_dm: None,
             switcher: None,
@@ -1837,6 +1854,8 @@ impl App {
             Msg::Poll(input) => return self.poll(input),
             Msg::Emote(input) => self.emote(input),
             Msg::EmoteReady(url, picture) => self.emotes.complete(url, picture),
+            Msg::Order(input) => return self.arrange_input(input),
+            Msg::Names(input) => return self.names(input),
             Msg::ComposerMenu(open) => self.composer_menu = open && self.can_stage(),
             Msg::Switcher(input) => return self.switcher(input),
             Msg::Escape if self.shortcuts.open => self.shortcuts.open = false,
@@ -1891,6 +1910,7 @@ impl App {
             }
             Msg::ServerMenu(open) => self.server_menu = open,
             Msg::Escape if self.context_menu.is_open() => self.context_menu.dismiss(),
+            Msg::Escape if self.order.held.is_some() => self.order = Default::default(),
             Msg::Escape if self.sdk_ui.profile.card.is_some() => {
                 return self.profile_action(engine::profile::Action::Close);
             }
@@ -1906,6 +1926,8 @@ impl App {
                     return self.forward(forward::Input::Close);
                 } else if self.polling.is_some() {
                     return self.poll(polls::Input::Close);
+                } else if self.names.form.is_some() {
+                    return self.names(names::Input::Close);
                 } else if self.composer_menu {
                     self.composer_menu = false;
                 } else if self.emotes.stickers {
@@ -2436,6 +2458,7 @@ fn main() -> iced::Result {
                 } else { iced::Subscription::none() },
                 app.typing_subscription(),
                 app.presence_subscription(),
+                app.order_subscription(),
                 // A moment after the timeline stops moving, note the place.
                 if app.place_unnoted {
                     iced::time::every(std::time::Duration::from_millis(400)).map(|_| Msg::NotePlace)
