@@ -1,9 +1,40 @@
 {
  "claims": {
+  "J4": {
+   "branch": "claude/j4-explore-c19f11",
+   "claimed": "2026-11-27T20:07:05Z",
+   "notes": [],
+   "owner": "j4-explore",
+   "paths": [
+    "README.md",
+    "ROADMAP.md",
+    "rust-client/src/engine/app.rs",
+    "rust-client/src/engine/explore.rs",
+    "rust-client/src/engine/mod.rs",
+    "rust-client/src/explore.rs",
+    "rust-client/src/joining.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/view.rs",
+    "rust-client/src/view/explore.rs",
+    "rust-client/src/view/icons.rs",
+    "rust-client/src/view/joining.rs",
+    "scripts/qa_explore.py"
+   ],
+   "status": "working",
+   "title": "Explore public rooms and spaces",
+   "updated": "2026-11-27T20:07:05Z",
+   "worktree": ".claude/worktrees/j4-explore-c19f11"
+  },
   "M9": {
    "branch": "m9-polls",
    "claimed": "2026-11-27T19:49:49Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-27T20:07:05Z",
+     "by": "j4-explore",
+     "text": "[J4] shares README.md, ROADMAP.md, rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs, rust-client/src/view/icons.rs: [J4] small separate edits: engine/mod.rs: 'mod explore;', Command::PublicRooms {id, query} + its dispatch arm next to Command::PreviewRoom, Event::PublicRooms {id, result} and a PublicRoom struct beside RoomPreview; engine/app.rs: one engine_event arm (Event::PublicRooms) next to Event::People; main.rs: 'mod explore;', Msg::Explore(explore::Input), App field 'explore: Option<explore::Explore>', Request::Explore, one update arm and Escape closing it; view.rs: a compass rail button under the + and one main-area branch (explore page) next to room_preview; view/icons.rs: Icon::Compass; README/ROADMAP: J4 row and Getting in line."
+    }
+   ],
    "owner": "main-session",
    "paths": [
     "README.md",
@@ -97,6 +128,11 @@
      "at": "2026-11-27T19:52:47Z",
      "by": "main-session",
      "text": "[M9] one more shared line: 'poll: None,' at the end of the base Message literal in rust-client/src/engine/messaging.rs (Message gains a poll field); app.rs also gets 'poll: None,' in its three test Message literals."
+    },
+    {
+     "at": "2026-11-27T20:07:05Z",
+     "by": "j4-explore",
+     "text": "[J4] shares rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs: [J4] small separate edits: engine/mod.rs: 'mod explore;', Command::PublicRooms {id, query} + its dispatch arm next to Command::PreviewRoom, Event::PublicRooms {id, result} and a PublicRoom struct beside RoomPreview; engine/app.rs: one engine_event arm (Event::PublicRooms) next to Event::People; main.rs: 'mod explore;', Msg::Explore(explore::Input), App field 'explore: Option<explore::Explore>', Request::Explore, one update arm and Escape closing it; view.rs: a compass rail button under the + and one main-area branch (explore page) next to room_preview; view/icons.rs: Icon::Compass; README/ROADMAP: J4 row and Getting in line."
     }
    ],
    "owner": "codex-n3",
