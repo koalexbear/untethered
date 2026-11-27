@@ -2,12 +2,12 @@
 
 **2026-11-27 · `main`**
 
-**Next: pins and threads (N3), then search across a space (N7).**
+**Next: pins and threads (N3), then Explore (J4).**
 Messages feel like Discord, and people can get in: invites show with
 Accept and Decline, Matrix links open in the app, and New message starts
-DMs and group DMs. Ctrl+K switches rooms, and every room and server opens
-where you left it. What a community misses next is pinned messages and
-threads, then finding old messages anywhere in a space. Explore
+DMs and group DMs. Ctrl+K switches rooms, every room and server opens
+where you left it, and search covers a whole space with Discord's filters.
+What a community misses next is pinned messages and threads. Explore
 (J4) and sign-in everywhere (J5) finish Phase 2 after that, and the rest of
 Phase 1 (M8 onwards) fills in around them. Calls continue in their own
 plan ([calls-parity-plan.md](rust-client/docs/calls-parity-plan.md)).
@@ -25,7 +25,8 @@ plan ([calls-parity-plan.md](rust-client/docs/calls-parity-plan.md)).
   right-click menus, profile cards and editing your own profile, replies
   with jump-to-original, edits, deleting messages, drafts that survive a
   restart, link previews, reactions with a floating picker, selectable and
-  copyable text, mentions inbox, room search, read markers and unread
+  copyable text, mentions inbox, search across a space or all rooms with
+  Discord's filters (the homeserver's for unencrypted rooms), read markers and unread
   divider, reports, moderation, permissions, space and room alerts.
 - **Getting in:** invites to spaces, rooms and DMs with Accept and Decline;
   `matrix.to` links and `#room:server` addresses open in the app with a
@@ -128,7 +129,7 @@ doesn't:
 | **N4. Presence** | Spec, often off on large servers | Online/idle/offline dots and custom status where the homeserver enables presence; hide them cleanly where it doesn't. | Going idle in Element turns the dot amber here within a minute. |
 | **N5. Channel order** | Spec (`m.space.child` `order`) | Drag to reorder channels and categories, writing `m.space.child` `order`. | The order made here appears in Element's space view. |
 | **N6. System tray** · done | Client | A tray icon (StatusNotifierItem on KDE and GNOME, for example with `ksni`; the notification area on Windows) with an unread and mention badge. Closing the window keeps Untethered running in the tray, as Discord does (a setting, on by default), so messages, notifications, ringing and calls carry on. The tray menu offers Open, Mute, Deafen, Do Not Disturb and Quit; optionally start at login (XDG autostart, the Windows Run key) minimised to the tray. Not applicable on the web. | Close the window during a call: audio continues, the tray shows the call and a mention badge, Mute in the tray menu mutes, an incoming DM call still rings, and Quit leaves the call and exits cleanly. |
-| **N7. Search across a space** | Spec (`/search`, unencrypted rooms); a local index for encrypted | Search a space or all rooms with Discord's filters (`from:`, `in:`, `has:file`/`image`/`link`, `before:`, `after:`): the homeserver's search for unencrypted rooms, so it finds history this device never loaded, and a local full-text index for encrypted ones. Results say which rooms were searched and how far back. | A week-old file found with `from:` and `has:file` in an unencrypted channel never opened on this device, and in an encrypted one once indexed. |
+| **N7. Search across a space** · done | Spec (`/search`, unencrypted rooms); a local index for encrypted | Search a space or all rooms with Discord's filters (`from:`, `in:`, `has:file`/`image`/`link`, `before:`, `after:`): the homeserver's search for unencrypted rooms, so it finds history this device never loaded, and a local full-text index for encrypted ones. Results say which rooms were searched and how far back. | A week-old file found with `from:` and `has:file` in an unencrypted channel never opened on this device, and in an encrypted one once indexed. |
 | **N8. Server rail order and folders** | Order: unstable MSC3230, as Element; folders: own account data | Drag servers to reorder them, saved as Element does (`org.matrix.msc3230.space_order` in each space's account data) so both clients agree, and group them into folders, which only Untethered shows (its own account data). | The order and a folder made here are the same after a restart and on a second device. |
 | **N9. Sounds and shortcuts** | Client | Sounds for messages, mentions, voice join and leave, mute and deafen, each with a switch; Discord's shortcuts: next unread channel (Alt+Shift+↓), mark a server read (Shift+Escape), and Ctrl+/ for the list. | Each sound plays and can be turned off; Alt+Shift+↓ opens the next unread channel. |
 
@@ -184,7 +185,10 @@ source's resolution, with no tier to pay for.
 - Fetching an older room's keys from backup isn't covered by a live test
   yet: `scripts/qa_room_upgrades.py` has no encrypted rooms with keys only
   in backup.
-- Search finds only what this device has stored (N7).
+- Search in encrypted rooms covers what this device has loaded; Load older
+  history fetches more on request, but nothing indexes them in the
+  background yet, and the homeserver's search has no `before:`/`after:`,
+  so those filter what it returns (N7).
 - Memory on a large account hasn't been measured since the 2026-11-27
   thread, arena and history changes (S6).
 

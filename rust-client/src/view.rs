@@ -2477,10 +2477,9 @@ impl App {
             && self.original.is_none()
             && let Some(r) = room
         {
-            room_search::view(
+            self.search_view(
                 s,
                 r,
-                &self.avatars,
                 self.pending
                     .values()
                     .any(|p| matches!(p, Request::Context(..))),

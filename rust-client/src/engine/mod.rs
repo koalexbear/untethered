@@ -33,6 +33,7 @@ pub mod qa;
 mod rooms;
 pub mod rt;
 mod search;
+pub use search::{Has, Reach, RoomsFound, SearchQuery};
 mod session;
 // The desktop's own settings live beside the profile (tray.rs).
 #[cfg(not(target_arch = "wasm32"))]
@@ -345,18 +346,16 @@ pub enum Command {
         kind: String,
         content: serde_json::Value,
     },
-    /// Stored messages of a room containing `term`, newest first, as
-    /// [`Event::SearchResults`]. `before` continues from a page's `next`.
-    Search {
+    /// Search rooms (search.rs), answered with [`Event::RoomsFound`].
+    SearchRooms {
         id: i64,
-        room: String,
-        term: String,
-        before: Option<String>,
+        query: SearchQuery,
     },
-    /// How much of a room's history is stored, as [`Event::SearchCoverage`].
-    SearchCoverage {
+    /// Load older history of the encrypted ones among `rooms` onto this
+    /// device, so searches here reach further back.
+    IndexRooms {
         id: i64,
-        room: String,
+        rooms: Vec<String>,
     },
     /// Stored messages mentioning us in these rooms, as [`Event::Mentions`].
     Mentions {
@@ -490,14 +489,9 @@ pub enum Event {
         allow(dead_code)
     )]
     Notification(Alert),
-    SearchResults {
+    RoomsFound {
         id: i64,
-        result: Result<(Vec<Found>, Option<String>), Failure>,
-    },
-    SearchCoverage {
-        id: i64,
-        /// (messages, oldest message's time)
-        result: Result<(usize, Option<i64>), Failure>,
+        result: Result<RoomsFound, Failure>,
     },
     Mentions {
         id: i64,
@@ -1573,30 +1567,20 @@ impl Engine {
                 })
                 .await
             }
-            Command::Search {
-                id,
-                room,
-                term,
-                before,
-            } => {
-                let unavailable = Event::SearchResults {
+            Command::SearchRooms { id, query } => {
+                let unavailable = Event::RoomsFound {
                     id,
                     result: Err(Failure::Unavailable),
                 };
                 self.answer(unavailable, move |client| async move {
-                    let result = search::search(&client, &room, &term, before).await;
-                    Event::SearchResults { id, result }
+                    let result = search::search_rooms(&client, query).await;
+                    Event::RoomsFound { id, result }
                 })
                 .await
             }
-            Command::SearchCoverage { id, room } => {
-                let unavailable = Event::SearchCoverage {
-                    id,
-                    result: Err(Failure::Unavailable),
-                };
-                self.answer(unavailable, move |client| async move {
-                    let result = search::coverage(&client, &room).await;
-                    Event::SearchCoverage { id, result }
+            Command::IndexRooms { id, rooms } => {
+                self.job(id, move |client, _, _| async move {
+                    search::index(&client, &rooms).await
                 })
                 .await
             }

@@ -259,14 +259,21 @@ member, select their **Banned** row and choose
 changes to **Joined** when they accept. Membership controls use your room role
 and the selected account’s full Matrix ID.
 
-**Room search:** Click the **Search** box in the room header, enter a word or phrase,
-and press Enter. Results come from this device’s stored history, including
-the older rooms of an upgraded room, and use the current text of edited
-messages: what you haven't scrolled back to, or can't decrypt yet, isn't
-found. **Check coverage** shows the number of
-readable messages cached for this room and the oldest date it found. Open
-a result to see it in context. **Back to results** keeps your query;
-**Return to timeline** takes you back to where you were reading.
+**Search:** Click the **Search** box in the room header, type what you're
+looking for and press Enter. Choose where at the top: the channel, its server
+(when you're in a space; the default there) or **All rooms**. As on Discord,
+filters narrow it down: `from:name` (part of a name or a Matrix ID),
+`in:channel`, `has:file` (or `image`, `video`, `sound`, `link`), and
+`before:` or `after:` a date like `2026-11-20`; `from:mira has:file` finds
+Mira's attachments without any words. Unencrypted rooms are searched on the
+homeserver, all of their history, also what this device never loaded.
+Encrypted rooms are searched on this device, with edits applied, as far back
+as their history is loaded (including the older rooms of an upgraded room);
+below the query, Untethered says which rooms were searched where and how far
+back, and **Load older history** loads more of the encrypted ones onto this
+device and searches again. Open a result to see it in context, in its room.
+**Back to results** keeps your query; **Return to timeline** takes you back to
+where you were reading.
 
 **Edits:** Hover one of your sent text messages or replies and click **Edit**.
 Press Enter or **save edit** to update it in place; **cancel** or Escape discards
