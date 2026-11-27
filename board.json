@@ -19,6 +19,21 @@
    "title": "Remember where you were",
    "updated": "2026-11-27T14:01:00Z",
    "worktree": "."
+  },
+  "N3": {
+   "branch": "codex/n3-pins-threads",
+   "claimed": "2026-11-27T14:09:26Z",
+   "notes": [],
+   "owner": "codex-n3",
+   "paths": [
+    "rust-client/src/engine/mod.rs",
+    "rust-client/src/engine/pins.rs",
+    "rust-client/src/engine/threads.rs"
+   ],
+   "status": "working",
+   "title": "Pinned messages and Matrix threads",
+   "updated": "2026-11-27T14:09:26Z",
+   "worktree": "../../../../../tmp/untethered-n3"
   }
  },
  "done": [
