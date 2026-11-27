@@ -25,6 +25,19 @@
    "title": "Message deletion and persistent drafts",
    "updated": "2026-11-27T10:42:45Z",
    "worktree": "../../../../../tmp/untethered-m6"
+  },
+  "roadmap-gomuks": {
+   "branch": "roadmap-gomuks",
+   "claimed": "2026-11-27T10:47:29Z",
+   "notes": [],
+   "owner": "main-session",
+   "paths": [
+    "ROADMAP.md"
+   ],
+   "status": "working",
+   "title": "Roadmap: drop gomuks-era sections and mentions",
+   "updated": "2026-11-27T10:47:29Z",
+   "worktree": "."
   }
  },
  "done": [
