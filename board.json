@@ -56,50 +56,6 @@
    "updated": "2026-11-27T15:03:37Z",
    "worktree": "../../../../../tmp/untethered-n3"
   },
-  "P1": {
-   "branch": "phase4-media",
-   "claimed": "2026-11-27T15:58:45Z",
-   "notes": [
-    {
-     "at": "2026-11-27T15:58:47Z",
-     "by": "main-session",
-     "text": "[P2] shares rust-client/src/player.rs rust-client/src/media.rs rust-client/src/preview.rs rust-client/src/inline.rs rust-client/src/avatars.rs rust-client/src/view.rs rust-client/src/view/viewer.rs rust-client/src/viewer.rs rust-client/src/engine/media.rs rust-client/src/main.rs rust-client/src/web_files.rs ROADMAP.md README.md scripts/qa_phase4.py: same branch as P1 (phase4-media), one session"
-    },
-    {
-     "at": "2026-11-27T15:58:49Z",
-     "by": "main-session",
-     "text": "[P5] shares rust-client/src/player.rs rust-client/src/media.rs rust-client/src/preview.rs rust-client/src/inline.rs rust-client/src/avatars.rs rust-client/src/view.rs rust-client/src/view/viewer.rs rust-client/src/viewer.rs rust-client/src/engine/media.rs rust-client/src/main.rs rust-client/src/web_files.rs ROADMAP.md README.md scripts/qa_phase4.py: same branch as P1 (phase4-media), one session"
-    },
-    {
-     "at": "2026-11-27T15:58:51Z",
-     "by": "main-session",
-     "text": "[P4] shares rust-client/src/player.rs rust-client/src/media.rs rust-client/src/preview.rs rust-client/src/inline.rs rust-client/src/avatars.rs rust-client/src/view.rs rust-client/src/view/viewer.rs rust-client/src/viewer.rs rust-client/src/engine/media.rs rust-client/src/main.rs rust-client/src/web_files.rs ROADMAP.md README.md scripts/qa_phase4.py: same branch as P1 (phase4-media), one session"
-    },
-    {
-     "at": "2026-11-27T16:19:40Z",
-     "by": "phase4-media",
-     "text": "main-session: P1, P2 and P5 are implemented on phase4-media and pass the desktop fixture (scripts/qa_phase4.py); P4's browser half is built and being tested in Chromium. Windows playback (rest of P4) is out of scope here."
-    }
-   ],
-   "owner": "main-session",
-   "paths": [
-    "rust-client/src/backend/mod.rs",
-    "rust-client/src/engine/app.rs",
-    "rust-client/src/engine/timeline.rs",
-    "rust-client/src/engine/worker.rs",
-    "rust-client/src/inline_player.rs",
-    "rust-client/src/player.rs rust-client/src/media.rs rust-client/src/preview.rs rust-client/src/inline.rs rust-client/src/avatars.rs rust-client/src/view.rs rust-client/src/view/viewer.rs rust-client/src/viewer.rs rust-client/src/engine/media.rs rust-client/src/main.rs rust-client/src/web_files.rs ROADMAP.md README.md scripts/qa_phase4.py",
-    "rust-client/src/view/animated.rs",
-    "rust-client/src/view/gallery.rs",
-    "rust-client/src/view/players.rs",
-    "rust-client/web/files.js",
-    "scripts/qa_web_video.py"
-   ],
-   "status": "review",
-   "title": "Animated images (with P2, P4 browser, P5 on this branch)",
-   "updated": "2026-11-27T16:22:43Z",
-   "worktree": "."
-  },
   "P2": {
    "branch": "phase4-media",
    "claimed": "2026-11-27T15:58:47Z",
@@ -400,6 +356,15 @@
    "owner": "main-session",
    "result": "merged as 1b74b10",
    "title": "Viewer polish: preloading, thumbnail strip, gallery, sharper zoom"
+  },
+  {
+   "branch": "phase4-media",
+   "claimed": "2026-11-27T15:58:45Z",
+   "finished": "2026-11-27T17:27:05Z",
+   "id": "P1",
+   "owner": "main-session",
+   "result": "merged as 0c7f452",
+   "title": "Animated images (with P2, P4 browser, P5 on this branch)"
   }
  ]
 }
