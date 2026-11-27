@@ -37,29 +37,6 @@
    "title": "Member profile cards and own profile editing",
    "updated": "2026-11-27T08:38:23Z",
    "worktree": "../../../../../tmp/untethered-m5-profiles"
-  },
-  "ux-polish": {
-   "branch": "ux-polish",
-   "claimed": "2026-11-27T09:01:21Z",
-   "notes": [],
-   "owner": "main-session",
-   "paths": [
-    "README.md",
-    "rust-client/src/desktop_call.rs",
-    "rust-client/src/main.rs",
-    "rust-client/src/paging.rs",
-    "rust-client/src/reactions.rs",
-    "rust-client/src/view.rs",
-    "rust-client/src/view/emoji_picker.rs",
-    "rust-client/src/view/popover.rs",
-    "rust-client/src/view/reaction_bar.rs",
-    "scripts/qa_media_previews.py",
-    "scripts/qa_ux_polish.py"
-   ],
-   "status": "review",
-   "title": "Jump bar button, steady history loading, floating reaction picker, voice channel click joins",
-   "updated": "2026-11-27T09:17:02Z",
-   "worktree": "."
   }
  },
  "done": [
@@ -143,6 +120,15 @@
    "owner": "main-session",
    "result": "merged as eeaaa4d",
    "title": "Image previews always load; the viewer keeps the scroll position"
+  },
+  {
+   "branch": "ux-polish",
+   "claimed": "2026-11-27T09:01:21Z",
+   "finished": "2026-11-27T09:22:07Z",
+   "id": "ux-polish",
+   "owner": "main-session",
+   "result": "merged as 2ce0c06",
+   "title": "Jump bar button, steady history loading, floating reaction picker, voice channel click joins"
   }
  ]
 }
