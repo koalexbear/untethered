@@ -15,9 +15,9 @@
     "rust-client/src/view/switcher.rs",
     "scripts/qa_quick_switcher.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Quick switcher",
-   "updated": "2026-11-27T13:44:37Z",
+   "updated": "2026-11-27T13:51:03Z",
    "worktree": "."
   }
  },
