@@ -13,6 +13,7 @@ mod account;
 pub mod account_ui;
 mod alerts;
 pub mod app;
+pub mod arrange;
 pub mod browser;
 #[cfg(target_os = "linux")]
 mod calls;
@@ -237,6 +238,12 @@ pub enum Command {
         event: String,
         url: String,
         shortcode: String,
+    },
+    /// Reorder or move a space's channels and categories (ROADMAP N5):
+    /// `m.space.child` edges, rewritten in turn.
+    Arrange {
+        id: i64,
+        changes: Vec<arrange::Change>,
     },
     Report {
         id: i64,
@@ -847,6 +854,20 @@ pub struct RoomSummary {
     /// This account shows link previews in the room (previews.rs).
     #[serde(default)]
     pub link_previews: bool,
+    /// A space's `m.space.child` edges with what orders them (ROADMAP N5).
+    #[serde(default)]
+    pub child_order: Vec<ChildEdge>,
+}
+
+/// A space's current edge to a child, with the fields the spec orders
+/// siblings by (channel_order.rs).
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ChildEdge {
+    pub child: String,
+    /// A valid `order`; the SDK drops an invalid one.
+    pub order: Option<String>,
+    /// The edge event's `origin_server_ts`.
+    pub ts: i64,
 }
 
 /// A link's preview as the homeserver gives it (previews.rs).
@@ -1549,6 +1570,12 @@ impl Engine {
             } => {
                 self.job(id, move |_, timelines, _| async move {
                     timelines.react_emote(&room, &event, &url, &shortcode).await
+                })
+                .await
+            }
+            Command::Arrange { id, changes } => {
+                self.job(id, move |client, _, _| async move {
+                    arrange::arrange(&client, changes).await
                 })
                 .await
             }

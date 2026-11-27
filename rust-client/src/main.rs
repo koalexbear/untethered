@@ -12,6 +12,7 @@ mod backend;
 mod browser_verification;
 #[cfg(target_os = "linux")]
 mod call_devices;
+mod channel_order;
 mod community;
 mod context_menu;
 #[cfg(not(target_arch = "wasm32"))]
@@ -268,6 +269,8 @@ enum Msg {
     EmoteReady(String, Option<preview::Picture>),
     /// Voting, ending and creating polls (polls.rs).
     Poll(polls::Input),
+    /// Dragging channels and categories in a space's sidebar (channel_order.rs).
+    Order(channel_order::Input),
     /// The composer's + menu: Upload a File, Create Poll.
     ComposerMenu(bool),
     /// The quick switcher (switcher.rs).
@@ -499,6 +502,8 @@ enum Request {
     Poll(polls::Op),
     /// Sending a sticker or using a pack everywhere (emotes.rs).
     Pack(emotes::Op),
+    /// Reordering or moving channels and categories (channel_order.rs).
+    Arrange,
 }
 struct App {
     setup: Option<community::Form>,
@@ -573,6 +578,8 @@ struct App {
     polling: Option<polls::Form>,
     /// Image packs, their pictures and the sticker picker (emotes.rs).
     emotes: emotes::Emotes,
+    /// A channel or category being dragged in the sidebar (channel_order.rs).
+    order: channel_order::Drag,
     composer_menu: bool,
     started_dm: Option<String>,
     /// Ctrl+K's quick switcher (switcher.rs).
@@ -729,6 +736,7 @@ impl App {
             explore: Default::default(),
             polling: None,
             emotes: Default::default(),
+            order: Default::default(),
             composer_menu: false,
             started_dm: None,
             switcher: None,
@@ -1837,6 +1845,7 @@ impl App {
             Msg::Poll(input) => return self.poll(input),
             Msg::Emote(input) => self.emote(input),
             Msg::EmoteReady(url, picture) => self.emotes.complete(url, picture),
+            Msg::Order(input) => return self.arrange_input(input),
             Msg::ComposerMenu(open) => self.composer_menu = open && self.can_stage(),
             Msg::Switcher(input) => return self.switcher(input),
             Msg::Escape if self.shortcuts.open => self.shortcuts.open = false,
@@ -1891,6 +1900,7 @@ impl App {
             }
             Msg::ServerMenu(open) => self.server_menu = open,
             Msg::Escape if self.context_menu.is_open() => self.context_menu.dismiss(),
+            Msg::Escape if self.order.held.is_some() => self.order = Default::default(),
             Msg::Escape if self.sdk_ui.profile.card.is_some() => {
                 return self.profile_action(engine::profile::Action::Close);
             }
@@ -2436,6 +2446,7 @@ fn main() -> iced::Result {
                 } else { iced::Subscription::none() },
                 app.typing_subscription(),
                 app.presence_subscription(),
+                app.order_subscription(),
                 // A moment after the timeline stops moving, note the place.
                 if app.place_unnoted {
                     iced::time::every(std::time::Duration::from_millis(400)).map(|_| Msg::NotePlace)

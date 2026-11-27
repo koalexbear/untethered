@@ -83,6 +83,17 @@ left for **User Settings**, or your name for your status (see Presence).
 Escape closes menus, dialogs and settings. Category headers collapse; a collapsed category still lists unread
 and selected channels.
 
+**Channel order:** a space's channel list shows its own channels under **Text
+Channels** and **Voice Channels**, then a category for each space it lists,
+each sorted the way Element's space view sorts them: by each `m.space.child`
+edge's `order`, then by when it was added. Where you may manage the space's
+channels (send `m.space.child` at its power levels, as Discord's Manage
+Channels), drag a channel to reorder it, onto another category to move it
+there, or a category by its heading; a line shows where it lands and Escape
+cancels. Only the moved channel gets a new `order` where its neighbours leave
+room, so Element and other clients show the same order
+([live test](scripts/qa_channel_order.py)).
+
 **Quick switcher:** **Ctrl+K**, also while typing a message, opens a search of
 your rooms, DMs and spaces: type a few letters, move with the arrow keys and
 press **Enter**. Unread rooms come first, mentions before them. Start with `#`
