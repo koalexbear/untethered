@@ -29,12 +29,15 @@
    "paths": [
     "README.md",
     "ROADMAP.md",
+    "rust-client/src/avatars.rs",
     "rust-client/src/engine/app.rs",
     "rust-client/src/engine/explore.rs",
     "rust-client/src/engine/mod.rs",
     "rust-client/src/explore.rs",
+    "rust-client/src/invites.rs",
     "rust-client/src/joining.rs",
     "rust-client/src/main.rs",
+    "rust-client/src/mentions.rs",
     "rust-client/src/view.rs",
     "rust-client/src/view/explore.rs",
     "rust-client/src/view/icons.rs",
@@ -43,7 +46,7 @@
    ],
    "status": "working",
    "title": "Explore public rooms and spaces",
-   "updated": "2026-11-27T20:07:05Z",
+   "updated": "2026-11-27T20:18:01Z",
    "worktree": ".claude/worktrees/j4-explore-c19f11"
   },
   "N3": {
