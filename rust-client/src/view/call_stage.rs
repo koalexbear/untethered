@@ -1,11 +1,13 @@
 use super::{ACTIVE, BOLD, El, HOVER, MUTED, Msg, RAIL, Room, TEXT, TRAY, face, nav, surface};
 use crate::avatars::Avatars;
-use crate::desktop_call::{ActiveCall, Feed, Layer, StageScroll, VideoInput};
+use crate::desktop_call::{ActiveCall, Feed, Layer, Scroll, Scrolled, StageScroll, VideoInput};
 use iced::widget::image::Handle;
 use iced::{
     Alignment::Center,
     Border, Fill, Length, color,
-    widget::{Column, Row, Space, button, column, container, image, row, scrollable, stack, text},
+    widget::{
+        Column, Row, Space, button, column, container, image, row, scrollable, sensor, stack, text,
+    },
 };
 
 /// Thumbnails under the focused tile, and the grid's rows once it scrolls.
@@ -14,33 +16,37 @@ const THUMB_GAP: f32 = 6.;
 const ROW_H: f32 = 165.;
 const ROW_GAP: f32 = 8.;
 
-/// Where a scrolling row or column is: its offset, the length it shows,
-/// and its content's length, along the direction it scrolls.
-fn span(viewport: &scrollable::Viewport, horizontal: bool) -> (f32, f32, f32) {
-    let (offset, bounds, content) = (
-        viewport.absolute_offset(),
-        viewport.bounds(),
-        viewport.content_bounds(),
-    );
-    if horizontal {
-        (offset.x, bounds.width, content.width)
-    } else {
-        (offset.y, bounds.height, content.height)
+/// Whether item `i` of `count` in a scrolling row or column (items `size`
+/// long, `gap` apart) shows. Until the area reported its size every item
+/// counts as shown; once everything fits, all are, whatever it scrolled to.
+fn in_view(scroll: Scroll, (i, count): (usize, usize), size: f32, gap: f32) -> bool {
+    if scroll.extent <= 0. {
+        return true;
     }
+    let content = count as f32 * (size + gap) - gap;
+    let offset = scroll.offset.clamp(0., (content - scroll.extent).max(0.));
+    let start = i as f32 * (size + gap);
+    start < offset + scroll.extent && start + size > offset
 }
 
-/// Whether item `i` of `count` in a scrolling row or column (items `size`
-/// long, `gap` apart) shows in its `span`. Until the first viewport, or
-/// with one left from another layout, every item counts as shown.
-fn in_view(span: Option<(f32, f32, f32)>, (i, count): (usize, usize), size: f32, gap: f32) -> bool {
-    let Some((offset, extent, content)) = span else {
-        return true;
+/// A scrolling area of the stage that reports where it is (`in_view`).
+fn scroller<'a>(content: impl Into<El<'a>>, id: uuid::Uuid, area: StageScroll) -> El<'a> {
+    let across = matches!(area, StageScroll::Thumbnails);
+    let along = move |x: f32, y: f32| if across { x } else { y };
+    let scroll = scrollable(content).on_scroll(move |v| {
+        let o = v.absolute_offset();
+        Msg::StageScroll(id, area, Scrolled::Offset(along(o.x, o.y)))
+    });
+    let scroll = if across {
+        scroll.horizontal()
+    } else {
+        scroll.height(Fill)
     };
-    if (content - (count as f32 * (size + gap) - gap)).abs() > 1.5 {
-        return true;
-    }
-    let start = i as f32 * (size + gap);
-    start < offset + extent && start + size > offset
+    sensor(scroll)
+        .on_resize(move |size| {
+            Msg::StageScroll(id, area, Scrolled::Extent(along(size.width, size.height)))
+        })
+        .into()
 }
 
 /// The layer a grid tile needs: one fills the stage, up to six share it
@@ -285,7 +291,7 @@ pub(super) fn view(call: &ActiveCall, room: &Room, me: &str, pictures: &Pictures
                 .map(|(_, c)| c)
                 .collect();
             let scrolls = thumbs.len() > 3;
-            let shown = call.stage_scroll[StageScroll::Thumbnails as usize].map(|v| span(&v, true));
+            let shown = call.stage_scroll[StageScroll::Thumbnails as usize];
             for (i, c) in thumbs.iter().enumerate() {
                 if let Some(f) = &c.feed
                     && (!scrolls || in_view(shown, (i, thumbs.len()), THUMB_W, THUMB_GAP))
@@ -301,11 +307,7 @@ pub(super) fn view(call: &ActiveCall, room: &Room, me: &str, pictures: &Pictures
             }))
             .spacing(THUMB_GAP);
             let strip: El = if scrolls {
-                let id = call.id;
-                scrollable(strip)
-                    .horizontal()
-                    .on_scroll(move |v| Msg::StageScroll(id, StageScroll::Thumbnails, v))
-                    .into()
+                scroller(strip, call.id, StageScroll::Thumbnails)
             } else {
                 strip.into()
             };
@@ -317,7 +319,7 @@ pub(super) fn view(call: &ActiveCall, room: &Room, me: &str, pictures: &Pictures
         let scrolls = cards.len() > 6;
         let cols = cards.len().min(if scrolls { 3 } else { 2 });
         let rows = cards.len().div_ceil(cols.max(1));
-        let shown = call.stage_scroll[StageScroll::Grid as usize].map(|v| span(&v, false));
+        let shown = call.stage_scroll[StageScroll::Grid as usize];
         for (r, chunk) in cards.chunks(cols.max(1)).enumerate() {
             if !scrolls || in_view(shown, (r, rows), ROW_H, ROW_GAP) {
                 for f in chunk.iter().filter_map(|c| c.feed.as_ref()) {
@@ -332,11 +334,7 @@ pub(super) fn view(call: &ActiveCall, room: &Room, me: &str, pictures: &Pictures
             grid = grid.push(cells.height(if scrolls { Length::Fixed(ROW_H) } else { Fill }));
         }
         if scrolls {
-            let id = call.id;
-            scrollable(grid)
-                .height(Fill)
-                .on_scroll(move |v| Msg::StageScroll(id, StageScroll::Grid, v))
-                .into()
+            scroller(grid, call.id, StageScroll::Grid)
         } else {
             grid.height(Fill).into()
         }
@@ -439,24 +437,26 @@ mod tests {
 
     #[test]
     fn scrolled_away_tiles_are_not_in_view() {
-        // Seven thumbnails (1176 px) in a 500-px strip scrolled by 340 px:
+        // Seven thumbnails (1170 px) in a 500-px strip: scrolled by 340 px,
         // the third (336-498) through the fifth (672-834) show.
-        let strip = |offset| Some((offset, 500., 7. * 168. - 6.));
-        let shown = |offset| {
+        let at = |offset, extent| Scroll { offset, extent };
+        let shown = |scroll| {
             (0..7)
-                .filter(|&i| in_view(strip(offset), (i, 7), THUMB_W, THUMB_GAP))
+                .filter(|&i| in_view(scroll, (i, 7), THUMB_W, THUMB_GAP))
                 .collect::<Vec<_>>()
         };
-        assert_eq!(shown(0.), [0, 1, 2]);
-        assert_eq!(shown(340.), [2, 3, 4]);
-        assert_eq!(shown(676.), [4, 5, 6]);
-        // No viewport yet, or one from another count of tiles: all show.
-        assert!(in_view(None, (6, 7), THUMB_W, THUMB_GAP));
-        assert!(in_view(strip(0.), (6, 8), THUMB_W, THUMB_GAP));
+        assert_eq!(shown(at(0., 500.)), [0, 1, 2]);
+        assert_eq!(shown(at(340., 500.)), [2, 3, 4]);
+        assert_eq!(shown(at(676., 500.)), [4, 5, 6]);
+        // Before the strip reported its size, and once the window is wide
+        // enough for all of it (scrolling stops being reported), all show.
+        assert_eq!(shown(at(340., 0.)), [0, 1, 2, 3, 4, 5, 6]);
+        assert_eq!(shown(at(676., 1200.)), [0, 1, 2, 3, 4, 5, 6]);
+        // Fewer tiles than when it scrolled: the offset can't pass the end.
+        assert!(in_view(at(676., 500.), (4, 5), THUMB_W, THUMB_GAP));
         // A grid of four 165-px rows in 400 px, scrolled to the bottom.
-        let grid = Some((292., 400., 4. * 173. - 8.));
         let rows: Vec<_> = (0..4)
-            .filter(|&r| in_view(grid, (r, 4), ROW_H, ROW_GAP))
+            .filter(|&r| in_view(at(292., 400.), (r, 4), ROW_H, ROW_GAP))
             .collect();
         assert_eq!(rows, [1, 2, 3]);
     }

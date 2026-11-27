@@ -204,6 +204,9 @@ struct Wall {
     focus: Option<String>,
     /// The tiles the view being built draws, and the layer each needs.
     drawing: Option<BTreeMap<String, Layer>>,
+    /// The window closed: no view is built until it opens again, and a feed
+    /// that starts meanwhile is hidden too.
+    closed: bool,
 }
 #[derive(Clone)]
 pub(crate) struct Previews {
@@ -235,7 +238,9 @@ impl Previews {
     }
     /// A view of the window is being built; its tiles say what they draw.
     pub(crate) fn start_view(&self) {
-        self.wall.lock().unwrap().drawing = Some(BTreeMap::new());
+        let mut wall = self.wall.lock().unwrap();
+        wall.drawing = Some(BTreeMap::new());
+        wall.closed = false;
     }
     /// A tile of the view being built draws `sid`, needing `layer`.
     pub(crate) fn draws(&self, sid: &str, layer: Layer) {
@@ -259,14 +264,10 @@ impl Previews {
     }
     /// Nothing is on screen: the window closed to the tray.
     pub(crate) fn hide_all(&self) {
-        let sight = self
-            .wall
-            .lock()
-            .unwrap()
-            .feeds
-            .keys()
-            .map(|sid| (sid.clone(), None))
-            .collect();
+        let mut wall = self.wall.lock().unwrap();
+        wall.closed = true;
+        let sight = wall.feeds.keys().map(|sid| (sid.clone(), None)).collect();
+        drop(wall);
         self.show(sight);
     }
     fn show(&self, sight: Sight) {
@@ -375,6 +376,12 @@ impl Previews {
                     uploading: None,
                 },
             );
+            if wall.closed {
+                drop(wall);
+                self.sight.send_modify(|sight| {
+                    sight.insert(sid.into(), None);
+                });
+            }
             true
         }
     }
@@ -1439,6 +1446,16 @@ mod tests {
         // Tiles outside a view being built don't count.
         views.draws("cam", Layer::High);
         assert_eq!(views.shown("cam"), Some(None));
+        // A feed that starts while the window is closed is hidden at once,
+        // until the window's next view.
+        views.frame("late", "@d:h", VideoInput::Camera, frame());
+        assert_eq!(views.shown("late"), Some(None));
+        views.start_view();
+        views.draws("late", Layer::Low);
+        views.finish_view(false);
+        assert_eq!(views.shown("late"), Some(Some(Layer::Low)));
+        views.frame("later", "@e:h", VideoInput::Camera, frame());
+        assert_eq!(views.shown("later"), None);
     }
 
     #[test]

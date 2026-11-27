@@ -182,7 +182,7 @@ enum Msg {
     StageScroll(
         uuid::Uuid,
         desktop_call::StageScroll,
-        iced::widget::scrollable::Viewport,
+        desktop_call::Scrolled,
     ),
     #[cfg(target_os = "linux")]
     ReturnToCall(uuid::Uuid),
@@ -1355,7 +1355,7 @@ impl App {
             #[cfg(target_os = "linux")]
             Msg::VideoUploaded(sid, frame) => return self.video_uploaded(sid, frame),
             #[cfg(target_os = "linux")]
-            Msg::StageScroll(id, area, viewport) => self.stage_scrolled(id, area, viewport),
+            Msg::StageScroll(id, area, report) => self.stage_scrolled(id, area, report),
             #[cfg(target_os = "linux")]
             Msg::FocusVideo(id, sid) => {
                 if let Some(call) = &self.call

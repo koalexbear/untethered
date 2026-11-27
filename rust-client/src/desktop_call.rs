@@ -177,15 +177,29 @@ pub struct ActiveCall {
     pub stage_open: bool,
     pub theater: bool,
     pub speaking: watch::Receiver<std::collections::BTreeSet<String>>,
-    /// Where the stage's scrolling thumbnail strip and grid are scrolled
-    /// to, once they overflow: tiles scrolled away get no video.
-    pub stage_scroll: [Option<iced::widget::scrollable::Viewport>; 2],
+    /// The stage's scrolling thumbnail strip and grid: tiles scrolled
+    /// away get no video.
+    pub stage_scroll: [Scroll; 2],
 }
 /// The stage's two scrolling areas.
 #[derive(Clone, Copy, Debug)]
 pub enum StageScroll {
     Thumbnails,
     Grid,
+}
+/// Where a scrolling area of the stage is: scrolled this far, showing this
+/// much of its length (0 until it reported its size).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Scroll {
+    pub offset: f32,
+    pub extent: f32,
+}
+/// What a scrolling area of the stage reported: it scrolled, or its size
+/// on screen changed. It reports no scrolling while everything fits.
+#[derive(Clone, Copy, Debug)]
+pub enum Scrolled {
+    Offset(f32),
+    Extent(f32),
 }
 struct GroupViews {
     previews: Previews,
@@ -215,16 +229,15 @@ impl crate::App {
             call.previews.hide_all();
         }
     }
-    pub(super) fn stage_scrolled(
-        &mut self,
-        id: uuid::Uuid,
-        area: StageScroll,
-        viewport: iced::widget::scrollable::Viewport,
-    ) {
+    pub(super) fn stage_scrolled(&mut self, id: uuid::Uuid, area: StageScroll, report: Scrolled) {
         if let Some(call) = &mut self.call
             && call.id == id
         {
-            call.stage_scroll[area as usize] = Some(viewport);
+            let scroll = &mut call.stage_scroll[area as usize];
+            match report {
+                Scrolled::Offset(offset) => scroll.offset = offset,
+                Scrolled::Extent(extent) => scroll.extent = extent,
+            }
         }
     }
     /// Upload the newest frame of each video tile on screen. A tile swaps to
@@ -357,7 +370,7 @@ impl crate::App {
                 stage_open: false,
                 theater: false,
                 speaking,
-                stage_scroll: [None; 2],
+                stage_scroll: Default::default(),
             });
         } else {
             self.status = "Could not queue the voice call.".into();
