@@ -262,6 +262,11 @@
      "at": "2026-11-27T20:31:14Z",
      "by": "v2-simulcast",
      "text": "[V2] progress: simulcast camera + dynacast, per-tile layers (view records drawn tiles \u2192 call loops pause hidden tracks / ask layer by size), committed 392d48c, main merged (bbf153d). --room-camera (debug UI) passes with new layer/pause checks: grid 640x360, focus 1280x720, dock 320x180, bytes stop <2 s after hiding, fresh pixels 0.29 s after reopening. Next: release-UI runs of --room-camera/--voice-room/--window-share, docs."
+    },
+    {
+     "at": "2026-11-27T20:50:38Z",
+     "by": "v2-simulcast",
+     "text": "[V2] ready for review on claude/v2-simulcast-9158cf: 392d48c (simulcast, per-tile layers, pause), 831c758 (scroll/closed-window fixes), 950f5d4 (fixtures), 6e000f5 (docs); main merged at bbf153d. Five checks pass. Passing live: --room-camera (debug x3, release), --voice-room (release), --window-share (debug + release), --room-layout (release, fixture fixed), --element-video (release). Shared edits: main.rs (Msg::StageScroll + arm, window_view wraps watch_video), tray.rs (hide_video in hide_window), README/ROADMAP call-video lines. Not merged or pushed."
     }
    ],
    "owner": "v2-simulcast",
@@ -283,7 +288,7 @@
    ],
    "status": "review",
    "title": "Simulcast, per-tile quality, pause hidden video",
-   "updated": "2026-11-27T20:50:36Z",
+   "updated": "2026-11-27T20:50:38Z",
    "worktree": ".claude/worktrees/v2-simulcast-9158cf"
   }
  },
