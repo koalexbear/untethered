@@ -56,6 +56,7 @@ impl Rooms {
             room.link_previews = s.link_previews;
             room.successor = s.successor;
             room.dm_peer = s.dm_peer;
+            room.me = s.me;
             #[cfg(target_os = "linux")]
             room.replace_voice_members(&s.call_members);
             room.posting.store_snapshot(s.create, s.power);

@@ -42,6 +42,7 @@ mod link_previews;
 mod media;
 mod mentions;
 mod moderation;
+mod names;
 #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
 mod notifications;
 mod paging;
@@ -262,6 +263,8 @@ enum Msg {
     Forward(forward::Input),
     /// Voting, ending and creating polls (polls.rs).
     Poll(polls::Input),
+    /// Edit Server Profile (names.rs).
+    Names(names::Input),
     /// The composer's + menu: Upload a File, Create Poll.
     ComposerMenu(bool),
     /// The quick switcher (switcher.rs).
@@ -491,6 +494,8 @@ enum Request {
     Explore(engine::explore::DirectoryQuery),
     /// Starting, voting in or ending a poll (polls.rs).
     Poll(polls::Op),
+    /// Setting a server nickname (names.rs).
+    Nickname(names::Write),
 }
 struct App {
     setup: Option<community::Form>,
@@ -558,6 +563,9 @@ struct App {
     new_message: Option<dms::NewMessage>,
     /// Forward To, for a message (forward.rs).
     forwarding: Option<forward::Form>,
+    /// Edit Server Profile, and rooms that took their server's nickname
+    /// (names.rs).
+    names: names::State,
     /// Explore, and what spaces contain (explore.rs).
     explore: explore::State,
     /// Create a Poll, and the composer's + menu that opens it (polls.rs).
@@ -714,6 +722,7 @@ impl App {
             join_address: String::new(),
             new_message: None,
             forwarding: None,
+            names: Default::default(),
             explore: Default::default(),
             polling: None,
             composer_menu: false,
@@ -1805,6 +1814,7 @@ impl App {
             Msg::Dm(input) => return self.new_message(input),
             Msg::Forward(input) => return self.forward(input),
             Msg::Poll(input) => return self.poll(input),
+            Msg::Names(input) => return self.names(input),
             Msg::ComposerMenu(open) => self.composer_menu = open && self.can_stage(),
             Msg::Switcher(input) => return self.switcher(input),
             Msg::Escape if self.shortcuts.open => self.shortcuts.open = false,
@@ -1874,6 +1884,8 @@ impl App {
                     return self.forward(forward::Input::Close);
                 } else if self.polling.is_some() {
                     return self.poll(polls::Input::Close);
+                } else if self.names.form.is_some() {
+                    return self.names(names::Input::Close);
                 } else if self.composer_menu {
                     self.composer_menu = false;
                 } else if self.presence.dialog.is_some() || self.presence.menu {

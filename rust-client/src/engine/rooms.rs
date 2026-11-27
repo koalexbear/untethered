@@ -171,6 +171,7 @@ async fn summary(room: &Room) -> RoomSummary {
             .map(|e| e["content"].clone()),
         successor: room.successor_room().map(|s| s.room_id.to_string()),
         predecessor: room.predecessor_room().map(|p| p.room_id.to_string()),
+        me: super::names::own(room).await,
         id,
     }
 }

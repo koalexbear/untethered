@@ -4,7 +4,7 @@
 //! grid under one header, as Discord shows a message's attachments. Each
 //! picture is still its own message: its own row ID (scroll positions, jumps
 //! and read markers find it), right-click menu and viewer entry.
-use super::{App, BOLD, CHANNEL, El, FLOAT, Msg, TEXT, profile, surface};
+use super::{App, CHANNEL, El, FLOAT, Msg, profile, surface};
 use crate::{
     media::{Kind, Media},
     rooms::{Post, Room},
@@ -98,11 +98,7 @@ impl App {
                     profile::link(
                         self,
                         &first.sender,
-                        text(name)
-                            .size(16)
-                            .font(BOLD)
-                            .color(TEXT)
-                            .wrapping(text::Wrapping::None),
+                        super::names::author(name, r.role(&first.sender), 16.),
                     )
                 ),
                 text(stamp).size(12).color(CHANNEL)

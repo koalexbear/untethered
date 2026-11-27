@@ -153,6 +153,8 @@ pub enum Entry {
     Delete,
     Report,
     Profile,
+    /// Your nickname in the room's space (names.rs).
+    EditServerProfile,
     Mention,
     Message,
     Kick,
@@ -185,6 +187,7 @@ impl Entry {
             Self::Report => "Report Message",
             Self::Delete => "Delete Message…",
             Self::Profile => "Profile",
+            Self::EditServerProfile => "Edit Server Profile",
             Self::Mention => "Mention",
             Self::Message => "Message",
             // Both open the member card, where a reason goes with the action.
@@ -217,7 +220,12 @@ impl Entry {
     /// Entries of one group sit together, with a rule between groups.
     pub fn group(self) -> u8 {
         match self {
-            Self::AddReaction | Self::Profile | Self::Mention | Self::Message | Self::MarkRead => 0,
+            Self::AddReaction
+            | Self::Profile
+            | Self::EditServerProfile
+            | Self::Mention
+            | Self::Message
+            | Self::MarkRead => 0,
             Self::Reply
             | Self::Forward
             | Self::Edit
@@ -460,6 +468,17 @@ impl App {
             })
         };
         items.push(item(Entry::Profile, ready.then(profile)));
+        // Right-clicking your own name, as on Discord (names.rs).
+        if me
+            && self.may_edit_server_profile()
+            && let Some(space) = self.server_of(room)
+        {
+            items.push(item(
+                Entry::EditServerProfile,
+                self.connected
+                    .then(|| Msg::Names(crate::names::Input::Open(space))),
+            ));
+        }
         items.push(item(
             Entry::Mention,
             (room == self.selected && self.can_stage()).then(|| {
