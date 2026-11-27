@@ -124,11 +124,13 @@
    "owner": "fix-room-ptt",
    "paths": [
     "rust-client/src/engine/live_test.rs",
+    "rust-client/src/engine/mod.rs",
+    "rust-client/src/engine/rooms.rs",
     "scripts/qa_left_rooms.py"
    ],
    "status": "working",
    "title": "Rooms left elsewhere while closed stay listed",
-   "updated": "2026-11-27T23:10:46Z",
+   "updated": "2026-11-27T23:50:09Z",
    "worktree": ".claude/worktrees/great-lamport-46e7ea"
   },
   "fix-room-ptt": {
