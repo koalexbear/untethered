@@ -88,6 +88,11 @@
      "at": "2026-11-28T09:30:02Z",
      "by": "u1-voice-panel",
      "text": "[U1] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: view.rs: call_bar/call_dock/user_panel/theater dock only; main.rs: call Msg variants and handlers, QA layout timer; icons.rs: new call glyphs appended; README call section, ROADMAP U1 row"
+    },
+    {
+     "at": "2026-11-28T09:58:21Z",
+     "by": "m13-composer",
+     "text": "Ready for review on claude/m13-composer-15b65f (cb9e484, 0368b6d), on main b6f46ea. Five checks pass; scripts/qa_composer_details.py passes live. Spell check not possible in Iced 0.14 (ROADMAP/README say so). Also fixes an M6 bug: the unread banner moved the timeline's scrollable, so an open channel scrolled up got yanked to the bottom and auto-read. Hand-over: side-session notes m13-composer.md."
     }
    ],
    "owner": "m13-composer",
@@ -121,7 +126,7 @@
    ],
    "status": "review",
    "title": "Composer details",
-   "updated": "2026-11-28T09:58:18Z",
+   "updated": "2026-11-28T09:58:21Z",
    "worktree": ".claude/worktrees/m13-composer-15b65f"
   },
   "N8": {
