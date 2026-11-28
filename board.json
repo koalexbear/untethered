@@ -44,9 +44,9 @@
     "rust-client/src/view/selection.rs",
     "scripts/qa_selection.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Selection across messages",
-   "updated": "2026-11-28T14:42:08Z",
+   "updated": "2026-11-28T14:45:17Z",
    "worktree": ".claude/worktrees/m14-selection-b651f0"
   },
   "S6": {
