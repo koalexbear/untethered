@@ -123,6 +123,7 @@
    "notes": [],
    "owner": "fix-room-ptt",
    "paths": [
+    "rust-client/docs/matrix-sdk-migration.md",
     "rust-client/src/engine/live_test.rs",
     "rust-client/src/engine/mod.rs",
     "rust-client/src/engine/rooms.rs",
@@ -130,7 +131,7 @@
    ],
    "status": "working",
    "title": "Rooms left elsewhere while closed stay listed",
-   "updated": "2026-11-27T23:50:09Z",
+   "updated": "2026-11-28T00:03:09Z",
    "worktree": ".claude/worktrees/great-lamport-46e7ea"
   },
   "fix-room-ptt": {
