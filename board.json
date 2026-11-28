@@ -38,6 +38,11 @@
      "at": "2026-11-28T14:22:14Z",
      "by": "n7-index",
      "text": "[n7-index] shares README.md, ROADMAP.md, rust-client/src/main.rs: engine/mod.rs: a SearchIndex command variant, an Event variant, and spawning the indexer task in go_live; engine/app.rs: one arm routing the index event; main.rs: a Msg variant for the switch and handing activity (scrolling/call) to the engine; README/ROADMAP: only N7's row, the N7 known-gap lines and a search paragraph"
+    },
+    {
+     "at": "2026-11-28T14:23:13Z",
+     "by": "u5-incoming-call",
+     "text": "[U5] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: U5: view.rs replaces incoming_banner (the overlay slot in view()'s stack, a fixed strip slot under the chat header; removes the banner from mentions/stage/account/sign-in); main.rs: DecideRing takes an Answer enum, one tail call renamed (ring tasks); README call section paragraph; ROADMAP U5 row; calls plan U5 section/row; qa_desktop_dm reverse_call + qa_layout WORDS for the new card controls"
     }
    ],
    "owner": "c2-roles",
@@ -141,6 +146,11 @@
      "at": "2026-11-28T14:22:14Z",
      "by": "n7-index",
      "text": "[n7-index] shares README.md, ROADMAP.md, rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/main.rs: engine/mod.rs: a SearchIndex command variant, an Event variant, and spawning the indexer task in go_live; engine/app.rs: one arm routing the index event; main.rs: a Msg variant for the switch and handing activity (scrolling/call) to the engine; README/ROADMAP: only N7's row, the N7 known-gap lines and a search paragraph"
+    },
+    {
+     "at": "2026-11-28T14:23:13Z",
+     "by": "u5-incoming-call",
+     "text": "[U5] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: U5: view.rs replaces incoming_banner (the overlay slot in view()'s stack, a fixed strip slot under the chat header; removes the banner from mentions/stage/account/sign-in); main.rs: DecideRing takes an Answer enum, one tail call renamed (ring tasks); README call section paragraph; ROADMAP U5 row; calls plan U5 section/row; qa_desktop_dm reverse_call + qa_layout WORDS for the new card controls"
     }
    ],
    "owner": "m10-voice-messages",
@@ -208,6 +218,11 @@
      "at": "2026-11-28T14:22:14Z",
      "by": "n7-index",
      "text": "[n7-index] shares README.md, ROADMAP.md, rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/main.rs: engine/mod.rs: a SearchIndex command variant, an Event variant, and spawning the indexer task in go_live; engine/app.rs: one arm routing the index event; main.rs: a Msg variant for the switch and handing activity (scrolling/call) to the engine; README/ROADMAP: only N7's row, the N7 known-gap lines and a search paragraph"
+    },
+    {
+     "at": "2026-11-28T14:23:13Z",
+     "by": "u5-incoming-call",
+     "text": "[U5] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: U5: view.rs replaces incoming_banner (the overlay slot in view()'s stack, a fixed strip slot under the chat header; removes the banner from mentions/stage/account/sign-in); main.rs: DecideRing takes an Answer enum, one tail call renamed (ring tasks); README call section paragraph; ROADMAP U5 row; calls plan U5 section/row; qa_desktop_dm reverse_call + qa_layout WORDS for the new card controls"
     }
    ],
    "owner": "m15-profiles",
@@ -244,6 +259,11 @@
      "at": "2026-11-28T14:22:14Z",
      "by": "n7-index",
      "text": "[n7-index] shares README.md, ROADMAP.md, rust-client/src/engine/app.rs, rust-client/src/main.rs: engine/mod.rs: a SearchIndex command variant, an Event variant, and spawning the indexer task in go_live; engine/app.rs: one arm routing the index event; main.rs: a Msg variant for the switch and handing activity (scrolling/call) to the engine; README/ROADMAP: only N7's row, the N7 known-gap lines and a search paragraph"
+    },
+    {
+     "at": "2026-11-28T14:23:13Z",
+     "by": "u5-incoming-call",
+     "text": "[U5] shares README.md, ROADMAP.md, rust-client/src/main.rs: U5: view.rs replaces incoming_banner (the overlay slot in view()'s stack, a fixed strip slot under the chat header; removes the banner from mentions/stage/account/sign-in); main.rs: DecideRing takes an Answer enum, one tail call renamed (ring tasks); README call section paragraph; ROADMAP U5 row; calls plan U5 section/row; qa_desktop_dm reverse_call + qa_layout WORDS for the new card controls"
     }
    ],
    "owner": "s6-perf-budgets",
@@ -289,6 +309,11 @@
      "at": "2026-11-28T14:23:11Z",
      "by": "claude/u5-incoming-call-bece3a",
      "text": "[U5] u5-incoming-call (branch claude/u5-incoming-call-bece3a, based on your eef4d7c) will make small edits in your files: scripts/qa_desktop_dm.py (reverse_call: Accept/Decline through the new incoming-card controls, an OCR check of the caller's display name on the card, and a notification-action variant), scripts/qa_layout.py (WORDS gains accept/decline/accept-video -> incoming-accept/incoming-decline/incoming-video, docstring lines), calls-parity-plan.md (U5 section + table row only). No change to the settings page, device menus or desktop_call*."
+    },
+    {
+     "at": "2026-11-28T14:23:13Z",
+     "by": "u5-incoming-call",
+     "text": "[U5] shares README.md, ROADMAP.md, rust-client/docs/calls-parity-plan.md, rust-client/src/main.rs, rust-client/src/view.rs, scripts/qa_desktop_dm.py, scripts/qa_layout.py: U5: view.rs replaces incoming_banner (the overlay slot in view()'s stack, a fixed strip slot under the chat header; removes the banner from mentions/stage/account/sign-in); main.rs: DecideRing takes an Answer enum, one tail call renamed (ring tasks); README call section paragraph; ROADMAP U5 row; calls plan U5 section/row; qa_desktop_dm reverse_call + qa_layout WORDS for the new card controls"
     }
    ],
    "owner": "u2-voice-settings",
@@ -326,10 +351,45 @@
    "updated": "2026-11-28T13:38:04Z",
    "worktree": ".claude/worktrees/u2-voice-settings-44a6d7"
   },
+  "U5": {
+   "branch": "claude/u5-incoming-call-bece3a",
+   "claimed": "2026-11-28T14:23:13Z",
+   "notes": [],
+   "owner": "u5-incoming-call",
+   "paths": [
+    "README.md",
+    "ROADMAP.md",
+    "rust-client/docs/calls-parity-plan.md",
+    "rust-client/src/incoming.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/notifications.rs",
+    "rust-client/src/notifications/desktop.rs",
+    "rust-client/src/view.rs",
+    "rust-client/src/view/incoming.rs",
+    "scripts/qa_desktop_dm.py",
+    "scripts/qa_element_video.py",
+    "scripts/qa_layout.py",
+    "scripts/qa_multi_device_ring.py",
+    "scripts/qa_ring_notice.py",
+    "scripts/qa_room_alerts.py",
+    "scripts/qa_rtc_audio.py",
+    "scripts/test-media-interop.py"
+   ],
+   "status": "working",
+   "title": "Incoming call card and desktop notification",
+   "updated": "2026-11-28T14:23:13Z",
+   "worktree": ".claude/worktrees/u5-incoming-call-bece3a"
+  },
   "n7-index": {
    "branch": "claude/n7-index-4c3db0",
    "claimed": "2026-11-28T14:22:14Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-28T14:23:13Z",
+     "by": "u5-incoming-call",
+     "text": "[U5] shares README.md, ROADMAP.md, rust-client/src/main.rs: U5: view.rs replaces incoming_banner (the overlay slot in view()'s stack, a fixed strip slot under the chat header; removes the banner from mentions/stage/account/sign-in); main.rs: DecideRing takes an Answer enum, one tail call renamed (ring tasks); README call section paragraph; ROADMAP U5 row; calls plan U5 section/row; qa_desktop_dm reverse_call + qa_layout WORDS for the new card controls"
+    }
+   ],
    "owner": "n7-index",
    "paths": [
     "README.md",
