@@ -225,12 +225,10 @@ enum Msg {
     #[cfg(target_os = "linux")]
     ListCameras,
     #[cfg(target_os = "linux")]
-    CamerasListed(
-        uuid::Uuid,
-        Result<Vec<desktop_call::CameraChoice>, &'static str>,
-    ),
+    CamerasListed(Result<Vec<desktop_call::CameraChoice>, &'static str>),
+    /// The camera chosen on the Voice & Video page (call_settings.rs).
     #[cfg(target_os = "linux")]
-    SelectCamera(uuid::Uuid, desktop_call::CameraChoice),
+    SelectCamera(desktop_call::CameraChoice),
     #[cfg(target_os = "linux")]
     PeerVolume(uuid::Uuid, String, u8),
     #[cfg(target_os = "linux")]
@@ -434,6 +432,8 @@ enum Msg {
     Permissions,
     SetPosting(permissions::Change),
     Account,
+    /// Open a page of User Settings (view/user_settings.rs).
+    SettingsPage(view::user_settings::Page),
     Back,
     Server(String),
     Username(String),
@@ -573,8 +573,6 @@ struct App {
     /// A voice channel to join once the call that's ending has ended.
     #[cfg(target_os = "linux")]
     join_after: Option<String>,
-    #[cfg(target_os = "linux")]
-    room_ptt: bool,
     /// Mute, deafen and the chosen devices, in and between calls.
     #[cfg(target_os = "linux")]
     local_audio: desktop_call::LocalAudio,
@@ -638,9 +636,11 @@ struct App {
     /// Message and call sounds, and their switches (sounds.rs).
     #[cfg(target_os = "linux")]
     sounds: sounds::Sounds,
-    /// Voice processing and input sensitivity (call_settings.rs).
+    /// The Voice & Video settings and the page's tests (call_settings.rs).
     #[cfg(target_os = "linux")]
     voice: call_settings::Settings,
+    /// The page User Settings shows (view/user_settings.rs).
+    settings_page: view::user_settings::Page,
     /// How the last Copy Image went, and a fetched original waiting to be
     /// put on the clipboard (copy_image.rs).
     copy_note: Option<&'static str>,
@@ -732,7 +732,7 @@ impl App {
         #[cfg(target_os = "linux")]
         {
             app.sounds.settings = sounds::Settings::load();
-            app.voice = call_settings::Settings::loaded();
+            app.load_voice();
         }
         // The window, unless this is a start at sign-in, and the tray icon.
         #[cfg(not(target_arch = "wasm32"))]
@@ -760,8 +760,6 @@ impl App {
             call: None,
             #[cfg(target_os = "linux")]
             join_after: None,
-            #[cfg(target_os = "linux")]
-            room_ptt: false,
             #[cfg(target_os = "linux")]
             local_audio: Default::default(),
             #[cfg(target_os = "linux")]
@@ -806,6 +804,7 @@ impl App {
             sounds: Default::default(),
             #[cfg(target_os = "linux")]
             voice: Default::default(),
+            settings_page: Default::default(),
             copy_note: None,
             #[cfg(not(target_arch = "wasm32"))]
             copy_ready: None,
@@ -1403,15 +1402,8 @@ impl App {
             Msg::ToggleDeafen => self.toggle_deafen(),
             #[cfg(target_os = "linux")]
             Msg::RoomPtt(enabled) => {
-                self.room_ptt = enabled;
-                self.hotkeys.reset();
-                if let Some(call) = &self.call
-                    && call.group
-                    && !call.cancel.is_closed()
-                {
-                    call.audio
-                        .send_modify(|s| s.talk = desktop_call::TalkGate::from_ptt(enabled));
-                }
+                self.set_push_to_talk(enabled);
+                return self.save_voice();
             }
             #[cfg(target_os = "linux")]
             Msg::TalkKey(down) => return self.talk_key(hotkeys::Source::Window, down),
@@ -1536,52 +1528,11 @@ impl App {
                 }
             }
             #[cfg(target_os = "linux")]
-            Msg::ListCameras => {
-                if let Some(c) = &mut self.call
-                    && !c.camera_listing
-                    && !c.cancel.is_closed()
-                {
-                    c.camera_listing = true;
-                    c.camera_note = None;
-                    let cancel = c.cancel.clone();
-                    let id = c.id;
-                    return Task::perform(
-                        async move {
-                            tokio::select! {biased;_=cancel.closed()=>Err("Call ended."),r=desktop_call::list_cameras()=>r}
-                        },
-                        move |r| Msg::CamerasListed(id, r),
-                    );
-                }
-            }
+            Msg::ListCameras => return self.list_cameras(),
             #[cfg(target_os = "linux")]
-            Msg::CamerasListed(id, list) => {
-                if let Some(c) = &mut self.call
-                    && c.id == id
-                {
-                    c.camera_listing = false;
-                    match list {
-                        Ok(v) => {
-                            c.camera_note =
-                                (v.len() == 1).then_some("No selectable cameras reported.");
-                            c.cameras = v;
-                        }
-                        Err(why) => {
-                            c.cameras.clear();
-                            c.camera_note = Some(why);
-                        }
-                    }
-                }
-            }
+            Msg::CamerasListed(list) => self.cameras_listed(list),
             #[cfg(target_os = "linux")]
-            Msg::SelectCamera(id, choice) => {
-                if let Some(c) = &self.call
-                    && c.id == id
-                    && !c.cancel.is_closed()
-                    && c.cameras.contains(&choice)
-                {
-                    c.audio.send_modify(|s| s.camera = choice);
-                }
-            }
+            Msg::SelectCamera(choice) => return self.select_camera(choice),
             #[cfg(target_os = "linux")]
             Msg::VoiceMenu(menu) => return self.voice_menu(menu),
             #[cfg(target_os = "linux")]
@@ -1589,7 +1540,7 @@ impl App {
             #[cfg(target_os = "linux")]
             Msg::DevicesListed(result) => self.devices_listed(result),
             #[cfg(target_os = "linux")]
-            Msg::SelectDevice(port, device) => self.select_device(port, device),
+            Msg::SelectDevice(port, device) => return self.select_device(port, device),
             #[cfg(target_os = "linux")]
             Msg::QaLayout(None) => return qa_layout::collect().map(|f| Msg::QaLayout(Some(f))),
             #[cfg(target_os = "linux")]
@@ -1910,6 +1861,10 @@ impl App {
             }
             Msg::ContextMenu(e) => return self.context_menu_event(e),
             #[cfg(target_os = "linux")]
+            Msg::Escape if self.voice.recording && self.voice_page_open() => {
+                return self.voice_event(call_settings::Event::RecordKey(false));
+            }
+            #[cfg(target_os = "linux")]
             Msg::Escape if self.voice_popup.is_some() => self.voice_popup = None,
             Msg::FreeEscape => return self.free_escape(),
             Msg::Escape => {
@@ -1973,9 +1928,33 @@ impl App {
             Msg::Moderate(c) => self.moderate(c),
             Msg::Account => {
                 #[cfg(target_os = "linux")]
-                self.minimize_call();
+                {
+                    self.minimize_call();
+                    self.reset_voice_page();
+                }
                 self.close_mentions();
                 self.account = true;
+                self.settings_page = view::user_settings::Page::Account;
+            }
+            Msg::SettingsPage(page) => {
+                let opened = self.update(Msg::Account);
+                self.settings_page = page;
+                let top = iced::widget::operation::scroll_to(
+                    view::user_settings::SCROLL,
+                    iced::widget::operation::AbsoluteOffset {
+                        x: None,
+                        y: Some(0.),
+                    },
+                );
+                #[cfg(target_os = "linux")]
+                {
+                    self.voice_popup = None;
+                    if page == view::user_settings::Page::Voice {
+                        // The page names the chosen devices from the list.
+                        return Task::batch([opened, top, self.refresh_devices()]);
+                    }
+                }
+                return Task::batch([opened, top]);
             }
             Msg::Back => self.account = false,
             Msg::Server(s) => self.server = s,
@@ -2453,13 +2432,19 @@ fn main() -> iced::Result {
         .default_font(iced::Font::with_name("Liberation Sans"))
         .subscription(|app| {
             iced::Subscription::batch([
-                if app.auto_target().is_some(){
-                    iced::time::every(std::time::Duration::from_millis(750)).map(|_|Msg::CheckReading)
-                }else{iced::Subscription::none()},
+                if app.auto_target().is_some() {
+                    iced::time::every(std::time::Duration::from_millis(750))
+                        .map(|_| Msg::CheckReading)
+                } else {
+                    iced::Subscription::none()
+                },
                 #[cfg(not(target_arch = "wasm32"))]
                 if app.drafts_dirty {
-                    iced::time::every(std::time::Duration::from_millis(500)).map(|_| Msg::SaveDrafts)
-                } else { iced::Subscription::none() },
+                    iced::time::every(std::time::Duration::from_millis(500))
+                        .map(|_| Msg::SaveDrafts)
+                } else {
+                    iced::Subscription::none()
+                },
                 app.typing_subscription(),
                 app.presence_subscription(),
                 app.order_subscription(),
@@ -2467,11 +2452,15 @@ fn main() -> iced::Result {
                 // A moment after the timeline stops moving, note the place.
                 if app.place_unnoted {
                     iced::time::every(std::time::Duration::from_millis(400)).map(|_| Msg::NotePlace)
-                } else { iced::Subscription::none() },
+                } else {
+                    iced::Subscription::none()
+                },
                 #[cfg(not(target_arch = "wasm32"))]
                 if app.places_dirty {
                     iced::time::every(std::time::Duration::from_secs(1)).map(|_| Msg::SavePlaces)
-                } else { iced::Subscription::none() },
+                } else {
+                    iced::Subscription::none()
+                },
                 // Ctrl+K opens the quick switcher, also while typing, as on
                 // Discord; while it's open, the arrow keys move through it.
                 iced::event::listen_with(|event, _, _| match event {
@@ -2498,7 +2487,9 @@ fn main() -> iced::Result {
                         }) => Some(Msg::Switcher(switcher::Input::Step(1))),
                         _ => None,
                     })
-                } else { iced::Subscription::none() },
+                } else {
+                    iced::Subscription::none()
+                },
                 #[cfg(not(target_arch = "wasm32"))]
                 iced::event::listen_with(|event, status, _| match event {
                     // Page Up and Down scroll the messages, also while typing, as on Discord.
@@ -2510,24 +2501,6 @@ fn main() -> iced::Result {
                         key: iced::keyboard::Key::Named(iced::keyboard::key::Named::PageDown),
                         ..
                     }) => Some(Msg::PageScroll(false)),
-                    // Right Ctrl is a non-repeating modifier. On X11 the first
-                    // repeat of an ordinary key after refocus can look like a
-                    // fresh press. Always handle release/blur, even in an editor.
-                    #[cfg(target_os = "linux")]
-                    iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
-                        physical_key:
-                            iced::keyboard::key::Physical::Code(iced::keyboard::key::Code::ControlRight),
-                        repeat: false,
-                        ..
-                    }) => Some(Msg::TalkKey(true)),
-                    #[cfg(target_os = "linux")]
-                    iced::Event::Keyboard(iced::keyboard::Event::KeyReleased {
-                        physical_key:
-                            iced::keyboard::key::Physical::Code(iced::keyboard::key::Code::ControlRight),
-                        ..
-                    }) => {
-                        Some(Msg::TalkKey(false))
-                    }
                     // Escape also closes menus and dialogs while a text field has
                     // focus, as on Discord; the field itself captures the key.
                     // One no field captured may mark the channel read (composer.rs).
@@ -2541,8 +2514,12 @@ fn main() -> iced::Result {
                     } else {
                         Msg::Escape
                     }),
-                    iced::Event::Window(iced::window::Event::Unfocused)=>Some(Msg::WindowFocus(false)),
-                    iced::Event::Window(iced::window::Event::Focused)=>Some(Msg::WindowFocus(true)),
+                    iced::Event::Window(iced::window::Event::Unfocused) => {
+                        Some(Msg::WindowFocus(false))
+                    }
+                    iced::Event::Window(iced::window::Event::Focused) => {
+                        Some(Msg::WindowFocus(true))
+                    }
                     iced::Event::Window(iced::window::Event::FileDropped(path)) => {
                         Some(Msg::DropPaths(vec![path]))
                     }
@@ -2556,33 +2533,47 @@ fn main() -> iced::Result {
                 }),
                 iced::window::close_requests().map(|_| Msg::Close),
                 #[cfg(target_os = "linux")]
-                hotkeys::subscription(app.room_ptt).map(Msg::Hotkey),
+                hotkeys::subscription(app.push_to_talk(), app.voice.talk_key.clone())
+                    .map(Msg::Hotkey),
+                // The push-to-talk key while Untethered has focus.
+                #[cfg(target_os = "linux")]
+                hotkeys::window(
+                    app.push_to_talk(),
+                    hotkeys::window_key(app.voice.talk_key.as_deref()),
+                ),
                 #[cfg(target_os = "linux")]
                 app.viewer
                     .as_ref()
                     .and_then(|v| v.video.as_ref())
-                    .map_or_else(iced::Subscription::none, |p| p.subscription().map(Msg::Player)),
+                    .map_or_else(iced::Subscription::none, |p| {
+                        p.subscription().map(Msg::Player)
+                    }),
                 #[cfg(target_os = "linux")]
                 app.inline_player
                     .as_ref()
                     .and_then(|p| p.player.as_ref())
-                    .map_or_else(iced::Subscription::none, |p| p.subscription().map(Msg::InlinePlayer)),
+                    .map_or_else(iced::Subscription::none, |p| {
+                        p.subscription().map(Msg::InlinePlayer)
+                    }),
                 #[cfg(target_os = "linux")]
                 if app.inline_running() {
-                    iced::time::every(std::time::Duration::from_millis(250)).map(|_| Msg::InlineTick)
-                } else { iced::Subscription::none() },
-                // The input sensitivity meter moves while the voice
-                // settings show it during a call.
+                    iced::time::every(std::time::Duration::from_millis(250))
+                        .map(|_| Msg::InlineTick)
+                } else {
+                    iced::Subscription::none()
+                },
+                // The Voice & Video page's meter, mic test, camera
+                // preview and key binding (call_settings.rs).
                 #[cfg(target_os = "linux")]
-                if app.voice_popup == Some(desktop_call::VoiceMenu::Settings)
-                    && app.call.as_ref().is_some_and(|c| !c.cancel.is_closed()) {
-                    iced::time::every(std::time::Duration::from_millis(50)).map(|_| Msg::VoiceMeter)
-                } else { iced::Subscription::none() },
+                app.voice_subscription(),
                 // The QA control map, when a fixture asked for it.
                 #[cfg(target_os = "linux")]
                 if qa_layout::enabled() {
-                    iced::time::every(std::time::Duration::from_millis(300)).map(|_| Msg::QaLayout(None))
-                } else { iced::Subscription::none() },
+                    iced::time::every(std::time::Duration::from_millis(300))
+                        .map(|_| Msg::QaLayout(None))
+                } else {
+                    iced::Subscription::none()
+                },
                 iced::keyboard::listen().filter_map(|event| match event {
                     iced::keyboard::Event::KeyPressed {
                         key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Tab),

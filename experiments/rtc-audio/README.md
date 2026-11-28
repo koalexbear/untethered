@@ -190,7 +190,7 @@ gomuks under `/usr/lib/untethered`; the dev launcher builds it automatically.
 
 The fixture adds a second virtual camera after the first has begun
 publishing. During one encrypted call, it selects **Cobalt**, then **Amber**
-in the camera list of **Voice Settings**. At both selections the private PipeWire graph
+in the camera list of the **Voice & Video** settings page. At both selections the private PipeWire graph
 must show only the selected camera linked, Element's remote tile and
 Untethered's self-preview must both show the new changing pattern, and the
 same four GCM camera/microphone publication IDs must remain active. Withdrawing
@@ -252,7 +252,7 @@ the automatic gate learns any steady sound as noise.
 
 Run `sh experiments/rtc-audio/run_element.sh --voice-processing`. It runs the
 three-client voice room above, then switches Alice's processing on one switch
-at a time in her **Voice Settings** popup, checks that her `voice.json`
+at a time on her **Voice & Video** settings page, checks that her `voice.json`
 follows each click, and measures the result at the other clients' speakers
 with speech-like signals (tone syllables, voiced ones with harmonics):
 
@@ -277,7 +277,12 @@ with speech-like signals (tone syllables, voiced ones with harmonics):
 - **Defaults:** with automatic sensitivity on as well, steady noise must be
   learned and gated, and syllables over it must pass and light Alice's ring on
   all three rosters (hers from her own gate). Every switch then goes back off
-  from the panel, and `voice.json` must match the fixtures' settings again.
+  from the page, and `voice.json` must match the fixtures' settings again.
+- **Sensitivity sweep:** with processing off, the threshold slider is driven
+  through the control map from −70 dB up to 0 dB and back across Alice's
+  steady 410 Hz (about −16 dBFS). Below it, Bruno and Clara must hear her and
+  her meter must report voice; at −10 and 0 dB they must hear only each other
+  and the meter must not.
 
 ### Verify push-to-talk
 
@@ -419,6 +424,12 @@ camera** must remove the capture process, camera links, SFU video track and
 both remote tiles while leaving the virtual camera available. Changing mic
 tones verifies all six audio paths both during video and after stopping it.
 
+Once everyone has left, Alice opens the **Voice & Video** settings page and
+clicks **Test Video** (U2): the preview must show the green/magenta fields,
+then the orange/blue ones after the camera changes, through one capture
+process, while LiveKit's Twirp `ListParticipants` stays empty in every sample.
+**Stop Video** must end the capture.
+
 ### Verify multi-camera grid and focus
 
 Run `sh experiments/rtc-audio/run_element.sh --room-layout` with the same
@@ -451,7 +462,10 @@ The call controls [before](evidence/u1-before-voice-room.png) and
 [after](evidence/u1-after-voice-room.png) step U1, at the same moment of
 `--voice-room`; also [Mute's device menu](evidence/u1-device-menu.png),
 [Voice Settings](evidence/u1-voice-settings.png), [muted and deafened in
-another room](evidence/u1-deafened.png) and [Theater](evidence/u1-theater.png).
+another room](evidence/u1-deafened.png) and [Theater](evidence/u1-theater.png);
+from step U2, the [Voice & Video page](evidence/u2-voice-video-page.png), its
+[push-to-talk settings](evidence/u2-push-to-talk.png) and [binding
+dialog](evidence/u2-binding-dialog.png).
 With `RTC_QA_SCREENSHOTS` set, `--voice-room`, `--call-controls` and
 `--call-devices` save these screenshots there.
 
@@ -475,8 +489,10 @@ playback stream, and **Reset** must restore it.
 Run `sh experiments/rtc-audio/run_element.sh --call-devices` with the same
 setup. Two virtual microphones continuously supply **480 Hz** and **730 Hz**,
 and both virtual speaker outputs are monitored for Element's **960 Hz**.
-The test chooses each device in the menus beside **Mute** (microphones) and
-**Deafen** (speakers). After each switch it requires
+Before calling, the test chooses **Cobalt** and **Grove** on the **Voice &
+Video** settings page (U2), and the call must start on them. It then chooses
+each device in the menus beside **Mute** (microphones) and **Deafen**
+(speakers). After each switch it requires
 12 fresh 100 ms windows at Element and at each speaker: the chosen mic tone,
 the return tone at the chosen output, and silence at the other. It checks
 PulseAudio stream routes, unchanged server defaults, the original two GCM
@@ -485,6 +501,14 @@ publication IDs and participant IDs, and browser media/signaling continuity.
 It also selects a spare mic while muted and removes it before unmuting.
 There must be no fallback capture: Element stays silent, playback continues,
 and explicitly choosing a working mic restores audio on the same track.
+
+After the call it sets one of everything on the page: both devices, input
+volume 150 %, output volume 60 %, a −42 dB threshold, echo cancellation,
+Push to Talk with **F9** recorded in the binding dialog and a 300 ms release
+delay. `voice.json` must follow each. The client is then closed as a window
+manager closes it (`WM_DELETE_WINDOW`) and must exit cleanly; started again on
+the same disposable profile (as `qa_linux_upgrade.py` does across an upgrade),
+its page must show every choice.
 
 ### Verify recovery after a network interruption
 

@@ -170,6 +170,7 @@ impl Capture {
     /// Process one captured frame in place and gate it. With push-to-talk
     /// the key is the gate: a held key always sends.
     pub(super) fn frame(&mut self, frame: &mut Frame, settings: &Settings, push_to_talk: bool) {
+        scale(frame, settings.input_volume);
         self.voice.process(frame, settings);
         let db = level(frame);
         let voice = self.gate.decide(db, settings.sensitivity());
@@ -184,6 +185,17 @@ impl Capture {
         self.voice
             .talking
             .send_if_modified(|t| std::mem::replace(t, voice) != voice);
+    }
+}
+
+/// Scale a frame by `percent` (the input volume), clipping at full scale.
+fn scale(frame: &mut Frame, percent: u8) {
+    if percent == 100 {
+        return;
+    }
+    for sample in frame.iter_mut() {
+        let scaled = i32::from(*sample) * i32::from(percent) / 100;
+        *sample = scaled.clamp(i16::MIN.into(), i16::MAX.into()) as i16;
     }
 }
 
@@ -323,6 +335,18 @@ mod tests {
         assert!((level(&[i16::MAX; SAMPLES])).abs() < 0.01);
         // A full-scale sine is 3 dB below a full-scale square.
         assert!((level(&tone(1000.0, 32767.0, 0)) + 3.01).abs() < 0.05);
+    }
+
+    #[test]
+    fn the_input_volume_scales_the_microphone_and_clips() {
+        let mut frame = [0; SAMPLES];
+        frame[..3].copy_from_slice(&[1_000, -30_000, 20_000]);
+        scale(&mut frame, 150);
+        assert_eq!(frame[..3], [1_500, i16::MIN, 30_000]);
+        scale(&mut frame, 100);
+        assert_eq!(frame[0], 1_500, "100 % leaves it as it is");
+        scale(&mut frame, 0);
+        assert_eq!(level(&frame), QUIET);
     }
 
     #[test]

@@ -4,16 +4,18 @@
 //! Deafen in the user panel, each with a menu of devices. They work before
 //! joining too, and the call starts muted or deafened.
 //!
-//! Until the Voice & Video page (U2) and participant menus (U3), a Voice
-//! Settings popup keeps the rest reachable: push-to-talk, input sensitivity
-//! and voice processing, the camera, shared audio and each participant's
-//! volume.
+//! Devices, input mode, processing and the camera are on the Voice & Video
+//! settings page (U2, user_settings.rs), which the device menus open. Until
+//! the Go Live sheet (U4) and participant menus (U3), a Voice Settings popup
+//! from the panel's gear keeps the rest reachable: shared audio and each
+//! participant's volume, with a link to the page.
 //!
 //! Every control is tagged for the QA control map (qa_layout.rs).
 use super::{
     ACTIVE, BOLD, CHANNEL, El, FLOAT, GREEN, LINE, MUTED, Msg, RED, TEXT, TRAY, label, nav,
-    popover, surface, voice_settings,
+    popover, surface, user_settings::Page,
 };
+use crate::hotkeys;
 use crate::{
     App,
     call_devices::Port,
@@ -244,7 +246,9 @@ impl App {
             } else if mode.muted {
                 "Unmute to use push-to-talk.".into()
             } else {
-                self.hotkeys.hint(mode.talk != TalkGate::Waiting)
+                let window = hotkeys::window_key(self.voice.talk_key.as_deref());
+                self.hotkeys
+                    .hint(mode.talk != TalkGate::Waiting, &hotkeys::label(&window))
             }));
         }
         for status in &call.video_status {
@@ -395,7 +399,7 @@ impl App {
     }
 
     /// A device menu: the inputs or outputs, the chosen one ticked, then
-    /// Refresh and Voice Settings.
+    /// Refresh and Voice Settings (the Voice & Video page).
     fn device_menu(&self, menu: VoiceMenu) -> El<'_> {
         let local = &self.local_audio;
         let (port, title, prefix) = match menu {
@@ -460,7 +464,7 @@ impl App {
         .width(Fill)
         .padding([6, 8])
         .style(menu_item)
-        .on_press(Msg::VoiceMenu(Some(VoiceMenu::Settings)));
+        .on_press(Msg::SettingsPage(Page::Voice));
         items = items
             .push(separator())
             .push(tag(format!("{prefix}-refresh"), "", "", refresh))
@@ -538,32 +542,34 @@ impl App {
         )
     }
 
-    /// The voice settings that have no page yet.
+    /// The call's settings that have no other home yet, and the way to the
+    /// Voice & Video page, which has the rest.
     fn voice_settings(&self) -> El<'_> {
         let call = self.call.as_ref().filter(|c| running(c));
+        let page = button(
+            row![
+                text("Voice & Video settings").size(13).width(Fill),
+                icon(Icon::ChevronRight, 14., ICON)
+            ]
+            .align_y(Center),
+        )
+        .width(Fill)
+        .padding([6, 8])
+        .style(menu_item)
+        .on_press(Msg::SettingsPage(Page::Voice));
         let mut body = column![
             text("Voice Settings").size(16).font(BOLD).color(TEXT),
-            tag(
-                "ptt",
-                if self.room_ptt { "on" } else { "off" },
-                "",
-                checkbox(self.room_ptt)
-                    .label("Push-to-talk in voice channels")
-                    .size(16)
-                    .text_size(13)
-                    .on_toggle(Msg::RoomPtt),
-            ),
-            voice_settings::section(
-                self.voice.voice,
-                call.map(|c| *c.input.borrow()).unwrap_or_default(),
-                self.voice.note,
-                true,
-            ),
+            column![
+                text("Devices, input mode, voice processing and the camera:")
+                    .size(12)
+                    .color(MUTED),
+                tag("voice-settings-page", "", "", page),
+            ]
+            .spacing(4),
         ]
         .spacing(10)
         .width(Fill);
         if let Some(call) = call {
-            body = body.push(self.camera_settings(call));
             body = body.push(self.share_settings(call));
             body = body.push(self.volume_settings(call));
         }
@@ -599,49 +605,6 @@ impl App {
                 ..surface(FLOAT, 8.)
             }),
         )
-    }
-
-    fn camera_settings<'a>(&'a self, call: &'a ActiveCall) -> El<'a> {
-        let mode = call.audio.borrow();
-        let id = call.id;
-        let mut cams = column![label("CAMERA")].spacing(5);
-        // The cameras as a list, the chosen one ticked, as the device menus.
-        let mut list = column![].spacing(1);
-        for (i, camera) in call.cameras.iter().enumerate() {
-            let chosen = *camera == mode.camera;
-            list = list.push(tag(
-                format!("camera-item-{i}"),
-                if chosen { "selected" } else { "" },
-                "",
-                choice_item(
-                    camera.to_string(),
-                    chosen,
-                    (!chosen).then(|| Msg::SelectCamera(id, camera.clone())),
-                ),
-            ));
-        }
-        cams = cams.push(list);
-        cams = cams.push(tag(
-            "cameras-refresh",
-            "",
-            "",
-            button(
-                text(if call.camera_listing {
-                    "Looking…"
-                } else if call.cameras.is_empty() {
-                    "List cameras"
-                } else {
-                    "Refresh cameras"
-                })
-                .size(13),
-            )
-            .style(nav(false))
-            .on_press_maybe((!call.camera_listing).then_some(Msg::ListCameras)),
-        ));
-        if let Some(note) = call.camera_note {
-            cams = cams.push(text(note).size(12).color(MUTED));
-        }
-        cams.into()
     }
 
     /// The window share's app audio, and whether shared audio plays.

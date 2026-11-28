@@ -234,7 +234,10 @@ def check_restart(alice,keys,joined,left):
                    (m:=re.search(rf"^\[{re.escape(APP_ID)}\]\n(?:[^\[\n].*\n?)*",rc.read_text(),re.M)) and m[0],10)
     assert re.search(r"^push-to-talk=Pause,",group,re.M),group
     alice.restart()
-    alice.click("push-to-talk")
+    # The input mode is saved with the Voice & Video settings (U2): it's as
+    # the call left it, voice activity, so push-to-talk is armed again.
+    state=wait_for("push-to-talk beside Join voice",lambda:alice.layout.state("ptt-header"),15)
+    if state!="on":alice.click("push-to-talk")
     alice.click("join")
     wait_for("rejoined after restart",joined,20)
     keys.focus(keys.target)

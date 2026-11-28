@@ -1,9 +1,8 @@
-//! Input sensitivity and voice processing (call_settings.rs, calls plan step
-//! A2), as on Discord's Voice & Video page: an automatic sensitivity switch,
-//! a live input meter with the manual threshold's slider over it, and the
-//! echo cancellation, noise suppression and gain control switches. It shows
-//! in the Voice Settings popup (voice_panel.rs) until the Voice & Video page
-//! (U2) takes it.
+//! Input sensitivity and voice processing (call_settings.rs, calls plan steps
+//! A2 and U2), for the Voice & Video page (user_settings.rs): an automatic
+//! sensitivity switch, a live input meter with the manual threshold's slider
+//! over it, and the echo cancellation, noise suppression and gain control
+//! switches. The page's mic test shows the same meter.
 use super::{BOLD, CHANNEL, El, GREEN, MUTED, Msg, label};
 use crate::{
     call_settings::{Change, Event, THRESHOLD_RANGE, Voice},
@@ -83,55 +82,57 @@ impl canvas::Program<Msg> for Meter {
     }
 }
 
-/// The section, for a call whose microphone reports `level`. `enabled` is
-/// false while the call is ending.
-pub(super) fn section(
-    voice: Voice,
-    level: InputLevel,
-    note: Option<&'static str>,
-    enabled: bool,
-) -> El<'static> {
-    let switch = |on: bool, name: &'static str, change: fn(bool) -> Change| -> El<'static> {
-        // Tagged for the QA control map by the setting it changes.
-        let id = match change(on) {
-            Change::AutoSensitivity(_) => "voice-auto",
-            Change::EchoCancellation(_) => "voice-echo",
-            Change::NoiseSuppression(_) => "voice-noise",
-            Change::GainControl(_) => "voice-gain",
-            Change::Threshold(_) => "voice-threshold",
-        };
-        tag(
-            id,
-            if on { "on" } else { "off" },
-            "",
-            checkbox(on)
-                .label(name)
-                .size(16)
-                .text_size(13)
-                .on_toggle_maybe(enabled.then_some(move |on| Msg::Voice(Event::Set(change(on))))),
-        )
+/// A switch, tagged for the QA control map by the setting it changes.
+/// `enabled` is false while a call is ending.
+fn switch(on: bool, name: &'static str, change: fn(bool) -> Change, enabled: bool) -> El<'static> {
+    let id = match change(on) {
+        Change::AutoSensitivity(_) => "voice-auto",
+        Change::EchoCancellation(_) => "voice-echo",
+        Change::NoiseSuppression(_) => "voice-noise",
+        Change::GainControl(_) => "voice-gain",
+        _ => "voice-switch",
     };
-    let meter = |threshold| {
-        tag(
-            "voice-meter",
-            if level.voice { "voice" } else { "" },
-            "",
-            Canvas::new(Meter { level, threshold })
-                .width(Fill)
-                .height(8),
-        )
-    };
+    tag(
+        id,
+        if on { "on" } else { "off" },
+        "",
+        checkbox(on)
+            .label(name)
+            .size(16)
+            .text_size(14)
+            .on_toggle_maybe(enabled.then_some(move |on| Msg::Voice(Event::Set(change(on))))),
+    )
+}
+
+/// The input meter, tagged `name`: state "voice" while the gate hears
+/// voice, the level in its tooltip slot ("-42 dB") for the fixtures.
+pub(super) fn meter(name: &'static str, level: InputLevel, threshold: Option<f32>) -> El<'static> {
+    tag(
+        name,
+        if level.voice { "voice" } else { "" },
+        format!("{:.0} dB", level.db),
+        Canvas::new(Meter { level, threshold })
+            .width(Fill)
+            .height(8),
+    )
+}
+
+/// Input sensitivity: the automatic switch, and the threshold's slider over
+/// the live meter when it's off. `level` is the microphone's, in a call or
+/// the mic test.
+pub(super) fn sensitivity(voice: Voice, level: InputLevel, enabled: bool) -> El<'static> {
     let mut sensitivity = column![
         label("INPUT SENSITIVITY"),
         switch(
             voice.auto_sensitivity,
             "Automatically determine input sensitivity",
-            Change::AutoSensitivity
+            Change::AutoSensitivity,
+            enabled,
         ),
     ]
-    .spacing(5);
+    .spacing(8);
     if voice.auto_sensitivity {
-        sensitivity = sensitivity.push(meter(None));
+        sensitivity = sensitivity.push(meter("voice-meter", level, None));
     } else {
         // Arrow keys move it a decibel while the pointer is over it.
         let threshold = slider(THRESHOLD_RANGE, voice.threshold, move |db| {
@@ -162,8 +163,13 @@ pub(super) fn section(
             },
         });
         sensitivity = sensitivity.push(stack![
-            container(meter(Some(voice.threshold))).center_y(18),
-            tag("voice-slider", "", "", threshold),
+            container(meter("voice-meter", level, Some(voice.threshold))).center_y(18),
+            tag(
+                "voice-slider",
+                "",
+                format!("{:.0} dB", voice.threshold),
+                threshold
+            ),
         ]);
         sensitivity = sensitivity.push(
             row![
@@ -176,29 +182,33 @@ pub(super) fn section(
             .spacing(6),
         );
     }
-    let mut section = column![
-        sensitivity,
+    sensitivity.width(Fill).into()
+}
+
+/// Echo cancellation, noise suppression and automatic gain control.
+pub(super) fn processing(voice: Voice, enabled: bool) -> El<'static> {
+    column![
         label("VOICE PROCESSING"),
         switch(
             voice.echo_cancellation,
             "Echo cancellation",
-            Change::EchoCancellation
+            Change::EchoCancellation,
+            enabled,
         ),
         switch(
             voice.noise_suppression,
             "Noise suppression",
-            Change::NoiseSuppression
+            Change::NoiseSuppression,
+            enabled,
         ),
         switch(
             voice.gain_control,
             "Automatic gain control",
-            Change::GainControl
+            Change::GainControl,
+            enabled,
         ),
     ]
-    .spacing(5)
-    .width(Fill);
-    if let Some(note) = note {
-        section = section.push(text(note).size(12).color(MUTED));
-    }
-    section.into()
+    .spacing(8)
+    .width(Fill)
+    .into()
 }

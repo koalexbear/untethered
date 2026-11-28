@@ -847,8 +847,8 @@ impl Capture {
         pipeline.args(["-q", "pipewiresrc", "fd=0"]);
         if let Some(node) = node {
             pipeline.args([format!("path={node}"), "keepalive-time=300".into()]);
-        } else if let CameraChoice::Source { serial, .. } = &route {
-            pipeline.args([format!("target-object={serial}"),"stream-properties=props,media.role=Camera,node.dont-fallback=true,node.dont-reconnect=true,node.name=untethered-camera-capture".into()]);
+        } else if let CameraChoice::Source { target, .. } = &route {
+            pipeline.args([format!("target-object={target}"),"stream-properties=props,media.role=Camera,node.dont-fallback=true,node.dont-reconnect=true,node.name=untethered-camera-capture".into()]);
         } else {
             // Autoconnect on the camera-only portal remote; the media session
             // manager chooses the camera. Never fall back to a host device.
@@ -935,7 +935,9 @@ impl Capture {
             }
             if let Some(result) = result {
                 return if matches!(route, CameraChoice::Source { .. }) && result.is_err() {
-                    Err("Selected camera stopped. Choose a camera in Devices and start it again.")
+                    Err(
+                        "Selected camera stopped. Choose a camera in Voice & Video settings and start it again.",
+                    )
                 } else {
                     result
                 };
@@ -1026,6 +1028,63 @@ impl Capture {
             }
         }
     }
+}
+/// What the Voice & Video page's camera preview reports (calls plan U2).
+#[derive(Clone, Debug)]
+pub(crate) enum Preview {
+    Frame(Handle),
+    /// The preview stopped: the camera ended, or couldn't be opened.
+    Ended(Result<()>),
+}
+/// The size and rate of the page's camera preview.
+const PREVIEW: Quality = Quality {
+    width: 640,
+    height: 360,
+    fps: 15,
+    max_bitrate: 0,
+};
+/// The camera `target` (a PipeWire node name or serial; None for the
+/// system default) for the Voice & Video page, through the same portal and
+/// reader as a call's camera but without LiveKit: nothing is published.
+/// The reader stops when the stream is dropped.
+pub(crate) fn preview(target: Option<String>) -> impl futures_util::Stream<Item = Preview> {
+    iced::stream::channel(1, async move |mut out| {
+        use iced::futures::SinkExt;
+        let route = target.map_or(CameraChoice::Default, |target| CameraChoice::Source {
+            target,
+            label: String::new(),
+        });
+        let run = async {
+            let fd = camera_remote().await?;
+            let mut capture = Capture::reader(
+                fd,
+                None,
+                None,
+                route,
+                PREVIEW,
+                (PREVIEW.width, PREVIEW.height),
+            )
+            .await?;
+            loop {
+                let frame = rgba(
+                    &mut capture.layout.buffer(&capture.pixels),
+                    PREVIEW.width,
+                    PREVIEW.height,
+                );
+                // One frame waits for the window at most; the reader's
+                // leaky queue drops the rest.
+                if out.send(Preview::Frame(frame)).await.is_err() {
+                    return Ok(());
+                }
+                time::timeout(SECOND * 12, capture.pipe.read_exact(&mut capture.pixels))
+                    .await
+                    .map_err(|_| "The camera stopped sending pictures.")?
+                    .map_err(|_| "The camera stopped.")?;
+            }
+        };
+        let result = run.await;
+        let _ = out.send(Preview::Ended(result)).await;
+    })
 }
 /// KDE's portal reports no size for window streams. Read the negotiated
 /// buffer size from one frame on a separate PipeWire connection instead.

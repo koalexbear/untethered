@@ -235,3 +235,47 @@ def room_camera(stack,desks,secret,original,publications):
     wait_for("fresh audio after camera off",lambda:all(d.hears(h) for d,h in zip(desks,({670,1030},{410,1030},{410,670}))),12)
     assert publications(3)==original and present(kde)
     print("Camera off: capture links gone, PipeWire video graph at baseline, zero video publications, both tiles cleared. Original three GCM microphones still carry fresh tones.",flush=True)
+    return show,palettes
+
+
+def camera_preview(desk,secret,show,palettes):
+    """The Voice & Video page's camera preview (calls plan U2), after
+    everyone left the call: the private camera's pattern shows on the page
+    and changes live, through one reader of its own, while LiveKit's Twirp
+    ListParticipants stays empty."""
+    def near(pixel,colour,slack):
+        return max(abs(v-w) for v,w in zip(pixel,colour))<slack
+    kde,layout=desk.kde,desk.layout
+    samples=[]
+    def nobody():
+        samples.append(sfu_participants(secret,allow_empty=True))
+        return not samples[-1]
+    def readers():
+        return kde.command("pgrep","-P",str(kde.native.pid),"-x","gst-launch-1.0",check=False).stdout.splitlines()
+    assert nobody() and not readers()
+    show(0)
+    desk.voice_page()
+    desk.press(*desk.reveal_page("camera-test"))
+    grant_camera(kde,lambda:layout.state("camera-preview")=="live")
+    def shows(palette):
+        if not nobody():return False
+        desk.reveal_page("camera-preview")
+        if not (c:=layout.get("camera-preview")):return False
+        left,top,right,bottom=map(int,layout.box(c))
+        im=desk.image()
+        counts=[sum(near(im.getpixel((x,y)),color,32) for y in range(top+2,bottom-2,3) for x in range(left+2,right-2,3))
+                for color in palette]
+        # Each half of the 320×180 pattern fills about half the preview.
+        return all(n>800 for n in counts) and counts
+    first=wait_for("the page's preview shows the first pattern",lambda:shows(palettes[0]),15)
+    show(1)
+    second=wait_for("the page's preview changes to the second pattern",lambda:shows(palettes[1]),12)
+    assert len(readers())==1,readers()
+    assert all(not s for s in samples),[s for s in samples if s]
+    desk.press(*desk.reveal_page("camera-test"))
+    wait_for("preview stopped and its reader gone",lambda:layout.state("camera-preview")=="off" and not readers(),10)
+    assert nobody()
+    desk.voice_page(False)
+    print(f"Voice & Video page: Test Video showed the private camera's green/magenta pattern ({first[0]}/{first[1]} "
+          f"samples), then orange/blue ({second[0]}/{second[1]}), through one capture process; LiveKit's "
+          f"ListParticipants stayed empty in all {len(samples)} samples; Stop Video ended the capture.",flush=True)

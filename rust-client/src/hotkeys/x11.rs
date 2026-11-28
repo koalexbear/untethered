@@ -5,7 +5,7 @@
 //! grab would take the key from the focused application and, while held,
 //! divert the rest of the keyboard to us too, so a game would stop seeing its
 //! movement keys while you talk. Listening takes nothing away.
-use super::{DEAFEN, Event, MUTE, Shortcut, TALK};
+use super::{DEAFEN, Event, MUTE, NAMED, Shortcut, TALK, label};
 use async_channel::Sender;
 use std::collections::HashSet;
 use std::sync::{
@@ -256,32 +256,6 @@ fn parse(trigger: &str) -> Result<(Vec<usize>, u32), String> {
     Ok((modifiers, keysym))
 }
 
-/// The keysyms a push-to-talk key is likely to be. U2's key picker can widen
-/// this when it records keys.
-const NAMED: &[(&str, u32, &str)] = &[
-    ("Control_R", 0xffe4, "Right Ctrl"),
-    ("Control_L", 0xffe3, "Left Ctrl"),
-    ("Shift_R", 0xffe2, "Right Shift"),
-    ("Shift_L", 0xffe1, "Left Shift"),
-    ("Alt_R", 0xffea, "Right Alt"),
-    ("Alt_L", 0xffe9, "Left Alt"),
-    ("ISO_Level3_Shift", 0xfe03, "AltGr"),
-    ("Super_R", 0xffec, "Right Super"),
-    ("Super_L", 0xffeb, "Left Super"),
-    ("Caps_Lock", 0xffe5, "Caps Lock"),
-    ("Pause", 0xff13, "Pause"),
-    ("Scroll_Lock", 0xff14, "Scroll Lock"),
-    ("Print", 0xff61, "Print"),
-    ("Insert", 0xff63, "Insert"),
-    ("Menu", 0xff67, "Menu"),
-    ("Home", 0xff50, "Home"),
-    ("End", 0xff57, "End"),
-    ("Prior", 0xff55, "Page Up"),
-    ("Next", 0xff56, "Page Down"),
-    ("space", 0x20, "Space"),
-    ("grave", 0x60, "`"),
-];
-
 fn keysym(name: &str) -> Option<u32> {
     if let Some(&(_, sym, _)) = NAMED.iter().find(|(n, ..)| *n == name) {
         return Some(sym);
@@ -297,26 +271,6 @@ fn keysym(name: &str) -> Option<u32> {
         (Some(c), None) if c.is_ascii_graphic() => Some(u32::from(c.to_ascii_lowercase())),
         _ => None,
     }
-}
-
-/// How the call controls name a trigger: "Right Ctrl", "Ctrl+Shift+M".
-fn label(trigger: &str) -> String {
-    trigger
-        .split('+')
-        .map(|part| match part.to_ascii_uppercase().as_str() {
-            "CTRL" => "Ctrl".into(),
-            "SHIFT" => "Shift".into(),
-            "ALT" => "Alt".into(),
-            "NUM" => "Num".into(),
-            "LOGO" => "Super".into(),
-            _ => NAMED
-                .iter()
-                .find(|(n, ..)| *n == part)
-                .map(|(.., label)| (*label).to_owned())
-                .unwrap_or_else(|| part.to_uppercase()),
-        })
-        .collect::<Vec<_>>()
-        .join("+")
 }
 
 #[cfg(test)]
@@ -339,6 +293,7 @@ mod tests {
         assert_eq!(label("Control_R"), "Right Ctrl");
         assert_eq!(label("CTRL+SHIFT+m"), "Ctrl+Shift+M");
         assert_eq!(label("F9"), "F9");
+        assert_eq!(parse("Prior"), Ok((vec![], 0xff55)));
     }
 
     #[test]

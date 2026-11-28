@@ -643,13 +643,24 @@ keeps its encrypted tracks connected and preserves mute and deafen; the choice
 also applies to your next call. Each menu reads the devices again when it
 opens, and **Refresh devices** updates it after plugging in or removing one.
 
+**User Settings → Voice & Video** (the gear in the user panel, or **Voice
+Settings** in either device menu) has the rest, as on Discord: input and
+output device, **Input volume** and **Output volume** (0–200 %), a **mic
+test** (**Let’s Check** plays your microphone back to you through the same
+processing and gate as a call, with a level meter), the **input mode**
+(Voice Activity or Push to Talk), input sensitivity, the push-to-talk key and
+release delay, the voice processing switches, and the camera with a preview.
+Every choice applies to the call in progress at once and to every later call,
+and stays on this computer (`voice.json` in the profile directory), across
+restarts.
+
 As on Discord, your microphone goes through **echo cancellation**, **noise
 suppression** and **automatic gain control** (WebRTC's audio processing), and
 then a voice-activity gate: below it, the others receive silence, while your
 microphone stays unmuted and your own speaking ring follows the gate without
-waiting for the server. **Voice Settings → Input sensitivity** (from the
-Voice Connected panel's gear or either device menu) follows the room's
-noise by default (**Automatically determine input sensitivity**). Turn that
+waiting for the server. **Input sensitivity** on the Voice & Video page
+follows the room's noise by default (**Automatically determine input
+sensitivity**). Turn that
 off to set the threshold with the slider over the live level meter, which
 turns green above it; at −100 dB everything is sent and your ring stays lit,
 as on Discord. Each processing switch is under **Voice processing**. Changes
@@ -658,11 +669,13 @@ apply to the call at once and stay on this computer for later calls
 the gate.
 [Voice processing test](experiments/rtc-audio/README.md#verify-voice-processing).
 
-On Linux, choose **Voice Settings → List cameras** to list sources allowed by your
-desktop Camera portal. Pick a camera before starting video, or switch while
-it’s on. A live switch updates your preview and the other participant’s
-picture without redialing. If the selected camera disappears, your video
-stops; choose another camera and press the camera button to resume.
+On Linux, choose **List cameras** on the Voice & Video page to list sources
+allowed by your desktop Camera portal. Pick a camera before starting video, or
+switch while it’s on; the choice is saved by the camera's PipeWire node name.
+A live switch updates your preview and the other participant’s picture
+without redialing. If the selected camera disappears, your video stops;
+choose another camera and press the camera button to resume. **Test Video**
+shows the chosen camera on the page without sending it anywhere.
 [Camera switching test with Element](experiments/rtc-audio/README.md#verify-live-camera-switching).
 
 During a network interruption, the Voice Connected panel shows **Reconnecting**.
@@ -704,25 +717,30 @@ uses three Linux clients on the same MatrixRTC LiveKit service.
 Room permissions must allow publishing call membership and, for the first
 participant, opening the voice slot if it is not already open.
 
-Open **Voice Settings → User volume**, in a voice room or a DM call, to change how
+Open **Voice Settings → User volume** (the Voice Connected panel's gear), in a voice room or a DM call, to change how
 loud each person sounds to you for this call. Drag their slider from **0%** (silent for you)
 to **200%**, or click **Reset** to return to **100%**. Other listeners keep
 their own mixes.
 
-For **Push-to-talk**, check the box beside **Join voice** or in **Voice
-Settings**. Hold the key the Voice Connected panel names to send your voice. Your microphone closes
-100 ms after you let go, so the end of a word isn't cut off; you still hear
-the room. **Mute** and **Deafen** override the key, and after either you
-press it again to talk. The choice carries over to your next voice room
-until you quit the app.
+For **Push-to-talk**, check the box beside **Join voice** or choose **Push to
+Talk** under **Input mode** on the Voice & Video page; it applies to voice
+rooms and DM calls alike. Hold the key the Voice Connected panel names to send
+your voice. **Record Keybind** takes the next key you press (with Ctrl,
+Shift, Alt or Super held, or a modifier such as Right Ctrl on its own);
+**Default** goes back to Right Ctrl. Your microphone closes after the
+**release delay** (100 ms unless you change it), so the end of a word isn't
+cut off; you still hear the room. **Mute** and **Deafen** override the key,
+and after either you press it again to talk. The input mode, key and delay
+are saved with the other Voice & Video settings.
 
 While push-to-talk is on, the key also works when another application has
 focus:
 
-- **X11:** hold **Right Ctrl**. Untethered only listens (XInput2 raw key
-  events), so the focused application still gets the key too.
+- **X11:** hold your key (**Right Ctrl** unless you recorded another).
+  Untethered only listens (XInput2 raw key events), so the focused
+  application still gets the key too.
 - **Wayland:** turning push-to-talk on asks your desktop to bind three
-  shortcuts: **Push to talk** (Pause suggested), **Toggle mute**
+  shortcuts: **Push to talk** (your recorded key suggested, else Pause), **Toggle mute**
   (Ctrl+Shift+M) and **Toggle deafen** (Ctrl+Shift+D). Change or clear them
   in that dialog (on KDE, *Global Shortcuts Requested*; later under System
   Settings › Shortcuts). It needs the GlobalShortcuts portal (KDE Plasma
@@ -734,13 +752,15 @@ focus:
   itself: it no longer reaches the focused application, so choose one you
   don't type with. A modifier on its own, such as Right Ctrl, can't hold
   the microphone open there, because KDE fires those shortcuts on release.
-- **Right Ctrl** always works while Untethered is focused. Without a
-  desktop-wide key (no portal, or you cancel the dialog), switching
-  applications closes your microphone.
+- Your key (**Right Ctrl** by default) always works while Untethered is
+  focused. Without a desktop-wide key (no portal, or you cancel the dialog),
+  switching applications closes your microphone. On Wayland the desktop
+  keeps the key you first confirmed; change it in its shortcut settings.
 
 `UNTETHERED_GLOBAL_SHORTCUTS=0` keeps only the in-window key.
-`UNTETHERED_PTT_KEY` replaces the desktop-wide push-to-talk key, written as
-the desktop shortcut format writes it (`Pause`, `F9`, `CTRL+grave`). On X11
+`UNTETHERED_PTT_KEY` sets the push-to-talk key while none is recorded on the
+page, written as the desktop shortcut format writes it (`Pause`, `F9`,
+`CTRL+grave`); recorded keys are saved in that format too. On X11
 it accepts modifier keys, Pause, Scroll_Lock, Insert, Menu, F1 to F35 and
 single characters.
 
@@ -757,8 +777,8 @@ leaving voice. Capture requires a ScreenCast portal backend, PipeWire and
 GStreamer (`gst-launch-1.0`, `pipewiresrc`, and the base video plugins).
 The share carries screen pixels; microphones remain separate encrypted tracks.
 
-The **Camera** button (**Start camera**) uses the Linux Camera portal and the camera selected under
-**Voice Settings** (system default initially). Other participants see a **Camera** tile with your name.
+The **Camera** button (**Start camera**) uses the Linux Camera portal and the camera selected on the
+**Voice & Video** page (system default initially). Other participants see a **Camera** tile with your name.
 **Stop camera** releases capture and removes the tile while voice continues.
 Camera and window sharing have independent controls and encrypted tracks.
 
