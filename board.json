@@ -139,14 +139,17 @@
     "rust-client/src/rail_order.rs",
     "rust-client/src/rooms.rs",
     "rust-client/src/rooms/engine.rs",
+    "rust-client/src/shortcuts.rs",
     "rust-client/src/view.rs",
     "rust-client/src/view/channel_order.rs",
+    "rust-client/src/view/drag.rs",
+    "rust-client/src/view/icons.rs",
     "rust-client/src/view/server_rail.rs",
     "scripts/qa_server_rail.py"
    ],
    "status": "working",
    "title": "Server rail order and folders",
-   "updated": "2026-11-28T09:29:05Z",
+   "updated": "2026-11-28T09:46:10Z",
    "worktree": ".claude/worktrees/n8-server-rail-3c3a7d"
   },
   "U1": {
