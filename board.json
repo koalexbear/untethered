@@ -8,6 +8,11 @@
      "at": "2026-11-28T09:29:56Z",
      "by": "claude/u1-voice-panel-678cab",
      "text": "U1 (u1-voice-panel) will touch: view.rs call_bar/call_dock/user_panel and the theater dock only (call block replaced by view/voice_panel.rs); main.rs a few Msg variants + call handlers (mute/deafen before joining, QA layout timer); icons.rs new call glyphs appended at the end of the enum/match (Mic, MicOff, Headphones, HeadphonesOff, ScreenShare, PhoneOff, Signal); README call section and ROADMAP U1 row only."
+    },
+    {
+     "at": "2026-11-28T09:30:02Z",
+     "by": "u1-voice-panel",
+     "text": "[U1] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: view.rs: call_bar/call_dock/user_panel/theater dock only; main.rs: call Msg variants and handlers, QA layout timer; icons.rs: new call glyphs appended; README call section, ROADMAP U1 row"
     }
    ],
    "owner": "c1-server-settings",
@@ -68,6 +73,11 @@
      "at": "2026-11-28T09:29:58Z",
      "by": "claude/u1-voice-panel-678cab",
      "text": "U1 (u1-voice-panel) will touch: view.rs call_bar/call_dock/user_panel and the theater dock only (call block replaced by view/voice_panel.rs); main.rs a few Msg variants + call handlers (mute/deafen before joining, QA layout timer); icons.rs new call glyphs appended at the end of the enum/match (Mic, MicOff, Headphones, HeadphonesOff, ScreenShare, PhoneOff, Signal); README call section and ROADMAP U1 row only."
+    },
+    {
+     "at": "2026-11-28T09:30:02Z",
+     "by": "u1-voice-panel",
+     "text": "[U1] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: view.rs: call_bar/call_dock/user_panel/theater dock only; main.rs: call Msg variants and handlers, QA layout timer; icons.rs: new call glyphs appended; README call section, ROADMAP U1 row"
     }
    ],
    "owner": "m13-composer",
@@ -109,6 +119,11 @@
      "at": "2026-11-28T09:30:00Z",
      "by": "claude/u1-voice-panel-678cab",
      "text": "U1 (u1-voice-panel) will touch: view.rs call_bar/call_dock/user_panel and the theater dock only (call block replaced by view/voice_panel.rs); main.rs a few Msg variants + call handlers (mute/deafen before joining, QA layout timer); icons.rs new call glyphs appended at the end of the enum/match (Mic, MicOff, Headphones, HeadphonesOff, ScreenShare, PhoneOff, Signal); README call section and ROADMAP U1 row only."
+    },
+    {
+     "at": "2026-11-28T09:30:02Z",
+     "by": "u1-voice-panel",
+     "text": "[U1] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: view.rs: call_bar/call_dock/user_panel/theater dock only; main.rs: call Msg variants and handlers, QA layout timer; icons.rs: new call glyphs appended; README call section, ROADMAP U1 row"
     }
    ],
    "owner": "n8-server-rail",
@@ -133,6 +148,41 @@
    "title": "Server rail order and folders",
    "updated": "2026-11-28T09:29:05Z",
    "worktree": ".claude/worktrees/n8-server-rail-3c3a7d"
+  },
+  "U1": {
+   "branch": "claude/u1-voice-panel-678cab",
+   "claimed": "2026-11-28T09:30:02Z",
+   "notes": [],
+   "owner": "u1-voice-panel",
+   "paths": [
+    "README.md",
+    "ROADMAP.md",
+    "experiments/rtc-audio/README.md",
+    "experiments/rtc-audio/evidence/*",
+    "rust-client/docs/calls-parity-plan.md",
+    "rust-client/src/desktop_call.rs",
+    "rust-client/src/desktop_call/channel.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/qa_layout.rs",
+    "rust-client/src/sounds.rs",
+    "rust-client/src/view.rs",
+    "rust-client/src/view/call_controls.rs",
+    "rust-client/src/view/icons.rs",
+    "rust-client/src/view/voice_panel.rs",
+    "rust-client/src/view/voice_settings.rs",
+    "scripts/qa_desktop_dm.py",
+    "scripts/qa_layout.py",
+    "scripts/qa_room_ptt.py",
+    "scripts/qa_room_volume.py",
+    "scripts/qa_ui.py",
+    "scripts/qa_voice_processing.py",
+    "scripts/qa_voice_room.py",
+    "scripts/test-media-interop.py"
+   ],
+   "status": "working",
+   "title": "Voice Connected panel and user-panel Mute/Deafen",
+   "updated": "2026-11-28T09:30:02Z",
+   "worktree": ".claude/worktrees/u1-voice-panel-678cab"
   }
  },
  "done": [
