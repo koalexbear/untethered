@@ -90,6 +90,7 @@
     "rust-client/src/engine/timeline.rs",
     "rust-client/src/inline_player.rs",
     "rust-client/src/main.rs",
+    "rust-client/src/media.rs",
     "rust-client/src/rooms.rs",
     "rust-client/src/rooms/engine.rs",
     "rust-client/src/view.rs",
@@ -101,7 +102,7 @@
    ],
    "status": "working",
    "title": "Voice messages",
-   "updated": "2026-11-28T12:53:03Z",
+   "updated": "2026-11-28T13:08:48Z",
    "worktree": ".claude/worktrees/m10-voice-messages-1e5189"
   },
   "M15": {
