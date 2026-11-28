@@ -154,12 +154,15 @@ doesn't:
 
 ### Phase 5 — calls
 
-Follow the [calls plan](rust-client/docs/calls-parity-plan.md): A2 (noise
-suppression and input sensitivity) finishes Phase 1 there, now that V2 has
-cameras send three simulcast layers, each tile receive the layer its size
-needs and video nobody can see pause; then U1–U6: the Voice Connected panel, a persisted Voice & Video
-settings page, participant menus, Go Live and Watch Stream, the incoming call
-card, and stage polish. Stream quality is a choice, up to 60 fps at the
+Follow the [calls plan](rust-client/docs/calls-parity-plan.md). Its Phase 1
+is done: V2 has cameras send three simulcast layers, each tile receive the
+layer its size needs and video nobody can see pause, and A2 runs echo
+cancellation, noise suppression and gain control on the microphone, with
+Discord's input sensitivity (automatic, or a threshold over a live meter),
+saved on this computer. Next come U1–U6: the Voice Connected panel, a
+persisted Voice & Video settings page (which takes over A2's controls from
+the call's Devices panel), participant menus, Go Live and Watch Stream, the
+incoming call card, and stage polish. Stream quality is a choice, up to 60 fps at the
 source's resolution, with no tier to pay for.
 
 ### Phase 6 — community management

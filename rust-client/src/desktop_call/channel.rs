@@ -391,6 +391,10 @@ async fn live<S: CallSignal>(
     // peer plays through the one mixer output.
     let io = audio::platform();
     let mixer = Mixer::start(io.clone(), mode.clone(), notices.clone());
+    // Your own Speaking state comes from the gate, not the SFU's levels.
+    let voice = Voice::new(views.level.clone());
+    mixer.far_end(voice.reference());
+    let mut talking = voice.talking();
     let capture = |mic: &LocalTrackPublication| {
         controlled_capture(
             io.clone(),
@@ -398,6 +402,7 @@ async fn live<S: CallSignal>(
             mic.clone(),
             devices.clone(),
             notices.clone(),
+            voice.clone(),
         )
     };
     let mut input = JoinSet::new();
@@ -445,7 +450,7 @@ async fn live<S: CallSignal>(
         if online {
             let shown = sight.borrow_and_update().clone();
             speaking = subscriptions.sync(lk, keys, &mixer, &notices, &views.previews, &shown)?;
-            if lk.local_participant().is_speaking() && !mic.is_muted() && !mode.borrow().mic_off() {
+            if *talking.borrow_and_update() && !mic.is_muted() && !mode.borrow().mic_off() {
                 speaking.insert(s.user.clone());
             }
         }
@@ -498,6 +503,7 @@ async fn live<S: CallSignal>(
             },
             frame=w.pump()=>{frame?;}
             changed=sight.changed()=>{changed.map_err(|_|ENDED)?;}
+            _=talking.changed()=>(),
             _=subscriptions.viewer.settled()=>if online {subscriptions.viewer.repeat(lk)} else {subscriptions.viewer.clear()},
             // Notice the end of our lease as it happens, not at the next tick.
             _=time::sleep_until(lease.deadline())=>(),

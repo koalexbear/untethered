@@ -12,6 +12,8 @@ mod backend;
 mod browser_verification;
 #[cfg(target_os = "linux")]
 mod call_devices;
+#[cfg(target_os = "linux")]
+mod call_settings;
 mod channel_order;
 mod community;
 mod context_menu;
@@ -358,6 +360,12 @@ enum Msg {
     /// The sounds' switches (sounds.rs).
     #[cfg(target_os = "linux")]
     Sound(sounds::Event),
+    /// Voice processing and input sensitivity (call_settings.rs).
+    #[cfg(target_os = "linux")]
+    Voice(call_settings::Event),
+    /// Redraw the input sensitivity meter.
+    #[cfg(target_os = "linux")]
+    VoiceMeter,
     /// Right-click menus and what their entries do.
     ContextMenu(context_menu::Event),
     /// Open an image or video in the media viewer.
@@ -597,6 +605,9 @@ struct App {
     /// Message and call sounds, and their switches (sounds.rs).
     #[cfg(target_os = "linux")]
     sounds: sounds::Sounds,
+    /// Voice processing and input sensitivity (call_settings.rs).
+    #[cfg(target_os = "linux")]
+    voice: call_settings::Settings,
     /// How the last Copy Image went, and a fetched original waiting to be
     /// put on the clipboard (copy_image.rs).
     copy_note: Option<&'static str>,
@@ -688,6 +699,7 @@ impl App {
         #[cfg(target_os = "linux")]
         {
             app.sounds.settings = sounds::Settings::load();
+            app.voice = call_settings::Settings::loaded();
         }
         // The window, unless this is a start at sign-in, and the tray icon.
         #[cfg(not(target_arch = "wasm32"))]
@@ -752,6 +764,8 @@ impl App {
             shortcuts: Default::default(),
             #[cfg(target_os = "linux")]
             sounds: Default::default(),
+            #[cfg(target_os = "linux")]
+            voice: Default::default(),
             copy_note: None,
             #[cfg(not(target_arch = "wasm32"))]
             copy_ready: None,
@@ -1862,6 +1876,10 @@ impl App {
             Msg::Shortcut(input) => return self.shortcut(input),
             #[cfg(target_os = "linux")]
             Msg::Sound(event) => return self.sound_event(event),
+            #[cfg(target_os = "linux")]
+            Msg::Voice(event) => return self.voice_event(event),
+            #[cfg(target_os = "linux")]
+            Msg::VoiceMeter => {}
             Msg::NotePlace => return self.note_place(),
             Msg::PlaceNoted(room, hit) => self.place_noted(room, hit),
             Msg::SavePlaces => self.persist_places(),
@@ -2560,6 +2578,11 @@ fn main() -> iced::Result {
                 #[cfg(target_os = "linux")]
                 if app.inline_running() {
                     iced::time::every(std::time::Duration::from_millis(250)).map(|_| Msg::InlineTick)
+                } else { iced::Subscription::none() },
+                // The input sensitivity meter moves while the Devices panel shows it.
+                #[cfg(target_os = "linux")]
+                if app.call.as_ref().is_some_and(|c| c.picker && !c.cancel.is_closed()) {
+                    iced::time::every(std::time::Duration::from_millis(50)).map(|_| Msg::VoiceMeter)
                 } else { iced::Subscription::none() },
                 iced::keyboard::listen().filter_map(|event| match event {
                     iced::keyboard::Event::KeyPressed {

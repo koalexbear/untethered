@@ -18,7 +18,22 @@ Entries:
   {"kind":"account_data", type, content}
 """
 import json
+import os
 from pathlib import Path
+
+# The voice settings every fixture client starts with (call_settings.rs,
+# saved as voice.json in the profile): all processing off and the input gate
+# at -70 dB, below every test tone, so silence stays silent and lights no
+# ring (at -100 dB the gate sends everything and your own ring stays lit, as
+# on Discord). The call fixtures measure routes with steady tones, and steady
+# tones are what voice processing removes: noise suppression holds one about
+# 13 dB down, a loud steady tone from the far end makes the echo canceller
+# suppress the near end even with no echo path (until long after it stops),
+# and the automatic gate learns any steady sound as noise. qa_voice_processing
+# measures the processing with speech-like signals instead. QA_VOICE, a JSON
+# object, replaces these settings: '{}' runs a fixture with the defaults.
+RAW_VOICE = {"echo_cancellation": False, "noise_suppression": False, "gain_control": False,
+             "auto_sensitivity": False, "threshold": -70.0}
 
 
 def log(profile):
@@ -26,9 +41,13 @@ def log(profile):
 
 
 def use_profile(env, profile):
-    """Run a client on `profile`, logging to its QA event log."""
+    """Run a client on `profile`, logging to its QA event log, with the
+    fixtures' voice settings."""
     env["UNTETHERED_PROFILE"] = str(profile)
     env["UNTETHERED_QA_EVENTS"] = str(log(profile))
+    voice = json.loads(os.environ["QA_VOICE"]) if "QA_VOICE" in os.environ else RAW_VOICE
+    Path(profile).mkdir(parents=True, exist_ok=True)
+    (Path(profile)/"voice.json").write_text(json.dumps(voice))
     return env
 
 

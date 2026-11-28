@@ -45,6 +45,8 @@ mod tray;
 mod typing;
 mod upgrades;
 mod viewer;
+#[cfg(target_os = "linux")]
+mod voice_settings;
 use iced::{
     Alignment::Center,
     Border, Color, Element, Fill, Font, Length, Padding, Theme, border, color, font, keyboard,
@@ -1153,6 +1155,12 @@ impl App {
             details = details.push(
                 column![refresh].extend(call.list_error.map(|error| text(error).size(13).into())),
             );
+            details = details.push(voice_settings::section(
+                self.voice.voice,
+                *call.input.borrow(),
+                self.voice.note,
+                active,
+            ));
             let mut cams = column![text("Camera").size(12).color(MUTED)].spacing(3);
             if !call.cameras.is_empty() {
                 let id = call.id;

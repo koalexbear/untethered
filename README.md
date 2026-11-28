@@ -587,6 +587,20 @@ independently. Each starts on **System default**. Switching affects only this
 call, keeps its encrypted tracks connected, and preserves mute/deafen.
 **Refresh devices** updates the list after plugging in or removing a device.
 
+As on Discord, your microphone goes through **echo cancellation**, **noise
+suppression** and **automatic gain control** (WebRTC's audio processing), and
+then a voice-activity gate: below it, the others receive silence, while your
+microphone stays unmuted and your own speaking ring follows the gate without
+waiting for the server. **Devices → Input sensitivity** follows the room's
+noise by default (**Automatically determine input sensitivity**). Turn that
+off to set the threshold with the slider over the live level meter, which
+turns green above it; at −100 dB everything is sent and your ring stays lit,
+as on Discord. Each processing switch is under **Voice processing**. Changes
+apply to the call at once and stay on this computer for later calls
+(`voice.json` in the profile directory). While push-to-talk is on, the key is
+the gate.
+[Voice processing test](experiments/rtc-audio/README.md#verify-voice-processing).
+
 On Linux, choose **Devices → List cameras** to list sources allowed by your
 desktop Camera portal. Pick a camera before starting video, or switch while
 it’s on. A live switch updates your preview and the other participant’s

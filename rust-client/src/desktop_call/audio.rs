@@ -100,6 +100,7 @@ impl AudioIo for Pulse {
     fn open_output(&self, device: Option<&str>) -> Result<Box<dyn Output>> {
         let mut child = Self::spawn(false, device)?;
         let pipe = child.stdin.take().ok_or("Cannot open audio.")?;
+        bound(&pipe);
         Ok(Box::new(PacatOutput {
             _child: child,
             pipe,
@@ -109,6 +110,18 @@ impl AudioIo for Pulse {
     fn list_devices(&self) -> BoxFuture<'static, Result<Catalog>> {
         Box::pin(Catalog::read())
     }
+}
+/// Let at most a page (about 43 ms of audio) wait in the pipe to a playback
+/// `pacat`, so `pacat` paces the mixer. The mixer runs on a timer: whatever
+/// it wrote while `pacat` started, or in a burst after a stall, would
+/// otherwise wait in the 64 KiB pipe for good, up to 680 ms of delay that a
+/// listener hears and the echo canceller has to find between its reference
+/// and the microphone.
+fn bound(pipe: &ChildStdin) {
+    use std::os::fd::AsRawFd;
+    // SAFETY: fcntl on a pipe descriptor this process owns; on failure the
+    // pipe keeps its default size.
+    unsafe { libc::fcntl(pipe.as_raw_fd(), libc::F_SETPIPE_SZ, 4096) };
 }
 struct PacatInput {
     _child: Child,
@@ -304,10 +317,6 @@ impl Mixer {
     }
     /// Receive every mixed frame as it is played, silence included, for the
     /// echo canceller's far-end reference.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "step A2's echo canceller is its first user")
-    )]
     pub(super) fn far_end(&self, tap: impl FnMut(&Frame) + Send + 'static) {
         *self
             .shared
