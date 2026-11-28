@@ -2578,7 +2578,7 @@ fn main() -> iced::Result {
                     && app.call.as_ref().is_some_and(|c| !c.cancel.is_closed()) {
                     iced::time::every(std::time::Duration::from_millis(50)).map(|_| Msg::VoiceMeter)
                 } else { iced::Subscription::none() },
-                // The QA control map, in debug builds that asked for it.
+                // The QA control map, when a fixture asked for it.
                 #[cfg(target_os = "linux")]
                 if qa_layout::enabled() {
                     iced::time::every(std::time::Duration::from_millis(300)).map(|_| Msg::QaLayout(None))

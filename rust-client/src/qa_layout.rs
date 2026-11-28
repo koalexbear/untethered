@@ -1,6 +1,8 @@
-//! The QA control map (calls plan §5): in debug builds started with
-//! `UNTETHERED_QA_LAYOUT=<file>`, the window's tagged controls are written to
-//! that file as JSON, by name, with their bounds, state, tooltip and text.
+//! The QA control map (calls plan §5): a client started with
+//! `UNTETHERED_QA_LAYOUT=<file>` writes the window's tagged controls to that
+//! file as JSON, by name, with their bounds, state, tooltip and text. Release
+//! builds too, as `UNTETHERED_QA_EVENTS`: the KWin fixtures drive release
+//! builds, since debug ones panic under KDE's input synthesizer.
 //! The call fixtures click icon-only controls through it instead of reading
 //! tooltips (`scripts/qa_layout.py`).
 //!
@@ -20,13 +22,11 @@ use std::{
     sync::{LazyLock, Mutex, OnceLock},
 };
 
-/// Where the map goes, in debug builds that asked for it.
+/// Where the map goes, if this run asked for it.
 fn path() -> Option<&'static std::path::Path> {
     static PATH: OnceLock<Option<std::path::PathBuf>> = OnceLock::new();
     PATH.get_or_init(|| {
-        cfg!(debug_assertions)
-            .then(|| std::env::var_os("UNTETHERED_QA_LAYOUT"))
-            .flatten()
+        std::env::var_os("UNTETHERED_QA_LAYOUT")
             .filter(|p| !p.is_empty())
             .map(Into::into)
     })

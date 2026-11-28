@@ -24,8 +24,7 @@ use iced::{
     Alignment::Center,
     Border, Color, Fill, Length, Padding, color,
     widget::{
-        Column, Space, button, checkbox, column, container, pick_list, row, scrollable, slider,
-        text, tooltip,
+        Column, Space, button, checkbox, column, container, row, scrollable, slider, text, tooltip,
     },
 };
 
@@ -606,21 +605,22 @@ impl App {
         let mode = call.audio.borrow();
         let id = call.id;
         let mut cams = column![label("CAMERA")].spacing(5);
-        if !call.cameras.is_empty() {
-            cams = cams.push(tag(
-                "camera-list",
+        // The cameras as a list, the chosen one ticked, as the device menus.
+        let mut list = column![].spacing(1);
+        for (i, camera) in call.cameras.iter().enumerate() {
+            let chosen = *camera == mode.camera;
+            list = list.push(tag(
+                format!("camera-item-{i}"),
+                if chosen { "selected" } else { "" },
                 "",
-                "",
-                pick_list(
-                    call.cameras.as_slice(),
-                    Some(mode.camera.clone()),
-                    move |choice| Msg::SelectCamera(id, choice),
-                )
-                .width(Fill)
-                .text_size(13)
-                .padding([5, 9]),
+                choice_item(
+                    camera.to_string(),
+                    chosen,
+                    (!chosen).then(|| Msg::SelectCamera(id, camera.clone())),
+                ),
             ));
         }
+        cams = cams.push(list);
         cams = cams.push(tag(
             "cameras-refresh",
             "",
@@ -661,19 +661,22 @@ impl App {
                         .color(MUTED),
                 );
             } else {
-                share = share.push(tag(
-                    "app-audio",
-                    if mode.send_app.is_some() { "on" } else { "off" },
-                    "",
-                    pick_list(
-                        streams.as_slice(),
-                        mode.send_app.as_ref().map(|(_, s)| s.clone()),
-                        move |s| Msg::ShareApp(id, window, Some(s)),
-                    )
-                    .placeholder("Send sound from…")
-                    .width(Fill)
-                    .text_size(13),
-                ));
+                // Each app playing, the one sent ticked.
+                let mut list = column![text("Send sound from").size(12).color(MUTED)].spacing(1);
+                for (i, stream) in streams.iter().enumerate() {
+                    let sent = mode.send_app.as_ref().is_some_and(|(_, s)| s == stream);
+                    list = list.push(tag(
+                        format!("app-audio-{i}"),
+                        if sent { "selected" } else { "" },
+                        "",
+                        choice_item(
+                            stream.to_string(),
+                            sent,
+                            (!sent).then(|| Msg::ShareApp(id, window, Some(stream.clone()))),
+                        ),
+                    ));
+                }
+                share = share.push(list);
             }
             let mut buttons = row![tag(
                 "devices-refresh",
@@ -772,6 +775,32 @@ impl App {
         }
         rows.into()
     }
+}
+
+/// A choice in a list: its label, ticked when chosen.
+fn choice_item(label: String, chosen: bool, action: Option<Msg>) -> El<'static> {
+    let line = row![
+        text(label)
+            .size(13)
+            .width(Fill)
+            .wrapping(text::Wrapping::WordOrGlyph)
+    ]
+    .extend(chosen.then(|| icon(Icon::Check, 14., TEXT)))
+    .spacing(6)
+    .align_y(Center);
+    button(line)
+        .width(Fill)
+        .padding([4, 8])
+        .style(move |theme, status| {
+            let mut style = menu_item(theme, status);
+            if chosen {
+                style.background = Some(ACTIVE.into());
+                style.text_color = Color::WHITE;
+            }
+            style
+        })
+        .on_press_maybe(action)
+        .into()
 }
 
 fn separator() -> El<'static> {

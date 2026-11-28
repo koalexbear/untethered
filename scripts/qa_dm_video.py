@@ -51,20 +51,10 @@ def check_video(stack,tmp,root,backend,room,users,secret,sidechat,share=False):
             return False
         wait_for("expand call from sidebar dock",opened,15)
     def dock_control(peer,slot):
-        # Four square controls: mic, camera, screen share, disconnect.
-        # Anchor to the red disconnect button, independent of preview height.
-        def locate():
-            im=peer.kde.capture()
-            for y in range(280,795):
-                # The disconnect button spans x≈261-294, up to the sidebar's edge.
-                xs=[x for x in range(195,312) if im.getpixel((x,y))[:3]==(181,51,69)]
-                if len(xs)>=32:
-                    right=(xs[0]+xs[-1])//2
-                    if slot==3:return right,y+11
-                    for x in range(77,145):
-                        if im.getpixel((x,y+11))[:3] in ((56,58,64),(81,84,104),(35,118,78)):
-                            return x+16+slot*41,y+11
-        x,y=wait_for("call dock control",locate)
+        # Mute (user panel), Camera, Screen and Disconnect (Voice Connected
+        # panel), through the control map (qa_layout.py).
+        name=("mute","camera","screen","disconnect")[slot]
+        x,y=peer.layout.wait(name,timeout=20)
         peer.kde.command("kdotool","windowactivate",peer.win)
         peer.kde.actions("pointer",[{"type":"pointerMove","x":x,"y":y},{"type":"pause","duration":380},
                                    {"type":"pointerDown","button":0},{"type":"pause","duration":150},{"type":"pointerUp","button":0}])

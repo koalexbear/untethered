@@ -165,7 +165,7 @@ Disconnect, Camera and Screen), and Mute and Deafen sit in the user panel with
 menus of microphones and speakers; muting or deafening before you join starts
 the call that way. A Voice Settings popup keeps push-to-talk, A2's controls,
 the camera, shared audio and each participant's volume reachable, and the call
-fixtures click icon-only controls through a debug-only control map
+fixtures click icon-only controls through a control map
 (`UNTETHERED_QA_LAYOUT`). Next come U2–U6: a persisted Voice & Video settings
 page (which takes over the popup), participant menus, Go Live and Watch Stream,
 the incoming call card, and stage polish. Stream quality is a choice, up to 60 fps at the
