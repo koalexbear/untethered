@@ -69,21 +69,22 @@ pub(super) fn view<'a>(app: &'a App, post: &'a Post) -> Option<El<'a>> {
         } else {
             label(key)
         };
-        let hint = format!(
-            "{} · {} · {}",
-            name,
-            chip.count,
-            if mine {
-                "Remove your reaction"
-            } else {
-                "Add your reaction"
-            }
-        );
+        let toggle = action(key);
+        let hint = match (&toggle, mine) {
+            (Some(_), true) => format!("{name} · {} · Remove your reaction", chip.count),
+            (Some(_), false) => format!("{name} · {} · Add your reaction", chip.count),
+            (None, _) => format!("{name} · {}", chip.count),
+        };
         chips = chips.push(with_tip(
-            pill(caption.into(), mine, action(key)),
+            pill(caption.into(), mine, toggle),
             hint,
             tooltip::Position::Top,
         ));
+    }
+    // Where the room's power levels refuse reactions, there's no smile to
+    // add one (C2); it's the row's last item, so nothing before it moves.
+    if !app.may_react(&app.selected) {
+        return Some(chips.wrap().into());
     }
     let open = picker.is_some();
     let smile = pill(
@@ -113,7 +114,9 @@ pub(super) fn view<'a>(app: &'a App, post: &'a Post) -> Option<El<'a>> {
 fn action(app: &App, post: &Post, key: &str) -> Option<Msg> {
     let id = post.event_id.as_ref()?;
     if app.connected && app.verified && !app.reaction_pending(id, key) {
-        Toggle::for_post(&app.selected, post, key).map(Msg::ToggleReaction)
+        Toggle::for_post(&app.selected, post, key)
+            .filter(|op| app.may_toggle(op))
+            .map(Msg::ToggleReaction)
     } else {
         None
     }

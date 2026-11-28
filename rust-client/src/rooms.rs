@@ -65,6 +65,8 @@ pub struct Room {
     pub profile_members: BTreeSet<String>,
     /// This account's name here and when it was set (names.rs).
     pub me: Option<crate::engine::names::Own>,
+    /// Its server's custom roles, for badges (roles.rs).
+    pub titles: Option<std::sync::Arc<crate::roles::Titles>>,
     /// The room that replaced this one, when this account hasn't joined it
     /// yet: the room is read-only and offers to join it (upgrades.rs).
     pub successor: Option<String>,

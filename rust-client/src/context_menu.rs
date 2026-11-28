@@ -351,7 +351,8 @@ impl App {
             return items;
         }
         let ready = self.verified && self.connected;
-        if p.reactable {
+        // Not where the room's power levels refuse reactions (C2).
+        if p.reactable && self.may_react(room) {
             items.push(item(
                 Entry::AddReaction,
                 ready.then(|| Msg::ReactionPicker(id.clone())),
@@ -1024,6 +1025,36 @@ mod tests {
         );
         assert!(post(&app(50), "$m1").contains(&Delete));
         assert!(post(&app(50), "$m1").contains(&PinMessage));
+    }
+
+    #[test]
+    fn reactions_are_offered_only_where_the_room_allows_them() {
+        // Add reactions needs 25 here (ROADMAP C2's per-channel limits).
+        let locked = |level: i64| {
+            let mut a = app(level);
+            a.live.list.get_mut(ROOM).unwrap().posting.store_snapshot(
+                None,
+                Some(doc(
+                    "$q",
+                    "@creator:h",
+                    json!({"users": {ME: level}, "events": {"m.reaction": 25}}),
+                )),
+            );
+            a
+        };
+        let mut member = locked(0);
+        assert!(!post(&member, "$m1").contains(&Entry::AddReaction));
+        assert!(post(&member, "$m1").contains(&Entry::Reply));
+        let op =
+            crate::reactions::Toggle::for_post(ROOM, member.visible_post("$m1").unwrap(), "👍")
+                .unwrap();
+        assert!(!member.may_toggle(&op));
+        member.toggle_reaction(op);
+        assert!(member.pending.is_empty(), "a refused reaction was sent");
+        let _ = member.toggle_reaction_picker("$m1".into(), false);
+        assert!(member.reaction_picker.is_none());
+        let helper = locked(25);
+        assert!(post(&helper, "$m1").contains(&Entry::AddReaction));
     }
 
     #[test]

@@ -9,8 +9,9 @@
 //!
 //! Badges stand in for Discord's role colours: Matrix's own named power
 //! levels, from the room's power levels (Admin at 100, Moderator at 50, the
-//! creators of a version 12 room above every level), shown wherever the
-//! person's name is.
+//! creators of a version 12 room above every level), and the custom roles
+//! its server names (ROADMAP C2, roles.rs), shown wherever the person's
+//! name is.
 use crate::{
     App, Msg, Request, Section,
     engine::{Command, names::Own},
@@ -30,39 +31,65 @@ pub enum Role {
     Owner,
     Admin,
     Moderator,
+    /// A level the room's server names (roles.rs).
+    Custom {
+        name: crate::roles::RoleName,
+        color: u32,
+    },
 }
 
 impl Role {
-    pub fn label(self) -> &'static str {
+    pub fn label(&self) -> &str {
         match self {
             Self::Owner => "Owner",
             Self::Admin => "Admin",
             Self::Moderator => "Moderator",
+            Self::Custom { name, .. } => name.as_str(),
         }
     }
     /// The badge's text.
-    pub fn tag(self) -> &'static str {
+    pub fn tag(&self) -> String {
         match self {
-            Self::Owner => "OWNER",
-            Self::Admin => "ADMIN",
-            Self::Moderator => "MOD",
+            Self::Owner => "OWNER".into(),
+            Self::Admin => "ADMIN".into(),
+            Self::Moderator => "MOD".into(),
+            Self::Custom { name, .. } => name.as_str().to_uppercase(),
         }
     }
 }
 
+/// [`badge`] without custom roles.
+#[cfg(test)]
+pub fn role(level: i64, everyone: i64) -> Option<Role> {
+    badge(level, everyone, None)
+}
+
 /// What a power level makes someone, as Element names levels: only above
 /// what every member has, so a room where everyone moderates shows no one.
-pub fn role(level: i64, everyone: i64) -> Option<Role> {
+/// The server's custom roles name the levels between: the highest named
+/// level someone reaches, custom or Matrix's own, is theirs.
+pub fn badge(level: i64, everyone: i64, titles: Option<&crate::roles::Titles>) -> Option<Role> {
     if level >= CREATOR {
-        Some(Role::Owner)
+        return Some(Role::Owner);
     } else if level <= everyone {
-        None
-    } else if level >= 100 {
-        Some(Role::Admin)
+        return None;
+    }
+    let named = if level >= 100 {
+        Some((100, Role::Admin))
     } else if level >= 50 {
-        Some(Role::Moderator)
+        Some((50, Role::Moderator))
     } else {
         None
+    };
+    let custom = titles
+        .and_then(|t| t.reached(level))
+        .filter(|t| t.level > everyone);
+    match (custom, named) {
+        (Some(t), named) if named.is_none_or(|(at, _)| t.level > at) => Some(Role::Custom {
+            name: crate::roles::RoleName::new(&t.name),
+            color: t.color,
+        }),
+        (_, named) => named.map(|(_, role)| role),
     }
 }
 
@@ -70,7 +97,11 @@ impl Room {
     /// The badge `user` has here, from the room's power levels.
     pub fn role(&self, user: &str) -> Option<Role> {
         // `summary` starts with users_default, what every member has.
-        role(self.posting.actor(user)?, self.posting.summary()?.0)
+        badge(
+            self.posting.actor(user)?,
+            self.posting.summary()?.0,
+            self.titles.as_deref(),
+        )
     }
 }
 
@@ -419,6 +450,19 @@ mod tests {
         // Where every member moderates, no one stands out.
         assert_eq!(role(50, 50), None);
         assert_eq!(role(100, 50), Some(Role::Admin));
+        // A server's custom roles name the levels between (roles.rs).
+        let titles = crate::roles::Titles::parse(&serde_json::json!({"roles": {
+            "25": {"name": "Helper", "color": "#e67e22"},
+            "75": {"name": "Senior", "color": "#3498db"}
+        }}));
+        let named = |level, everyone| badge(level, everyone, Some(&titles)).map(|r| r.tag());
+        assert_eq!(named(25, 0).as_deref(), Some("HELPER"));
+        assert_eq!(named(30, 0).as_deref(), Some("HELPER"));
+        assert_eq!(named(60, 0).as_deref(), Some("MOD"));
+        assert_eq!(named(80, 0).as_deref(), Some("SENIOR"));
+        assert_eq!(named(100, 0).as_deref(), Some("ADMIN"));
+        assert_eq!(named(30, 25), None, "a role everyone has names no one");
+        assert_eq!(named(10, 0), None);
     }
 
     #[test]

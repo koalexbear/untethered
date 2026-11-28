@@ -18,6 +18,10 @@ fn tint(role: Role) -> Color {
         Role::Owner => color!(0xf1c40f),
         Role::Admin => color!(0xf47067),
         Role::Moderator => color!(0x3ccfae),
+        // A custom role's own colour (roles.rs).
+        Role::Custom { color, .. } => {
+            Color::from_rgb8((color >> 16) as u8, (color >> 8) as u8, color as u8)
+        }
     }
 }
 

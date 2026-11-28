@@ -72,6 +72,7 @@ mod reading;
 mod replies;
 mod reports;
 mod rich;
+mod roles;
 mod room_state;
 mod rooms;
 #[cfg(not(target_arch = "wasm32"))]

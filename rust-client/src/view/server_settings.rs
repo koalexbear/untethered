@@ -4,6 +4,8 @@
 //!
 //! Every slot of a page is emitted whether or not it shows anything, so a
 //! note appearing never moves a text field (Iced keeps state by position).
+mod roles;
+
 use super::{
     ACTIVE, App, BLURPLE, BODY, BOLD, CHANNEL, CHAT, El, FLOAT, GREEN, HOVER, ICON, Icon, LINE,
     MUTED, Msg, RAIL, SIDE, TEXT, face, icon, icon_button, input_style, label, line_rule, plain,
@@ -135,7 +137,7 @@ impl App {
         ]
         .spacing(2)
         .width(218);
-        for tab in [Tab::Overview, Tab::Emoji, Tab::Channels] {
+        for tab in [Tab::Overview, Tab::Emoji, Tab::Channels, Tab::Roles] {
             let active = page.tab == tab;
             nav = nav.push(
                 button(text(tab.label()).size(16))
@@ -175,6 +177,7 @@ impl App {
             Tab::Overview => self.overview(page, space),
             Tab::Emoji => self.emoji_tab(page),
             Tab::Channels => self.channels_tab(page),
+            Tab::Roles => self.roles_tab(page),
         };
         // Fixed slots: the title, the read-only notice and the last note.
         let notice: El = if self.settings_read_only(page) {
@@ -292,6 +295,7 @@ impl App {
             Tab::Channels => !self.settings_channels(space).iter().any(|room| {
                 self.may_set(room, "m.room.name") || self.may_set(room, "m.room.topic")
             }),
+            Tab::Roles => self.roles_read_only(space),
         }
     }
 

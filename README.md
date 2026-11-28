@@ -246,6 +246,32 @@ first: a member who can't change something sees its value instead, and a
 space they can't change at all reads as a page to look at
 ([live test](scripts/qa_server_settings.py)).
 
+**Roles:** the **Roles** tab of Server Settings puts Discord's roles on
+Matrix power levels, which every client shows and the homeserver enforces.
+**Roles** lists Matrix's own Admin (100) and Moderator (50), Member for what
+everyone has, and the creators of a version 12 room as Owner, above every
+level; **Create Role** names a level between, with a colour. Matrix has no
+event for role names, so Untethered keeps them in its own state event on the
+space (`io.github.koalexbear.untethered.roles`), says only Untethered shows
+them, and colours the badges in the space's rooms with them. **Members**
+gives someone a role: their power level in the space and in each of its
+rooms you may change, as Matrix keeps power levels per room. **Permissions**
+sets the role each action needs: sending messages, reacting, pinning,
+deleting others' messages, inviting, kicking, banning, managing the channel
+and managing roles. The server's defaults are the space's own levels, and
+changing one changes the channels that had it; pick a channel to give it
+limits of its own, such as an announcement channel only moderators post in.
+A channel that differs says so and is listed under **Channels with their own
+permissions**; **Use the Server's Permissions** puts the defaults back.
+Where your role can't post, the composer reads as read-only, and where it
+can't react, Add Reaction isn't offered (in an encrypted channel reactions
+need what posting needs, as the server sees only encrypted events). Each
+change is made on the room's current power levels, read just before writing,
+so the rest of them stays. Only what the homeserver would accept is offered:
+nothing above your own level, no one at or above it, and nothing where you
+can't change power levels, which reads as a page to look at
+([live test](scripts/qa_roles.py)).
+
 **Replies:** Hover a message, click **Reply**, type your response, and send.
 The bar above the composer shows who you’re replying to; its **×** (Cancel
 reply) keeps your text. Click the quoted line above a reply to jump to the
