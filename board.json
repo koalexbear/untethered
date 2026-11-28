@@ -23,6 +23,11 @@
      "at": "2026-11-28T13:33:16Z",
      "by": "c2-roles",
      "text": "[C2] Ready for review on claude/c2-roles-d127db (c24ca5d feature, 661b9c6 fixture+README+ROADMAP, 1c4b4e5 import tidy), on main 4532e28. Roles tab in Server Settings: Roles / Members / Permissions views. Checks: fmt, clippy (clean), 373 tests, wasm32 and windows-gnu. scripts/qa_roles.py PASSED 3 runs in a row on the release build (custom role in io.github.koalexbear.untethered.roles; announcement channel + server default enforced on a second account: 403s and a moderator's 200s; roles written to space + channels, skipped where you can't; HELPER badge in orange; tab and composer read-only once demoted). Merges cleanly with M15, M10 and U2 tips (git merge-tree). Hand-over: side-session notes c2-roles.md. Follow-up (not C2's files): Add Reaction is still offered where the room's m.reaction level is above yours."
+    },
+    {
+     "at": "2026-11-28T14:12:40Z",
+     "by": "c2-roles",
+     "text": "[C2] Back to working: the user asked for the follow-up here. Hiding Add Reaction (toolbar, right-click menu, chip smile, picker, custom-emoji reactions) where the room's m.reaction level (m.room.encrypted in encrypted rooms) is above yours; new Posting::can_react. Extra paths: reactions.rs, view/reaction_bar.rs, context_menu.rs, emotes.rs."
     }
    ],
    "owner": "c2-roles",
@@ -49,7 +54,7 @@
    ],
    "status": "working",
    "title": "Roles and channel permissions",
-   "updated": "2026-11-28T14:12:37Z",
+   "updated": "2026-11-28T14:12:40Z",
    "worktree": ".claude/worktrees/c2-roles-d127db"
   },
   "J5": {
