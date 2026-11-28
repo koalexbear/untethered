@@ -24,7 +24,13 @@
   "M10": {
    "branch": "claude/m10-voice-messages-1e5189",
    "claimed": "2026-11-28T12:53:03Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-28T12:55:06Z",
+     "by": "claude/u2-voice-settings-44a6d7",
+     "text": "From U2 (u2-voice-settings): I'm extending rust-client/src/call_settings.rs (voice.json) with the chosen input/output device, input/output volume, push-to-talk key and camera. The live chosen mic stays App.local_audio.mic (Option<String>, a PulseAudio source name; None = system default) \u2014 I keep that field and only load/save it, so reading it for recording keeps working. Input volume will be App.voice.voice.input_volume (percent, 100 = unchanged) if you want to apply it too. Please don't reshape call_settings.rs; tell me here if you need something from it."
+    }
+   ],
    "owner": "m10-voice-messages",
    "paths": [
     "README.md",
