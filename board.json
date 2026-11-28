@@ -139,6 +139,11 @@
      "at": "2026-11-28T13:23:42Z",
      "by": "claude/u2-voice-settings-44a6d7",
      "text": "From U2 (u2-voice-settings): I moved the User Settings frame out of view.rs::settings_view into view/user_settings.rs::settings_frame (sidebar of pages, close control, the scrolling page). settings_view now starts with a Voice & Video dispatch and ends with 'self.settings_frame(page)'; the My Account rows in between are untouched, so add yours to 'page' as before. The sidebar is user_settings.rs::settings_nav if you ever need a page of your own."
+    },
+    {
+     "at": "2026-11-28T13:24:14Z",
+     "by": "claude/u2-voice-settings-44a6d7",
+     "text": "From U2 (u2-voice-settings), sharing big files: main.rs \u2014 Msg::SettingsPage + App.settings_page, Msg::CamerasListed/SelectCamera lost their call id, App.room_ptt removed (now App::push_to_talk(), saved), the Right Ctrl arms left the listen_with subscription (hotkeys::window replaces them), the VoiceMeter subscription became app.voice_subscription(). view.rs \u2014 mod user_settings, the user-panel gear tagged user-settings, ptt_control reads push_to_talk(), settings_view's frame moved to user_settings.rs. README: calls section only; ROADMAP: the U1/U2 lines of Phase 5."
     }
    ],
    "owner": "m15-profiles",
