@@ -481,11 +481,11 @@ impl crate::App {
             None => self.local_sound(sound),
         }
     }
-    /// Open or close a voice popup. The device menus read the devices
-    /// again each time they open.
+    /// Open or close a voice popup. Each reads the devices and the apps
+    /// playing again when it opens.
     pub(super) fn voice_menu(&mut self, menu: Option<VoiceMenu>) -> iced::Task<crate::Msg> {
         self.voice_popup = menu;
-        if matches!(menu, Some(VoiceMenu::Input | VoiceMenu::Output)) {
+        if menu.is_some() {
             return self.refresh_devices();
         }
         iced::Task::none()

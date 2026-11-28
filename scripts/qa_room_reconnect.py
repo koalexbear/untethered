@@ -47,7 +47,8 @@ def check_reconnect(desks, users, names, link, logs, member_events, members, pub
                  lambda: all(d.hears(e) for d, e in zip(desks, expected)), timeout)
 
     def shows(d, word):
-        return word in {w for w, _, _ in d.words()}
+        # "Reconnecting…" is the Voice Connected panel's status (control map).
+        return word in d.layout.text("call-status").lower() or word in {w for w, _, _ in d.words()}
 
     def outage_case(label, cut, seconds, during, after):
         """Cut Bruno off, switch his tone while away and the others' after."""

@@ -144,7 +144,8 @@ a different participant, changes Prism, reselects **Your screen** and enters
 both directions. Stopping the share closes its portal grant and reader,
 while the call keeps its original four camera and microphone publications.
 During the Element run, the native side sends two independent apps through
-one private output sink. Selecting **Prism** must deliver its 730→830 Hz
+one private output sink. Selecting **Prism** under **Voice Settings → Screen
+share audio** must deliver its 730→830 Hz
 signal on an additional GCM screen-share audio track. Element separately
 decodes the 410 Hz microphone and checks for the unselected app’s 1030 Hz
 signal on all inbound audio tracks. The test stops app audio, restarts it,
@@ -189,13 +190,13 @@ gomuks under `/usr/lib/untethered`; the dev launcher builds it automatically.
 
 The fixture adds a second virtual camera after the first has begun
 publishing. During one encrypted call, it selects **Cobalt**, then **Amber**
-in the actual Devices picker. At both selections the private PipeWire graph
+in the camera list of **Voice Settings**. At both selections the private PipeWire graph
 must show only the selected camera linked, Element's remote tile and
 Untethered's self-preview must both show the new changing pattern, and the
 same four GCM camera/microphone publication IDs must remain active. Withdrawing
 the selected Cobalt source must remove only that camera publication and leave
 no capture link. Selecting Amber while off must not start capture until
-**Start camera**; the same call then resumes video with both microphones
+the camera button (**Start camera**); the same call then resumes video with both microphones
 still carrying audio. These are virtual-camera measurements, not hardware QA.
 
 ### Verify three-person voice rooms
@@ -439,8 +440,8 @@ mic tone while Clara's speaker stays silent.
 
 ### Finding the call controls
 
-The call's controls are icons, as on Discord. Debug builds started with
-`UNTETHERED_QA_LAYOUT=<file>` write a map of them there whenever it changes
+The call's controls are icons, as on Discord. Clients started with
+`UNTETHERED_QA_LAYOUT=<file>`, release builds too, write a map of them there whenever it changes
 (`rust-client/src/qa_layout.rs`): each control's name, bounds, state, tooltip
 and text. `scripts/qa_layout.py` lists the names; `qa_events.use_profile`
 turns the map on for every fixture client. The fixtures click through it

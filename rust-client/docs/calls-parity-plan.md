@@ -245,10 +245,13 @@ KDE `selenium-webdriver-at-spi-inputsynth` from `.dev/portal-qa/prefix/bin/`.
   Decide before U1. Otherwise every call fixture breaks at once.
   **Decided and built with U1:** the dump. `qa_layout::tag` wraps a control in
   a container with an id (always, so the widget tree is the same either way);
-  in debug builds with `UNTETHERED_QA_LAYOUT=<file>`, a widget operation walks
+  with `UNTETHERED_QA_LAYOUT=<file>`, a widget operation walks
   the tree every 300 ms, overlays and scrolled content included, and writes
   each tagged control's bounds, state, tooltip and inner text as JSON when it
-  changes. `scripts/qa_layout.py` reads it and lists the names.
+  changes. `scripts/qa_layout.py` reads it and lists the names. It started
+  debug-only; the KWin fixtures drive release builds (debug ones panic under
+  KDE's input synthesizer), so like `UNTETHERED_QA_EVENTS` it now works in any
+  build, and costs nothing without the variable.
 
 ### V1 — Video quality and full-screen sharing (Phase 1, S→M)
 
@@ -565,9 +568,12 @@ focus change never reopens capture.
 > muted in all 58 samples from its first appearance, nobody heard her and her
 > client opened no capture stream until she unmuted. It also opens the stage
 > from the panel's room link and mutes and unmutes Alice from Theater's
-> corner. Not run: the KWin fixtures (`--window-share`, `--room-camera`,
-> `--room-layout`, `--switch-camera`, `--dm-window`); `qa_switch_camera.py`
-> and `qa_app_sound.py` still read the old Devices panel by OCR.
+> corner. Follow-up the same day (`fix-u1-fixtures`): Voice Settings lists
+> cameras and the apps playing as tagged items instead of pick lists, the map
+> works in release builds, and `--switch-camera` and `--element-video
+> --dm-window` (camera switching, app audio, Stop app audio) pass on a release
+> client through it. `--window-share`, `--room-camera` and `--room-layout`
+> weren't run.
 
 **Files:** `view.rs` (`call_bar`, `call_dock`, the restyle's `user_panel`),
 `view/icons.rs` (new glyphs: `Mic`, `MicOff`, `Headphones`, `HeadphonesOff`,

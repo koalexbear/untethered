@@ -1,7 +1,7 @@
 """The QA control map: Untethered's icon-only call controls by name.
 
-A debug client started with `UNTETHERED_QA_LAYOUT=<file>` writes its tagged
-controls to that file every 300 ms when they change
+A client started with `UNTETHERED_QA_LAYOUT=<file>` (any build) writes its
+tagged controls to that file every 300 ms when they change
 (rust-client/src/qa_layout.rs): each control's bounds in window coordinates,
 a state ("on", "off", "live", "selected"…), its tooltip and the text inside
 it. The call fixtures click through it instead of hovering icons and reading
@@ -16,8 +16,9 @@ The call's controls (calls plan U1):
                     (off/starting/live), call-notes (text), share-sound-panel
                     (Play shared audio, while someone shares)
   Voice Settings    voice-settings, ptt, voice-auto, voice-echo, voice-noise,
-                    voice-gain, voice-slider, voice-meter, camera-list,
-                    cameras-refresh, app-audio, app-audio-stop, devices-refresh,
+                    voice-gain, voice-slider, voice-meter, camera-item-N and
+                    app-audio-N (text: the camera or app; state "selected"),
+                    cameras-refresh, app-audio-stop, devices-refresh,
                     share-sound, volume-N (text: name and percent),
                     volume-slider-N, volume-reset-N
   voice header      ptt-header (Push-to-talk beside Join voice)
@@ -121,7 +122,7 @@ class Layout:
     def missing(self):
         """Why there's no map, for a failing fixture's report."""
         if not self.path.exists():
-            return f"no control map at {self.path}: UNTETHERED_QA_LAYOUT needs a debug client build"
+            return f"no control map at {self.path}: is the client older than the map (calls plan U1)?"
         return "control map: " + ", ".join(f"{n}={c['state'] or '-'}" for n, c in sorted(self.controls().items()))
 
 
