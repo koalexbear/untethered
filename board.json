@@ -165,9 +165,9 @@
     "rust-client/src/view/server_rail.rs",
     "scripts/qa_server_rail.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Server rail order and folders",
-   "updated": "2026-11-28T09:46:10Z",
+   "updated": "2026-11-28T09:53:59Z",
    "worktree": ".claude/worktrees/n8-server-rail-3c3a7d"
   },
   "U1": {
