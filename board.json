@@ -48,6 +48,11 @@
      "at": "2026-11-28T14:28:22Z",
      "by": "m14-selection",
      "text": "[M14] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: view.rs: wrap the timeline feed Column in selection::area inside its scrollable (one spot in conversation()) and add 'mod selection;'. main.rs: 'mod selection;' and one Msg::ScrollTimeline(f32) variant + arm next to Msg::PageScroll. README/ROADMAP: only M14's row, its known-gap line and a short paragraph near the selection notes."
+    },
+    {
+     "at": "2026-11-28T14:32:00Z",
+     "by": "c2-roles",
+     "text": "[C2] Follow-up done on the same branch: f6f2a57 offers Add Reaction (menu, hover toolbar, chip smile, picker, custom-emoji reactions) only where the room's m.reaction level (m.room.encrypted's when encrypted) allows; taking yours back checks your redaction level. Checks clean, 375 tests; qa_roles.py passed live with the new check (member: no Add Reaction; Helper: offered). Still merges cleanly with M15, M10, U2 tips. Back to review."
     }
    ],
    "owner": "c2-roles",
@@ -74,7 +79,7 @@
    ],
    "status": "review",
    "title": "Roles and channel permissions",
-   "updated": "2026-11-28T14:31:57Z",
+   "updated": "2026-11-28T14:32:00Z",
    "worktree": ".claude/worktrees/c2-roles-d127db"
   },
   "J5": {
