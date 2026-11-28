@@ -43,27 +43,6 @@
    "title": "Rooms left elsewhere while closed stay listed",
    "updated": "2026-11-28T00:04:54Z",
    "worktree": ".claude/worktrees/great-lamport-46e7ea"
-  },
-  "fix-room-ptt": {
-   "branch": "claude/great-lamport-46e7ea",
-   "claimed": "2026-11-27T22:52:52Z",
-   "notes": [
-    {
-     "at": "2026-11-27T23:06:17Z",
-     "by": "fix-room-ptt",
-     "text": "fix-room-ptt: ready for review as cc7c62c on claude/great-lamport-46e7ea (base b6fa2b1). Scripts only: seed(room=False) for the voice-room accounts, Desktop.show() waits for Atrium without a click. --room-ptt, --global x11, --global wayland and --voice-room pass on release UI builds. Merges cleanly with A2 (claude/a2-voice-a94df8). Hand-over: side-session-notes/local_42c37c4b-.../fix-room-ptt.md"
-    }
-   ],
-   "owner": "fix-room-ptt",
-   "paths": [
-    "scripts/qa_room_ptt.py",
-    "scripts/qa_voice_room.py",
-    "scripts/test-media-interop.py"
-   ],
-   "status": "review",
-   "title": "Fix --room-ptt: open Atrium without joining",
-   "updated": "2026-11-27T23:06:17Z",
-   "worktree": ".claude/worktrees/great-lamport-46e7ea"
   }
  },
  "done": [
@@ -462,6 +441,15 @@
    "owner": "a2-voice",
    "result": "merged as f785f79 (main b6f46ea)",
    "title": "Voice processing and input sensitivity"
+  },
+  {
+   "branch": "claude/great-lamport-46e7ea",
+   "claimed": "2026-11-27T22:52:52Z",
+   "finished": "2026-11-28T02:58:35Z",
+   "id": "fix-room-ptt",
+   "owner": "fix-room-ptt",
+   "result": "merged as b6f46ea",
+   "title": "Fix --room-ptt: open Atrium without joining"
   }
  ]
 }
