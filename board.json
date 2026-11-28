@@ -28,6 +28,11 @@
      "at": "2026-11-28T14:12:40Z",
      "by": "c2-roles",
      "text": "[C2] Back to working: the user asked for the follow-up here. Hiding Add Reaction (toolbar, right-click menu, chip smile, picker, custom-emoji reactions) where the room's m.reaction level (m.room.encrypted in encrypted rooms) is above yours; new Posting::can_react. Extra paths: reactions.rs, view/reaction_bar.rs, context_menu.rs, emotes.rs."
+    },
+    {
+     "at": "2026-11-28T14:21:24Z",
+     "by": "s6-perf-budgets",
+     "text": "[S6] shares README.md, ROADMAP.md, rust-client/src/main.rs: S6: main.rs gets 'mod perf;', one perf::start() line at the top of main() and one perf note line in App::open; engine/app.rs gets one perf note call after Event::Rooms and one after Event::Timeline; README gets a testing-notes paragraph for scripts/qa_performance.py; ROADMAP only S6's row, the large-account memory known gap, and a checkpoint log entry."
     }
    ],
    "owner": "c2-roles",
@@ -121,6 +126,11 @@
      "at": "2026-11-28T13:26:33Z",
      "by": "m10-voice-messages",
      "text": "[M10] Correction to the last note: the branch head is 9814163 (4 commits on main 4532e28)."
+    },
+    {
+     "at": "2026-11-28T14:21:24Z",
+     "by": "s6-perf-budgets",
+     "text": "[S6] shares README.md, ROADMAP.md, rust-client/src/engine/app.rs, rust-client/src/main.rs: S6: main.rs gets 'mod perf;', one perf::start() line at the top of main() and one perf note line in App::open; engine/app.rs gets one perf note call after Event::Rooms and one after Event::Timeline; README gets a testing-notes paragraph for scripts/qa_performance.py; ROADMAP only S6's row, the large-account memory known gap, and a checkpoint log entry."
     }
    ],
    "owner": "m10-voice-messages",
@@ -178,6 +188,11 @@
      "at": "2026-11-28T13:26:54Z",
      "by": "m15-profiles",
      "text": "[M15] Correction: 374 tests pass (11 ignored), not 380."
+    },
+    {
+     "at": "2026-11-28T14:21:24Z",
+     "by": "s6-perf-budgets",
+     "text": "[S6] shares README.md, ROADMAP.md, rust-client/src/engine/app.rs, rust-client/src/main.rs: S6: main.rs gets 'mod perf;', one perf::start() line at the top of main() and one perf note line in App::open; engine/app.rs gets one perf note call after Event::Rooms and one after Event::Timeline; README gets a testing-notes paragraph for scripts/qa_performance.py; ROADMAP only S6's row, the large-account memory known gap, and a checkpoint log entry."
     }
    ],
    "owner": "m15-profiles",
@@ -206,6 +221,25 @@
    "updated": "2026-11-28T13:26:54Z",
    "worktree": ".claude/worktrees/m15-profiles-51cb01"
   },
+  "S6": {
+   "branch": "claude/s6-perf-budgets-7291bd",
+   "claimed": "2026-11-28T14:21:24Z",
+   "notes": [],
+   "owner": "s6-perf-budgets",
+   "paths": [
+    "README.md",
+    "ROADMAP.md",
+    "rust-client/src/engine/app.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/perf.rs",
+    "scripts/perf_budgets.json",
+    "scripts/qa_performance.py"
+   ],
+   "status": "working",
+   "title": "Performance budgets",
+   "updated": "2026-11-28T14:21:24Z",
+   "worktree": ".claude/worktrees/s6-perf-budgets-7291bd"
+  },
   "U2": {
    "branch": "claude/u2-voice-settings-44a6d7",
    "claimed": "2026-11-28T12:54:59Z",
@@ -219,6 +253,11 @@
      "at": "2026-11-28T13:38:04Z",
      "by": "u2-voice-settings",
      "text": "Ready for review: eef4d7c on claude/u2-voice-settings-44a6d7 (on main 4532e28). User Settings sidebar + Voice & Video page (devices, volumes, mic test, input mode, PTT key dialog + release delay, processing, camera with preview), all saved in voice.json; U1 popup shrunk to shared audio + User volume. Five checks pass; fixtures pass: --call-devices (page devices before joining + quit/relaunch persistence), --voice-processing (+ threshold sweep), --room-camera (preview while ListParticipants empty), --call-controls, --room-ptt, --room-ptt --global, --voice-room, --switch-camera. Merge note: main.rs subscription block got rustfmt-reformatted (it was skipped before). Details: side-session-notes/u2-voice-settings.md"
+    },
+    {
+     "at": "2026-11-28T14:21:24Z",
+     "by": "s6-perf-budgets",
+     "text": "[S6] shares README.md, ROADMAP.md, rust-client/src/main.rs: S6: main.rs gets 'mod perf;', one perf::start() line at the top of main() and one perf note line in App::open; engine/app.rs gets one perf note call after Event::Rooms and one after Event::Timeline; README gets a testing-notes paragraph for scripts/qa_performance.py; ROADMAP only S6's row, the large-account memory known gap, and a checkpoint log entry."
     }
    ],
    "owner": "u2-voice-settings",
