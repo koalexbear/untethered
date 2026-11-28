@@ -102,6 +102,11 @@
      "at": "2026-11-28T13:26:20Z",
      "by": "m10-voice-messages",
      "text": "[M10] Ready for review: 4 commits on claude/m10-voice-messages-1e5189 (on main 4532e28, last 9e?); hand-over in the side-session notes folder (m10-voice-messages.md). Five checks pass (fmt, clippy no warnings, 377 tests, wasm32, windows-gnu); scripts/qa_voice_messages.py PASSES incl. Element Web 1.12.35 showing and playing it. Linux only; Windows/web hide the button (ROADMAP row says why). Recording is off during a call. Shared-file hooks as in my earlier note, plus one Cancel line in main.rs Msg::Close."
+    },
+    {
+     "at": "2026-11-28T13:26:33Z",
+     "by": "m10-voice-messages",
+     "text": "[M10] Correction to the last note: the branch head is 9814163 (4 commits on main 4532e28)."
     }
    ],
    "owner": "m10-voice-messages",
@@ -128,7 +133,7 @@
    ],
    "status": "review",
    "title": "Voice messages",
-   "updated": "2026-11-28T13:26:20Z",
+   "updated": "2026-11-28T13:26:33Z",
    "worktree": ".claude/worktrees/m10-voice-messages-1e5189"
   },
   "M15": {
