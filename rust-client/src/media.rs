@@ -219,6 +219,10 @@ pub struct Media {
     /// Width and height as the event's `info` gives them.
     #[serde(default)]
     pub dims: Option<(u32, u32)>,
+    /// An audio message's length and waveform, and whether it is a voice
+    /// message (ROADMAP M10).
+    #[serde(default)]
+    pub voice: Option<crate::voice_message::Shape>,
 }
 /// The attachment's `msgtype`.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -364,6 +368,7 @@ impl Media {
             encrypted,
             kind,
             dims,
+            voice: crate::voice_message::shape(content),
         })
     }
     /// The original sharper than `full`, for zooming in, when the picture

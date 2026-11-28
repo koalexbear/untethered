@@ -591,6 +591,8 @@ impl App {
                 self.status = "Could not load history. Use Earlier messages to retry.".into();
                 self.auto_page_failed = Some(room);
             }
+            #[cfg(target_os = "linux")]
+            (Request::Voice(room), result) => self.voice_sent(room, result),
             (Request::Send(room, sent, reply), Ok(())) => {
                 // Same draft handling as the gomuks send_message response.
                 let same = self.reply_drafts.get(&room) == reply.as_ref();

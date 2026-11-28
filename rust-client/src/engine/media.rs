@@ -384,6 +384,24 @@ async fn read(file: &LocalFile) -> Result<Vec<u8>, Failure> {
     }
 }
 
+/// Upload a voice message's Ogg file, encrypted when `encrypt`, and make
+/// the content that sends it (ROADMAP M10).
+pub async fn voice_content(
+    client: &Client,
+    clip: &crate::voice_message::Clip,
+    encrypt: bool,
+) -> Result<Value, Failure> {
+    use crate::voice_message::{MIME, Source, content};
+    let mime: mime::Mime = MIME.parse().map_err(|_| Failure::Failed)?;
+    let source = match send(client, &mime, clip.ogg.clone(), encrypt, None).await? {
+        MediaSource::Plain(uri) => Source::Plain(uri.to_string()),
+        MediaSource::Encrypted(file) => {
+            Source::Encrypted(serde_json::to_value(file).map_err(|_| Failure::Failed)?)
+        }
+    };
+    Ok(content(&source, clip.ogg.len() as u64, clip))
+}
+
 /// Upload one blob, encrypted for encrypted rooms like the SDK's
 /// `upload_encrypted_file`, reporting whole percents of it when `progress` is
 /// set.

@@ -500,6 +500,15 @@ pub enum Command {
         room: String,
         ring: String,
     },
+    /// Upload a recorded voice message (ROADMAP M10), encrypted in an
+    /// encrypted room, and send it as Element does. Done once the
+    /// homeserver has it.
+    SendVoice {
+        id: i64,
+        room: String,
+        clip: crate::voice_message::Clip,
+        reply_to: Option<String>,
+    },
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
@@ -2000,6 +2009,17 @@ impl Engine {
             } => {
                 self.job(id, move |_, timelines, _| async move {
                     timelines.send_media(&room, content, reply_to).await
+                })
+                .await
+            }
+            Command::SendVoice {
+                id,
+                room,
+                clip,
+                reply_to,
+            } => {
+                self.job(id, move |_, timelines, _| async move {
+                    timelines.send_voice(&room, clip, reply_to).await
                 })
                 .await
             }

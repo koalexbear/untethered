@@ -90,6 +90,7 @@ mod typing;
 mod upgrades;
 mod view;
 mod viewer;
+mod voice_message;
 #[cfg(target_os = "linux")]
 mod wayland_drop;
 #[cfg(target_arch = "wasm32")]
@@ -457,6 +458,9 @@ enum Msg {
     Pasted(Field, String),
     #[cfg(target_arch = "wasm32")]
     ClipboardResult(bool),
+    /// The composer's voice recorder (voice_message.rs, ROADMAP M10).
+    #[cfg(target_os = "linux")]
+    VoiceMessage(voice_message::Input),
 }
 // Iced requires Debug on messages. Never put passwords, keys or RPC data in debug output.
 impl std::fmt::Debug for Msg {
@@ -539,6 +543,9 @@ enum Request {
     Nickname(names::Write),
     /// Reading or changing a space's settings (server_settings.rs).
     ServerSettings(server_settings::Op),
+    /// A voice message for this room (voice_message.rs).
+    #[cfg(target_os = "linux")]
+    Voice(String),
 }
 struct App {
     setup: Option<community::Form>,
@@ -718,6 +725,8 @@ struct App {
     stopped: bool,
     #[cfg(not(target_arch = "wasm32"))]
     tray: tray::Tray,
+    #[cfg(target_os = "linux")]
+    voice_recorder: voice_message::Recorder,
 }
 impl App {
     fn boot(
@@ -873,6 +882,8 @@ impl App {
             stopped: false,
             #[cfg(not(target_arch = "wasm32"))]
             tray: Default::default(),
+            #[cfg(target_os = "linux")]
+            voice_recorder: Default::default(),
         }
     }
     fn rooms(&self) -> &Rooms {
@@ -1279,6 +1290,10 @@ impl App {
                 let video =
                     matches!(&event, engine::Event::CallFrame(f) if f["command"] == "video_redraw");
                 self.engine_event(event);
+                #[cfg(target_os = "linux")]
+                if let Some(focus) = self.voice_refocus() {
+                    return focus;
+                }
                 if jumped && self.original.is_some() {
                     return self.anchor_history();
                 }
@@ -1289,6 +1304,8 @@ impl App {
                 }
             }
             Msg::Sdk(action) => return self.sdk_action(action),
+            #[cfg(target_os = "linux")]
+            Msg::VoiceMessage(input) => return self.voice_message(input),
             Msg::Stopped(s) => {
                 #[cfg(target_os = "linux")]
                 {
@@ -1322,6 +1339,9 @@ impl App {
                 self.record_current_draft();
                 self.persist_drafts();
                 self.persist_places();
+                // A recording doesn't go on, unseen, from the tray.
+                #[cfg(target_os = "linux")]
+                let _ = self.voice_message(voice_message::Input::Cancel);
                 return self.close_requested();
             }
             #[cfg(target_arch = "wasm32")]
@@ -1945,6 +1965,8 @@ impl App {
                     return self.explore(explore::Input::Close);
                 } else if self.reaction_picker.is_some() {
                     self.reaction_picker = None;
+                } else if let Some(cancel) = self.escape_voice_message() {
+                    return cancel;
                 } else if self.completion.picker.take().is_none() && self.escape_is_free() {
                     return self.escape_fallback();
                 }
@@ -2579,6 +2601,9 @@ fn main() -> iced::Result {
                     && app.call.as_ref().is_some_and(|c| !c.cancel.is_closed()) {
                     iced::time::every(std::time::Duration::from_millis(50)).map(|_| Msg::VoiceMeter)
                 } else { iced::Subscription::none() },
+                // The voice recorder's timer, levels and Enter (voice_message.rs).
+                #[cfg(target_os = "linux")]
+                app.voice_subscription(),
                 // The QA control map, when a fixture asked for it.
                 #[cfg(target_os = "linux")]
                 if qa_layout::enabled() {
