@@ -33,6 +33,11 @@
      "at": "2026-11-28T14:21:24Z",
      "by": "s6-perf-budgets",
      "text": "[S6] shares README.md, ROADMAP.md, rust-client/src/main.rs: S6: main.rs gets 'mod perf;', one perf::start() line at the top of main() and one perf note line in App::open; engine/app.rs gets one perf note call after Event::Rooms and one after Event::Timeline; README gets a testing-notes paragraph for scripts/qa_performance.py; ROADMAP only S6's row, the large-account memory known gap, and a checkpoint log entry."
+    },
+    {
+     "at": "2026-11-28T14:22:14Z",
+     "by": "n7-index",
+     "text": "[n7-index] shares README.md, ROADMAP.md, rust-client/src/main.rs: engine/mod.rs: a SearchIndex command variant, an Event variant, and spawning the indexer task in go_live; engine/app.rs: one arm routing the index event; main.rs: a Msg variant for the switch and handing activity (scrolling/call) to the engine; README/ROADMAP: only N7's row, the N7 known-gap lines and a search paragraph"
     }
    ],
    "owner": "c2-roles",
@@ -131,6 +136,11 @@
      "at": "2026-11-28T14:21:24Z",
      "by": "s6-perf-budgets",
      "text": "[S6] shares README.md, ROADMAP.md, rust-client/src/engine/app.rs, rust-client/src/main.rs: S6: main.rs gets 'mod perf;', one perf::start() line at the top of main() and one perf note line in App::open; engine/app.rs gets one perf note call after Event::Rooms and one after Event::Timeline; README gets a testing-notes paragraph for scripts/qa_performance.py; ROADMAP only S6's row, the large-account memory known gap, and a checkpoint log entry."
+    },
+    {
+     "at": "2026-11-28T14:22:14Z",
+     "by": "n7-index",
+     "text": "[n7-index] shares README.md, ROADMAP.md, rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/main.rs: engine/mod.rs: a SearchIndex command variant, an Event variant, and spawning the indexer task in go_live; engine/app.rs: one arm routing the index event; main.rs: a Msg variant for the switch and handing activity (scrolling/call) to the engine; README/ROADMAP: only N7's row, the N7 known-gap lines and a search paragraph"
     }
    ],
    "owner": "m10-voice-messages",
@@ -193,6 +203,11 @@
      "at": "2026-11-28T14:21:24Z",
      "by": "s6-perf-budgets",
      "text": "[S6] shares README.md, ROADMAP.md, rust-client/src/engine/app.rs, rust-client/src/main.rs: S6: main.rs gets 'mod perf;', one perf::start() line at the top of main() and one perf note line in App::open; engine/app.rs gets one perf note call after Event::Rooms and one after Event::Timeline; README gets a testing-notes paragraph for scripts/qa_performance.py; ROADMAP only S6's row, the large-account memory known gap, and a checkpoint log entry."
+    },
+    {
+     "at": "2026-11-28T14:22:14Z",
+     "by": "n7-index",
+     "text": "[n7-index] shares README.md, ROADMAP.md, rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/main.rs: engine/mod.rs: a SearchIndex command variant, an Event variant, and spawning the indexer task in go_live; engine/app.rs: one arm routing the index event; main.rs: a Msg variant for the switch and handing activity (scrolling/call) to the engine; README/ROADMAP: only N7's row, the N7 known-gap lines and a search paragraph"
     }
    ],
    "owner": "m15-profiles",
@@ -224,7 +239,13 @@
   "S6": {
    "branch": "claude/s6-perf-budgets-7291bd",
    "claimed": "2026-11-28T14:21:24Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-28T14:22:14Z",
+     "by": "n7-index",
+     "text": "[n7-index] shares README.md, ROADMAP.md, rust-client/src/engine/app.rs, rust-client/src/main.rs: engine/mod.rs: a SearchIndex command variant, an Event variant, and spawning the indexer task in go_live; engine/app.rs: one arm routing the index event; main.rs: a Msg variant for the switch and handing activity (scrolling/call) to the engine; README/ROADMAP: only N7's row, the N7 known-gap lines and a search paragraph"
+    }
+   ],
    "owner": "s6-perf-budgets",
    "paths": [
     "README.md",
@@ -258,6 +279,11 @@
      "at": "2026-11-28T14:21:24Z",
      "by": "s6-perf-budgets",
      "text": "[S6] shares README.md, ROADMAP.md, rust-client/src/main.rs: S6: main.rs gets 'mod perf;', one perf::start() line at the top of main() and one perf note line in App::open; engine/app.rs gets one perf note call after Event::Rooms and one after Event::Timeline; README gets a testing-notes paragraph for scripts/qa_performance.py; ROADMAP only S6's row, the large-account memory known gap, and a checkpoint log entry."
+    },
+    {
+     "at": "2026-11-28T14:22:14Z",
+     "by": "n7-index",
+     "text": "[n7-index] shares README.md, ROADMAP.md, rust-client/src/main.rs: engine/mod.rs: a SearchIndex command variant, an Event variant, and spawning the indexer task in go_live; engine/app.rs: one arm routing the index event; main.rs: a Msg variant for the switch and handing activity (scrolling/call) to the engine; README/ROADMAP: only N7's row, the N7 known-gap lines and a search paragraph"
     }
    ],
    "owner": "u2-voice-settings",
@@ -294,6 +320,29 @@
    "title": "Voice & Video settings page",
    "updated": "2026-11-28T13:38:04Z",
    "worktree": ".claude/worktrees/u2-voice-settings-44a6d7"
+  },
+  "n7-index": {
+   "branch": "claude/n7-index-4c3db0",
+   "claimed": "2026-11-28T14:22:14Z",
+   "notes": [],
+   "owner": "n7-index",
+   "paths": [
+    "README.md",
+    "ROADMAP.md",
+    "rust-client/src/engine/app.rs",
+    "rust-client/src/engine/mod.rs",
+    "rust-client/src/engine/search.rs",
+    "rust-client/src/engine/search_index.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/search.rs",
+    "rust-client/src/search/*",
+    "rust-client/src/view/room_search.rs",
+    "scripts/qa_search_index.py"
+   ],
+   "status": "working",
+   "title": "Index encrypted rooms in the background for search",
+   "updated": "2026-11-28T14:22:14Z",
+   "worktree": ".claude/worktrees/n7-index-4c3db0"
   }
  },
  "done": [
