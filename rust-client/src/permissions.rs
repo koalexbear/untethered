@@ -4,7 +4,7 @@
 use crate::{App, Request, moderation::Kind, room_state::RoomState, rooms::items};
 use serde_json::{Value, json};
 
-const POWER: &str = "m.room.power_levels";
+pub(crate) const POWER: &str = "m.room.power_levels";
 const RESTORE: &str = "com.untethered.posting_restore.v1";
 const POSTS: [&str; 4] = [
     "m.room.message",
@@ -13,13 +13,13 @@ const POSTS: [&str; 4] = [
     "m.reaction",
 ];
 // Matrix integers must survive a canonical JSON round trip.
-const MAX: i64 = (1 << 53) - 1;
-fn number(v: &Value) -> Option<i64> {
+pub(crate) const MAX: i64 = (1 << 53) - 1;
+pub(crate) fn number(v: &Value) -> Option<i64> {
     v.as_i64()
         .or_else(|| v.as_str()?.parse().ok())
         .filter(|n| (-MAX..=MAX).contains(n))
 }
-fn level(map: &Value, key: &str, default: i64) -> Option<i64> {
+pub(crate) fn level(map: &Value, key: &str, default: i64) -> Option<i64> {
     map.get(key).map_or(Some(default), number)
 }
 /// A Matrix state event as the App keeps it, without an engine's envelope.
@@ -111,7 +111,9 @@ impl Posting {
     pub fn id(&self) -> Option<&str> {
         Some(&self.power.as_ref()?.event_id)
     }
-    fn content(&self) -> Option<&Value> {
+    /// The power levels document, when it's one this client can read
+    /// (roles.rs patches it too).
+    pub(crate) fn content(&self) -> Option<&Value> {
         let doc = self.power.as_ref()?;
         let c = &doc.content;
         (!doc.redacted

@@ -9,6 +9,8 @@
 //!   syncs (engine/packs.rs).
 //! - **Channels:** each channel's name and topic. Order stays with the drag
 //!   in the sidebar (channel_order.rs).
+//! - **Roles:** roles on power levels and each channel's own permissions
+//!   (ROADMAP C2, roles.rs).
 //!
 //! Every control asks the room's power levels first. What this account
 //! can't change shows as a value, not as a control that fails (ROADMAP's
@@ -49,6 +51,7 @@ pub enum Tab {
     Overview,
     Emoji,
     Channels,
+    Roles,
 }
 
 impl Tab {
@@ -57,6 +60,7 @@ impl Tab {
             Self::Overview => "Server Overview",
             Self::Emoji => "Emoji",
             Self::Channels => "Channels",
+            Self::Roles => "Roles",
         }
     }
     pub fn label(self) -> &'static str {
@@ -64,6 +68,7 @@ impl Tab {
             Self::Overview => "Overview",
             Self::Emoji => "Emoji",
             Self::Channels => "Channels",
+            Self::Roles => "Roles",
         }
     }
 }
@@ -76,6 +81,8 @@ pub struct State {
     /// Spaces' banners (mxc URIs), for the channel list: asked once a
     /// session, and again whenever the space's settings load.
     banners: BTreeMap<String, Option<String>>,
+    /// Spaces' custom roles, for badges (roles.rs).
+    pub roles: crate::roles::Cache,
 }
 
 impl State {
@@ -102,6 +109,8 @@ pub struct Page {
     pub rename: Option<Rename>,
     picking: Option<(i64, Target)>,
     pub note: Option<Note>,
+    /// The Roles tab (roles.rs).
+    pub roles: crate::roles::Draft,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -155,6 +164,8 @@ pub enum Input {
     /// Close the page to drag channels in the sidebar.
     Reorder,
     Fetched(String, Option<Picture>),
+    /// The Roles tab's (roles.rs).
+    Roles(crate::roles::Input),
 }
 
 /// A request in flight, for its answer.
@@ -162,7 +173,17 @@ pub enum Input {
 pub enum Op {
     Load(String),
     Banner(String),
-    Write { space: String, write: Write },
+    Write {
+        space: String,
+        write: Write,
+    },
+    /// A space's custom roles, for badges (roles.rs).
+    Titles(String),
+    /// A roles or power levels change (roles.rs).
+    Roles {
+        space: String,
+        write: crate::roles::Write,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -462,14 +483,17 @@ impl App {
             Input::Open(_) | Input::Fetched(..) => {}
             Input::Close | Input::Reorder => self.server_settings.page = None,
             Input::Escape => {
-                if self.page_mut().rename.take().is_none() {
+                let page = self.page_mut();
+                if page.rename.take().is_none() && page.roles.form.take().is_none() {
                     self.server_settings.page = None;
                 }
             }
+            Input::Roles(input) => return self.roles_input(space, input),
             Input::Tab(tab) => {
                 let page = self.page_mut();
                 page.tab = tab;
                 page.rename = None;
+                page.roles.form = None;
                 page.note = None;
             }
             Input::Name(v) if !saving && self.may_set(&space, "m.room.name") => {
@@ -659,6 +683,7 @@ impl App {
             rename: None,
             picking: None,
             note: None,
+            roles: Default::default(),
         });
         self.load_settings(space);
         Task::none()
@@ -876,11 +901,14 @@ impl App {
                 };
                 self.server_settings.banners.insert(space, banner);
             }
+            Op::Titles(space) => self.titles_answer(space, result),
+            Op::Roles { space, write } => self.roles_answer(space, write, result),
             Op::Load(space) => {
                 if let Ok(Reply::Loaded(snapshot)) = &result {
                     self.server_settings
                         .banners
                         .insert(space.clone(), snapshot.banner.clone());
+                    self.titles_loaded(&space, snapshot.roles.as_ref());
                 }
                 let Some(page) = self
                     .server_settings
@@ -965,6 +993,8 @@ impl App {
     /// Forget channel values saved here once sync changes them: to ours,
     /// or to someone else's since.
     pub fn settings_synced(&mut self) {
+        // Rooms joined or left change which rooms have which roles.
+        self.spread_titles();
         let Some(page) = &mut self.server_settings.page else {
             return;
         };
@@ -1042,7 +1072,7 @@ impl App {
                 .flat_map(|doc| pack_images(&page.space, doc).images)
                 .map(|i| (i.url, Fit::Emote))
                 .collect(),
-            Tab::Channels => Vec::new(),
+            Tab::Channels | Tab::Roles => Vec::new(),
         });
         wanted
     }
@@ -1052,6 +1082,7 @@ impl App {
             return Task::none();
         }
         self.ask_banner();
+        self.ask_titles();
         let wanted = self.wanted_settings_pictures();
         let mut tasks = Vec::new();
         for (url, fit) in wanted {
@@ -1294,6 +1325,14 @@ mod tests {
         let Ok(Command::SpaceSettings { id, request }) = rx.try_recv() else {
             panic!("no banner request");
         };
+        // Its custom roles are asked for alongside, once too (roles.rs).
+        assert!(matches!(
+            rx.try_recv(),
+            Ok(Command::SpaceSettings {
+                request: engine::Request::Titles { .. },
+                ..
+            })
+        ));
         assert_eq!(
             request,
             engine::Request::Banner {

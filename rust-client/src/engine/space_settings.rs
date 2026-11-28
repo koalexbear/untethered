@@ -7,10 +7,19 @@
 //! A pack edit reads the pack from the homeserver, changes the one image it
 //! names and writes the whole event back, keeping fields it doesn't know:
 //! two people editing the same pack lose as little as Matrix allows.
+//!
+//! Roles (ROADMAP C2, roles.rs) work the same way: custom role names are
+//! our own state event on the space ([`ROLES`]), and a power level change
+//! is patched onto each room's current `m.room.power_levels`, read from the
+//! homeserver just before it's written.
 use super::{
     Failure,
     messaging::{http, room},
     packs::{ROOM_PACK, ROOM_PACK_UNSTABLE},
+};
+use crate::{
+    permissions::{POWER, Posting, StateDoc},
+    roles::{self, Change, TitleEdit},
 };
 use matrix_sdk::{
     Client,
@@ -28,6 +37,9 @@ use serde_json::{Value, json};
 
 /// A space's banner: `{url, info}` like `m.room.avatar`; `{}` removes it.
 pub const BANNER: &str = "io.github.koalexbear.untethered.banner";
+/// A space's custom role names and colours (roles.rs):
+/// `{"roles": {"<power level>": {"name": …, "color": "#rrggbb"}}}`.
+pub const ROLES: &str = "io.github.koalexbear.untethered.roles";
 /// Pictures larger than this aren't uploaded.
 pub const PICTURE_LIMIT: u64 = 8 * 1024 * 1024;
 
@@ -70,6 +82,21 @@ pub enum Request {
         shortcode: String,
         usage: Usage,
         bytes: Vec<u8>,
+    },
+    /// The space's custom role names ([`ROLES`]), as [`Reply::Titles`].
+    Titles {
+        space: String,
+    },
+    /// Name, rename or remove a custom role: read the event, change the
+    /// one role, write it back; the new content as [`Reply::Titles`].
+    EditTitles {
+        space: String,
+        edit: TitleEdit,
+    },
+    /// Power level changes, one room after another, each made on the
+    /// room's current power levels; as [`Reply::Power`].
+    Power {
+        changes: Vec<(String, Change)>,
     },
 }
 
@@ -165,6 +192,17 @@ pub struct Snapshot {
     pub banner: Option<String>,
     /// Its packs under either name, with their content as it is.
     pub packs: Vec<PackDoc>,
+    /// Its custom role names ([`ROLES`]) as they are.
+    pub roles: Option<Value>,
+    /// Who has joined it, by user ID.
+    pub members: Vec<Member>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Member {
+    pub id: String,
+    /// Their display name in the space; empty without one.
+    pub name: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -179,7 +217,16 @@ pub enum Reply {
     Banner(Option<String>),
     /// The change's event ID.
     Written(String),
+    /// A space's custom role names; None without any.
+    Titles(Option<Value>),
+    /// Each room's answer: the power levels written and their event ID, or
+    /// None where there was nothing to change.
+    Power(Vec<(String, PowerWritten)>),
 }
+
+/// A room's answer to a power levels change: the content written and its
+/// event ID, or None where there was nothing to change.
+pub type PowerWritten = Result<Option<(String, Value)>, Failure>;
 
 /// A shortcode Discord would take: 2 to 32 letters, digits, `_` or `-`.
 /// MSC2545 only forbids whitespace and `:`; this keeps `:code:` readable
@@ -317,7 +364,59 @@ pub async fn run(client: &Client, request: Request) -> Result<Reply, Failure> {
             };
             write_pack(client, &room, &pack, &edit).await
         }
+        Request::Titles { space } => {
+            let target = self::room(client, &space)?;
+            Ok(Reply::Titles(state(client, &target, ROLES, "").await?))
+        }
+        Request::EditTitles { space, edit } => {
+            let target = self::room(client, &space)?;
+            let current = state(client, &target, ROLES, "").await?;
+            let content = roles::apply_titles(current, &edit)?;
+            target
+                .send_state_event_raw(ROLES, "", content.clone())
+                .await
+                .map_err(|e| http(&e))?;
+            Ok(Reply::Titles(Some(content)))
+        }
+        Request::Power { changes } => {
+            let mut out = Vec::with_capacity(changes.len());
+            for (room, change) in changes {
+                let result = write_power(client, &room, &change).await;
+                out.push((room, result));
+            }
+            Ok(Reply::Power(out))
+        }
     }
+}
+
+/// Make `change` on the room's power levels as the homeserver has them
+/// now, if this account may: what else is there stays.
+async fn write_power(client: &Client, room: &str, change: &Change) -> PowerWritten {
+    let me = client.user_id().ok_or(Failure::Unavailable)?.to_string();
+    let target = self::room(client, room)?;
+    let current = state(client, &target, POWER, "")
+        .await?
+        .ok_or(Failure::Failed)?;
+    // The create event never changes: the store's is the room's.
+    let create = super::rooms::state_doc(&target, StateEventType::RoomCreate).await;
+    let posting = Posting::new(
+        create,
+        Some(StateDoc {
+            event_id: String::new(),
+            sender: String::new(),
+            content: current.clone(),
+            redacted: false,
+        }),
+    );
+    let content = roles::patch(&posting, &me, change).ok_or(Failure::Forbidden)?;
+    if content == current {
+        return Ok(None);
+    }
+    let response = target
+        .send_state_event_raw(POWER, "", content.clone())
+        .await
+        .map_err(|e| http(&e))?;
+    Ok(Some((response.event_id.to_string(), content)))
 }
 
 /// The space's state from the homeserver (`/state`), not the store: the
@@ -363,6 +462,16 @@ fn snapshot(events: impl Iterator<Item = Value>) -> Snapshot {
             }
             ("m.room.avatar", "") => out.avatar = mxc(&content["url"]),
             (BANNER, "") => out.banner = mxc(&content["url"]),
+            (ROLES, "") => out.roles = Some(content.clone()),
+            ("m.room.member", user) if content["membership"] == "join" => {
+                out.members.push(Member {
+                    id: user.to_owned(),
+                    name: content["displayname"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_owned(),
+                })
+            }
             (ROOM_PACK | ROOM_PACK_UNSTABLE, key)
                 if content.as_object().is_some_and(|o| !o.is_empty()) =>
             {
@@ -592,9 +701,23 @@ mod tests {
                 event(ROOM_PACK, "", json!({"images": {}})),
                 event(ROOM_PACK, "removed", json!({})),
                 event("m.room.member", "@a:h", json!({"membership": "join"})),
+                event(
+                    "m.room.member",
+                    "@b:h",
+                    json!({"membership": "join", "displayname": "Bee"}),
+                ),
+                event("m.room.member", "@c:h", json!({"membership": "leave"})),
+                event(ROLES, "", json!({"roles": {"25": {"name": "Helper"}}})),
             ]
             .into_iter(),
         );
+        let members: Vec<_> = snap
+            .members
+            .iter()
+            .map(|m| (m.id.as_str(), m.name.as_str()))
+            .collect();
+        assert_eq!(members, [("@a:h", ""), ("@b:h", "Bee")]);
+        assert_eq!(snap.roles.unwrap()["roles"]["25"]["name"], "Helper");
         assert_eq!(snap.name, "Workshop");
         assert_eq!(snap.topic, "Making things");
         assert_eq!(snap.avatar.as_deref(), Some("mxc://h/icon"));
