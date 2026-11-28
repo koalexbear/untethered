@@ -137,6 +137,11 @@
      "at": "2026-11-28T09:30:02Z",
      "by": "u1-voice-panel",
      "text": "[U1] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: view.rs: call_bar/call_dock/user_panel/theater dock only; main.rs: call Msg variants and handlers, QA layout timer; icons.rs: new call glyphs appended; README call section, ROADMAP U1 row"
+    },
+    {
+     "at": "2026-11-28T09:47:03Z",
+     "by": "m13-composer",
+     "text": "M13 (m13-composer) touches rooms.rs: one pub emote: bool field on Post after poll, set in the gomuks insert literal; rooms/engine.rs: 'emote: m.emote && ...' in post() after poll, and emote: false in the test Message helper. engine/mod.rs: 'pub(crate) mod compose;' and a #[serde(default)] emote: bool at the end of engine::Message; engine/app.rs: engine_compose (3 lines) and test literals. New engine::Message/Post literals need emote."
     }
    ],
    "owner": "n8-server-rail",
