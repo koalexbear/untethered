@@ -1,5 +1,31 @@
 {
  "claims": {
+  "C2": {
+   "branch": "claude/c2-roles-d127db",
+   "claimed": "2026-11-28T12:57:43Z",
+   "notes": [],
+   "owner": "c2-roles",
+   "paths": [
+    "README.md",
+    "ROADMAP.md",
+    "rust-client/src/engine/space_settings.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/names.rs",
+    "rust-client/src/permissions.rs",
+    "rust-client/src/roles.rs",
+    "rust-client/src/rooms.rs",
+    "rust-client/src/server_settings.rs",
+    "rust-client/src/view.rs",
+    "rust-client/src/view/names.rs",
+    "rust-client/src/view/roles.rs",
+    "rust-client/src/view/server_settings.rs",
+    "scripts/qa_roles.py"
+   ],
+   "status": "working",
+   "title": "Roles and channel permissions",
+   "updated": "2026-11-28T12:57:43Z",
+   "worktree": ".claude/worktrees/c2-roles-d127db"
+  },
   "J5": {
    "branch": "main",
    "claimed": "2026-11-27T22:26:13Z",
@@ -34,6 +60,11 @@
      "at": "2026-11-28T12:55:52Z",
      "by": "m15-profiles",
      "text": "[M15] shares README.md, ROADMAP.md, rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: M15: view.rs \u2014 own per-server picture in user_face/user_picture and the call-stage Pictures line only; main.rs \u2014 mod lines, one Msg variant + arm, a Msg::Files prefix branch, two calls in update's tail; engine/mod.rs \u2014 rename M12's SetNickname/FollowNickname to SetServerProfile/FollowServerProfile, one ProfileFields Command + Event + dispatch arm; engine/app.rs \u2014 one Event arm and the follow call rename; README/ROADMAP \u2014 M15 row/lines only"
+    },
+    {
+     "at": "2026-11-28T12:57:43Z",
+     "by": "c2-roles",
+     "text": "[C2] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/rooms.rs, rust-client/src/view.rs: C2 (c2-roles): names.rs \u2014 badge part only: Role gains a Custom{name,colour} variant (stays Copy), role() and Room::role read custom role names from a new Room.titles; I don't touch the server-profile form. view/names.rs \u2014 tint()/tag() handle the Custom variant. rooms.rs \u2014 one new field, Room.titles. main.rs and view.rs \u2014 one 'mod roles;' line each. README/ROADMAP \u2014 C2 row and lines only. Bulk is in new roles.rs, view/roles.rs and C1's server_settings files."
     }
    ],
    "owner": "m10-voice-messages",
@@ -65,7 +96,13 @@
   "M15": {
    "branch": "claude/m15-profiles-51cb01",
    "claimed": "2026-11-28T12:55:52Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-28T12:57:43Z",
+     "by": "c2-roles",
+     "text": "[C2] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/names.rs, rust-client/src/view.rs, rust-client/src/view/names.rs: C2 (c2-roles): names.rs \u2014 badge part only: Role gains a Custom{name,colour} variant (stays Copy), role() and Room::role read custom role names from a new Room.titles; I don't touch the server-profile form. view/names.rs \u2014 tint()/tag() handle the Custom variant. rooms.rs \u2014 one new field, Room.titles. main.rs and view.rs \u2014 one 'mod roles;' line each. README/ROADMAP \u2014 C2 row and lines only. Bulk is in new roles.rs, view/roles.rs and C1's server_settings files."
+    }
+   ],
    "owner": "m15-profiles",
    "paths": [
     "README.md",
