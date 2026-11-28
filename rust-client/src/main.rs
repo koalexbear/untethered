@@ -72,6 +72,7 @@ mod rooms;
 #[cfg(not(target_arch = "wasm32"))]
 mod runtime;
 mod search;
+mod server_settings;
 mod shortcuts;
 #[cfg(target_os = "linux")]
 mod sounds;
@@ -280,6 +281,8 @@ enum Msg {
     Order(channel_order::Input),
     /// Edit Server Profile (names.rs).
     Names(names::Input),
+    /// Server Settings for a space (server_settings.rs).
+    ServerSettings(server_settings::Input),
     /// The composer's + menu: Upload a File, Create Poll.
     ComposerMenu(bool),
     /// The quick switcher (switcher.rs).
@@ -521,6 +524,8 @@ enum Request {
     Arrange,
     /// Setting a server nickname (names.rs).
     Nickname(names::Write),
+    /// Reading or changing a space's settings (server_settings.rs).
+    ServerSettings(server_settings::Op),
 }
 struct App {
     setup: Option<community::Form>,
@@ -598,6 +603,8 @@ struct App {
     /// Edit Server Profile, and rooms that took their server's nickname
     /// (names.rs).
     names: names::State,
+    /// The open Server Settings page (server_settings.rs).
+    server_settings: server_settings::State,
     /// Explore, and what spaces contain (explore.rs).
     explore: explore::State,
     /// Create a Poll, and the composer's + menu that opens it (polls.rs).
@@ -768,6 +775,7 @@ impl App {
             new_message: None,
             forwarding: None,
             names: Default::default(),
+            server_settings: Default::default(),
             explore: Default::default(),
             polling: None,
             emotes: Default::default(),
@@ -1634,6 +1642,12 @@ impl App {
                     self.thread_image_picked(picker, files.into_iter().next());
                     return operation::focus("thread-composer");
                 }
+                if let Some(picker) = room
+                    .strip_prefix(server_settings::PICKER)
+                    .and_then(|id| id.parse().ok())
+                {
+                    return self.server_settings_picked(picker, files.into_iter().next());
+                }
                 #[cfg(target_arch = "wasm32")]
                 if let Some(id) = room
                     .strip_prefix(engine::profile::AVATAR_PICKER)
@@ -1806,6 +1820,10 @@ impl App {
             Msg::EmoteReady(url, picture) => self.emotes.complete(url, picture),
             Msg::Order(input) => return self.arrange_input(input),
             Msg::Names(input) => return self.names(input),
+            Msg::ServerSettings(input) => {
+                let task = self.server_settings(input);
+                return Task::batch([task, self.schedule_settings_pictures()]);
+            }
             Msg::ComposerMenu(open) => self.composer_menu = open && self.can_stage(),
             Msg::Switcher(input) => return self.switcher(input),
             Msg::Escape if self.shortcuts.open => self.shortcuts.open = false,
@@ -1895,6 +1913,8 @@ impl App {
                     self.server_menu = false;
                 } else if self.setup.is_some() && !self.setup_busy() {
                     return self.setup_input(community::Input::Close);
+                } else if self.server_settings.page.is_some() {
+                    return self.server_settings(server_settings::Input::Escape);
                 } else if self.account && self.logged_in && self.verified {
                     self.account = false;
                 } else if self.explore.page.is_some() {
@@ -2252,7 +2272,12 @@ impl App {
         self.fill_history();
         self.sync_presence();
         self.schedule_link_previews();
-        let task = Task::batch([task, self.schedule_avatars(), self.schedule_emotes()]);
+        let task = Task::batch([
+            task,
+            self.schedule_avatars(),
+            self.schedule_emotes(),
+            self.schedule_settings_pictures(),
+        ]);
         #[cfg(target_os = "linux")]
         let task = Task::batch([task, self.start_ringtone(), self.play_sounds()]);
         #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
