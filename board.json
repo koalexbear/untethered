@@ -63,6 +63,11 @@
      "at": "2026-11-28T09:29:14Z",
      "by": "c1-server-settings",
      "text": "[C1] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: C1: small, separate edits only \u2014 view.rs: mod line, one overlay slot in view()'s stack, one Server Settings item in server_menu_view; main.rs: mod line, Msg::ServerSettings, App field, update arm, Escape arm, web picker prefix route; engine/mod.rs: mod space_settings, Command::SpaceSettings + dispatch arm, Event::SpaceSettings; engine/app.rs: one engine_event arm; permissions.rs: make can_send_state pub(crate); README/ROADMAP: C1 row, M11 known gap"
+    },
+    {
+     "at": "2026-11-28T09:29:58Z",
+     "by": "claude/u1-voice-panel-678cab",
+     "text": "U1 (u1-voice-panel) will touch: view.rs call_bar/call_dock/user_panel and the theater dock only (call block replaced by view/voice_panel.rs); main.rs a few Msg variants + call handlers (mute/deafen before joining, QA layout timer); icons.rs new call glyphs appended at the end of the enum/match (Mic, MicOff, Headphones, HeadphonesOff, ScreenShare, PhoneOff, Signal); README call section and ROADMAP U1 row only."
     }
    ],
    "owner": "m13-composer",
