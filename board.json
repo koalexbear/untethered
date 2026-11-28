@@ -155,7 +155,13 @@
   "U1": {
    "branch": "claude/u1-voice-panel-678cab",
    "claimed": "2026-11-28T09:30:02Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-28T09:46:18Z",
+     "by": "n8-server-rail",
+     "text": "N8 (n8-server-rail) adds one Icon variant, Icon::Folder, to view/icons.rs: the enum line right after File and its draw arm right after Icon::File's. Nothing else there."
+    }
+   ],
    "owner": "u1-voice-panel",
    "paths": [
     "README.md",
