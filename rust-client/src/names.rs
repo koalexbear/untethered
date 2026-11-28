@@ -15,7 +15,6 @@
 use crate::{
     App, Msg, Request, Section,
     engine::{Command, names::Own},
-    roles::{RoleName, Titles},
     rooms::{Room, Rooms},
 };
 use iced::{Task, widget::operation};
@@ -34,7 +33,7 @@ pub enum Role {
     Moderator,
     /// A level the room's server names (roles.rs).
     Custom {
-        name: RoleName,
+        name: crate::roles::RoleName,
         color: u32,
     },
 }
@@ -69,7 +68,7 @@ pub fn role(level: i64, everyone: i64) -> Option<Role> {
 /// what every member has, so a room where everyone moderates shows no one.
 /// The server's custom roles name the levels between: the highest named
 /// level someone reaches, custom or Matrix's own, is theirs.
-pub fn badge(level: i64, everyone: i64, titles: Option<&Titles>) -> Option<Role> {
+pub fn badge(level: i64, everyone: i64, titles: Option<&crate::roles::Titles>) -> Option<Role> {
     if level >= CREATOR {
         return Some(Role::Owner);
     } else if level <= everyone {
@@ -87,7 +86,7 @@ pub fn badge(level: i64, everyone: i64, titles: Option<&Titles>) -> Option<Role>
         .filter(|t| t.level > everyone);
     match (custom, named) {
         (Some(t), named) if named.is_none_or(|(at, _)| t.level > at) => Some(Role::Custom {
-            name: RoleName::new(&t.name),
+            name: crate::roles::RoleName::new(&t.name),
             color: t.color,
         }),
         (_, named) => named.map(|(_, role)| role),
@@ -452,7 +451,7 @@ mod tests {
         assert_eq!(role(50, 50), None);
         assert_eq!(role(100, 50), Some(Role::Admin));
         // A server's custom roles name the levels between (roles.rs).
-        let titles = Titles::parse(&serde_json::json!({"roles": {
+        let titles = crate::roles::Titles::parse(&serde_json::json!({"roles": {
             "25": {"name": "Helper", "color": "#e67e22"},
             "75": {"name": "Senior", "color": "#3498db"}
         }}));
