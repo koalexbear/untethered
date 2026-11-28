@@ -20,6 +20,36 @@
    "title": "Sign-in everywhere",
    "updated": "2026-11-27T22:26:13Z",
    "worktree": "."
+  },
+  "M13": {
+   "branch": "claude/m13-composer-15b65f",
+   "claimed": "2026-11-28T09:26:45Z",
+   "notes": [],
+   "owner": "m13-composer",
+   "paths": [
+    "README.md",
+    "ROADMAP.md",
+    "rust-client/Cargo.lock",
+    "rust-client/Cargo.toml",
+    "rust-client/src/autocomplete.rs",
+    "rust-client/src/commands.rs",
+    "rust-client/src/composer.rs",
+    "rust-client/src/engine/compose.rs",
+    "rust-client/src/engine/timeline.rs",
+    "rust-client/src/highlight.rs",
+    "rust-client/src/jumbo.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/rich.rs",
+    "rust-client/src/view.rs",
+    "rust-client/src/view/autocomplete.rs",
+    "rust-client/src/view/commands.rs",
+    "rust-client/src/view/rich.rs",
+    "scripts/qa_composer_details.py"
+   ],
+   "status": "working",
+   "title": "Composer details",
+   "updated": "2026-11-28T09:26:45Z",
+   "worktree": ".claude/worktrees/m13-composer-15b65f"
   }
  },
  "done": [

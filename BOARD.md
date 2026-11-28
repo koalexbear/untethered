@@ -5,6 +5,7 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
 | J5 | Sign-in everywhere | codex-j5 | `main` | working | 2026-11-27T22:26:13Z | `rust-client/src/engine/browser.rs`, `rust-client/src/engine/session.rs`, `rust-client/src/engine/worker.rs`, `rust-client/src/view/sdk_account.rs`, `rust-client/web/auth.js`, `rust-client/web/engine.js`, `rust-client/web/index.html`, `scripts/qa_matrix_sdk.py`, `scripts/qa_web_login.py` |
+| M13 | Composer details | m13-composer | `claude/m13-composer-15b65f` | working | 2026-11-28T09:26:45Z | `README.md`, `ROADMAP.md`, `rust-client/Cargo.lock`, `rust-client/Cargo.toml`, `rust-client/src/autocomplete.rs`, `rust-client/src/commands.rs`, `rust-client/src/composer.rs`, `rust-client/src/engine/compose.rs`, `rust-client/src/engine/timeline.rs`, `rust-client/src/highlight.rs`, `rust-client/src/jumbo.rs`, `rust-client/src/main.rs`, `rust-client/src/rich.rs`, `rust-client/src/view.rs`, `rust-client/src/view/autocomplete.rs`, `rust-client/src/view/commands.rs`, `rust-client/src/view/rich.rs`, `scripts/qa_composer_details.py` |
 
 ## Done
 
