@@ -50,6 +50,40 @@
    "title": "Voice messages",
    "updated": "2026-11-28T12:53:03Z",
    "worktree": ".claude/worktrees/m10-voice-messages-1e5189"
+  },
+  "U2": {
+   "branch": "claude/u2-voice-settings-44a6d7",
+   "claimed": "2026-11-28T12:54:59Z",
+   "notes": [],
+   "owner": "u2-voice-settings",
+   "paths": [
+    "experiments/rtc-audio/*",
+    "rust-client/docs/calls-parity-plan.md",
+    "rust-client/src/bin/untethered-cameras.rs",
+    "rust-client/src/call_devices.rs",
+    "rust-client/src/call_settings.rs",
+    "rust-client/src/desktop_call.rs",
+    "rust-client/src/desktop_call/*",
+    "rust-client/src/hotkeys.rs",
+    "rust-client/src/hotkeys/*",
+    "rust-client/src/qa_layout.rs",
+    "rust-client/src/view/user_settings.rs",
+    "rust-client/src/view/voice_panel.rs",
+    "rust-client/src/view/voice_settings.rs",
+    "scripts/qa_call_devices.py",
+    "scripts/qa_desktop_dm.py",
+    "scripts/qa_events.py",
+    "scripts/qa_layout.py",
+    "scripts/qa_room_ptt.py",
+    "scripts/qa_switch_camera.py",
+    "scripts/qa_voice_processing.py",
+    "scripts/qa_voice_room.py",
+    "scripts/qa_voice_settings.py"
+   ],
+   "status": "working",
+   "title": "Voice & Video settings page",
+   "updated": "2026-11-28T12:54:59Z",
+   "worktree": ".claude/worktrees/u2-voice-settings-44a6d7"
   }
  },
  "done": [
