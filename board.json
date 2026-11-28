@@ -43,6 +43,11 @@
      "at": "2026-11-28T14:23:13Z",
      "by": "u5-incoming-call",
      "text": "[U5] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: U5: view.rs replaces incoming_banner (the overlay slot in view()'s stack, a fixed strip slot under the chat header; removes the banner from mentions/stage/account/sign-in); main.rs: DecideRing takes an Answer enum, one tail call renamed (ring tasks); README call section paragraph; ROADMAP U5 row; calls plan U5 section/row; qa_desktop_dm reverse_call + qa_layout WORDS for the new card controls"
+    },
+    {
+     "at": "2026-11-28T14:28:22Z",
+     "by": "m14-selection",
+     "text": "[M14] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: view.rs: wrap the timeline feed Column in selection::area inside its scrollable (one spot in conversation()) and add 'mod selection;'. main.rs: 'mod selection;' and one Msg::ScrollTimeline(f32) variant + arm next to Msg::PageScroll. README/ROADMAP: only M14's row, its known-gap line and a short paragraph near the selection notes."
     }
    ],
    "owner": "c2-roles",
@@ -151,6 +156,11 @@
      "at": "2026-11-28T14:23:13Z",
      "by": "u5-incoming-call",
      "text": "[U5] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: U5: view.rs replaces incoming_banner (the overlay slot in view()'s stack, a fixed strip slot under the chat header; removes the banner from mentions/stage/account/sign-in); main.rs: DecideRing takes an Answer enum, one tail call renamed (ring tasks); README call section paragraph; ROADMAP U5 row; calls plan U5 section/row; qa_desktop_dm reverse_call + qa_layout WORDS for the new card controls"
+    },
+    {
+     "at": "2026-11-28T14:28:22Z",
+     "by": "m14-selection",
+     "text": "[M14] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: view.rs: wrap the timeline feed Column in selection::area inside its scrollable (one spot in conversation()) and add 'mod selection;'. main.rs: 'mod selection;' and one Msg::ScrollTimeline(f32) variant + arm next to Msg::PageScroll. README/ROADMAP: only M14's row, its known-gap line and a short paragraph near the selection notes."
     }
    ],
    "owner": "m10-voice-messages",
@@ -179,6 +189,28 @@
    "title": "Voice messages",
    "updated": "2026-11-28T13:26:33Z",
    "worktree": ".claude/worktrees/m10-voice-messages-1e5189"
+  },
+  "M14": {
+   "branch": "claude/m14-selection-b651f0",
+   "claimed": "2026-11-28T14:28:22Z",
+   "notes": [],
+   "owner": "m14-selection",
+   "paths": [
+    "README.md",
+    "ROADMAP.md",
+    "rust-client/src/main.rs",
+    "rust-client/src/rich.rs",
+    "rust-client/src/selection.rs",
+    "rust-client/src/view.rs",
+    "rust-client/src/view/rich.rs",
+    "rust-client/src/view/selectable.rs",
+    "rust-client/src/view/selection.rs",
+    "scripts/qa_selection.py"
+   ],
+   "status": "working",
+   "title": "Selection across messages",
+   "updated": "2026-11-28T14:28:22Z",
+   "worktree": ".claude/worktrees/m14-selection-b651f0"
   },
   "M15": {
    "branch": "claude/m15-profiles-51cb01",
@@ -223,6 +255,11 @@
      "at": "2026-11-28T14:23:13Z",
      "by": "u5-incoming-call",
      "text": "[U5] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: U5: view.rs replaces incoming_banner (the overlay slot in view()'s stack, a fixed strip slot under the chat header; removes the banner from mentions/stage/account/sign-in); main.rs: DecideRing takes an Answer enum, one tail call renamed (ring tasks); README call section paragraph; ROADMAP U5 row; calls plan U5 section/row; qa_desktop_dm reverse_call + qa_layout WORDS for the new card controls"
+    },
+    {
+     "at": "2026-11-28T14:28:22Z",
+     "by": "m14-selection",
+     "text": "[M14] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: view.rs: wrap the timeline feed Column in selection::area inside its scrollable (one spot in conversation()) and add 'mod selection;'. main.rs: 'mod selection;' and one Msg::ScrollTimeline(f32) variant + arm next to Msg::PageScroll. README/ROADMAP: only M14's row, its known-gap line and a short paragraph near the selection notes."
     }
    ],
    "owner": "m15-profiles",
@@ -264,6 +301,11 @@
      "at": "2026-11-28T14:23:13Z",
      "by": "u5-incoming-call",
      "text": "[U5] shares README.md, ROADMAP.md, rust-client/src/main.rs: U5: view.rs replaces incoming_banner (the overlay slot in view()'s stack, a fixed strip slot under the chat header; removes the banner from mentions/stage/account/sign-in); main.rs: DecideRing takes an Answer enum, one tail call renamed (ring tasks); README call section paragraph; ROADMAP U5 row; calls plan U5 section/row; qa_desktop_dm reverse_call + qa_layout WORDS for the new card controls"
+    },
+    {
+     "at": "2026-11-28T14:28:22Z",
+     "by": "m14-selection",
+     "text": "[M14] shares README.md, ROADMAP.md, rust-client/src/main.rs: view.rs: wrap the timeline feed Column in selection::area inside its scrollable (one spot in conversation()) and add 'mod selection;'. main.rs: 'mod selection;' and one Msg::ScrollTimeline(f32) variant + arm next to Msg::PageScroll. README/ROADMAP: only M14's row, its known-gap line and a short paragraph near the selection notes."
     }
    ],
    "owner": "s6-perf-budgets",
@@ -314,6 +356,11 @@
      "at": "2026-11-28T14:23:13Z",
      "by": "u5-incoming-call",
      "text": "[U5] shares README.md, ROADMAP.md, rust-client/docs/calls-parity-plan.md, rust-client/src/main.rs, rust-client/src/view.rs, scripts/qa_desktop_dm.py, scripts/qa_layout.py: U5: view.rs replaces incoming_banner (the overlay slot in view()'s stack, a fixed strip slot under the chat header; removes the banner from mentions/stage/account/sign-in); main.rs: DecideRing takes an Answer enum, one tail call renamed (ring tasks); README call section paragraph; ROADMAP U5 row; calls plan U5 section/row; qa_desktop_dm reverse_call + qa_layout WORDS for the new card controls"
+    },
+    {
+     "at": "2026-11-28T14:28:22Z",
+     "by": "m14-selection",
+     "text": "[M14] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: view.rs: wrap the timeline feed Column in selection::area inside its scrollable (one spot in conversation()) and add 'mod selection;'. main.rs: 'mod selection;' and one Msg::ScrollTimeline(f32) variant + arm next to Msg::PageScroll. README/ROADMAP: only M14's row, its known-gap line and a short paragraph near the selection notes."
     }
    ],
    "owner": "u2-voice-settings",
@@ -354,7 +401,13 @@
   "U5": {
    "branch": "claude/u5-incoming-call-bece3a",
    "claimed": "2026-11-28T14:23:13Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-28T14:28:22Z",
+     "by": "m14-selection",
+     "text": "[M14] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: view.rs: wrap the timeline feed Column in selection::area inside its scrollable (one spot in conversation()) and add 'mod selection;'. main.rs: 'mod selection;' and one Msg::ScrollTimeline(f32) variant + arm next to Msg::PageScroll. README/ROADMAP: only M14's row, its known-gap line and a short paragraph near the selection notes."
+    }
+   ],
    "owner": "u5-incoming-call",
    "paths": [
     "README.md",
@@ -388,6 +441,11 @@
      "at": "2026-11-28T14:23:13Z",
      "by": "u5-incoming-call",
      "text": "[U5] shares README.md, ROADMAP.md, rust-client/src/main.rs: U5: view.rs replaces incoming_banner (the overlay slot in view()'s stack, a fixed strip slot under the chat header; removes the banner from mentions/stage/account/sign-in); main.rs: DecideRing takes an Answer enum, one tail call renamed (ring tasks); README call section paragraph; ROADMAP U5 row; calls plan U5 section/row; qa_desktop_dm reverse_call + qa_layout WORDS for the new card controls"
+    },
+    {
+     "at": "2026-11-28T14:28:22Z",
+     "by": "m14-selection",
+     "text": "[M14] shares README.md, ROADMAP.md, rust-client/src/main.rs: view.rs: wrap the timeline feed Column in selection::area inside its scrollable (one spot in conversation()) and add 'mod selection;'. main.rs: 'mod selection;' and one Msg::ScrollTimeline(f32) variant + arm next to Msg::PageScroll. README/ROADMAP: only M14's row, its known-gap line and a short paragraph near the selection notes."
     }
    ],
    "owner": "n7-index",
