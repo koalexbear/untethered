@@ -1338,6 +1338,9 @@ impl App {
                 self.record_current_draft();
                 self.persist_drafts();
                 self.persist_places();
+                // A recording doesn't go on, unseen, from the tray.
+                #[cfg(target_os = "linux")]
+                let _ = self.voice_message(voice_message::Input::Cancel);
                 return self.close_requested();
             }
             #[cfg(target_arch = "wasm32")]

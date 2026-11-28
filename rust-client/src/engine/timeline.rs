@@ -20,7 +20,6 @@ use matrix_sdk::{
     room::edit::EditedContent,
     ruma::{
         EventId, OwnedEventId, OwnedRoomId, OwnedTransactionId, RoomId,
-        serde::Raw,
         events::{
             AnyMessageLikeEventContent, Mentions,
             room::message::{
@@ -28,6 +27,7 @@ use matrix_sdk::{
                 RoomMessageEventContentWithoutRelation,
             },
         },
+        serde::Raw,
     },
     send_queue::{RoomSendQueue, RoomSendQueueUpdate, SendHandle},
 };

@@ -264,10 +264,23 @@ impl App {
     }
 
     fn start_recording(&mut self) -> Task<Msg> {
+        if self
+            .voice_recorder
+            .current
+            .as_ref()
+            .is_some_and(|r| r.room != self.selected)
+        {
+            self.status = "Still sending your last voice message…".into();
+            return Task::none();
+        }
         if self.voice_recorder.current.is_some()
             || self.mic() != Mic::On
             || !self.editor.text().trim().is_empty()
-            || self.outbox.rooms.get(&self.selected).is_some_and(|q| !q.is_empty())
+            || self
+                .outbox
+                .rooms
+                .get(&self.selected)
+                .is_some_and(|q| !q.is_empty())
         {
             return Task::none();
         }

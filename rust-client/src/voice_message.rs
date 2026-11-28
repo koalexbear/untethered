@@ -39,6 +39,7 @@ pub const BARS: usize = 100;
 pub const LOUDEST: u16 = 1024;
 /// Quieter than this (about -40 dB) a recording is silence: its waveform
 /// stays flat rather than being scaled up to fill the bars.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 const SILENCE: f32 = 0.01;
 
 /// A finished recording: the Ogg Opus file, its length and its waveform.
@@ -63,6 +64,7 @@ pub enum Source {
 /// share of the recording, scaled so the loudest bar is [`LOUDEST`], as
 /// Element rescales its own. A recording shorter than [`BARS`] stretches
 /// repeat their peak over several bars.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub fn waveform(peaks: &[f32]) -> Vec<u16> {
     if peaks.is_empty() {
         return vec![0; BARS];
@@ -88,6 +90,7 @@ pub fn waveform(peaks: &[f32]) -> Vec<u16> {
 /// How tall a live bar is while recording, from a peak level (0 to 1): a
 /// decibel scale from -50 dB to full scale, so speech fills the bars
 /// without being normalized against what is still to come.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub fn live_level(peak: f32) -> f32 {
     if !(peak > 0.) {
         return 0.;
@@ -128,6 +131,7 @@ pub fn content(source: &Source, size: u64, clip: &Clip) -> Value {
 /// What a received audio message says about itself beyond the file: whether
 /// it is a voice message, its length and its waveform.
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub struct Shape {
     /// MSC3245's marker: draw it as a voice message.
     pub voice: bool,
@@ -165,6 +169,7 @@ pub fn shape(content: &Value) -> Option<Shape> {
 
 /// `bars` resampled to `n` heights from 0 to 1, for drawing: each the
 /// loudest of its share, or a repeat when there are fewer bars than `n`.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub fn heights(bars: &[u16], n: usize) -> Vec<f32> {
     if bars.is_empty() || n == 0 {
         return vec![0.; n];
@@ -181,6 +186,7 @@ pub fn heights(bars: &[u16], n: usize) -> Vec<f32> {
 }
 
 /// A length as Element and Discord show it: 0:07, 1:05, 12:00.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub fn clock(ms: u64) -> String {
     let s = ms / 1000;
     format!("{}:{:02}", s / 60, s % 60)
@@ -255,7 +261,11 @@ mod tests {
 
     #[test]
     fn content_is_elements_voice_message() {
-        let c = content(&Source::Plain("mxc://example.org/abc".into()), 6800, &clip());
+        let c = content(
+            &Source::Plain("mxc://example.org/abc".into()),
+            6800,
+            &clip(),
+        );
         assert_eq!(
             c,
             json!({
@@ -324,7 +334,10 @@ mod tests {
         assert_eq!(s.duration_ms, Some(61000));
         // Nothing beyond the file, or not audio.
         assert_eq!(shape(&json!({"msgtype":"m.audio","url":"mxc://s/c"})), None);
-        assert_eq!(shape(&json!({"msgtype":"m.file","info":{"duration":5}})), None);
+        assert_eq!(
+            shape(&json!({"msgtype":"m.file","info":{"duration":5}})),
+            None
+        );
     }
 
     #[test]

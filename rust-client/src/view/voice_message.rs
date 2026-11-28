@@ -159,7 +159,11 @@ impl App {
             "Send",
             icon_button(
                 Icon::Send,
-                if sending { "Sending…" } else { "Send (Enter)" },
+                if sending {
+                    "Sending…"
+                } else {
+                    "Send (Enter)"
+                },
                 false,
                 ready.then_some(Msg::VoiceMessage(Input::Send)),
                 Top,

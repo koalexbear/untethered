@@ -200,6 +200,22 @@ Now…**), and then everyone sees the final results. Polls are Element's
 (MSC3381, sent under its `org.matrix.msc3381.poll.*` names), so polls and
 votes go both ways between Untethered and Element.
 
+**Voice messages:** On Linux, while the composer is empty, a microphone
+takes the Send button's place, as in Element. Click it to record: a red dot,
+a timer and live levels take the composer's place; **Escape** or **×** throws
+the recording away, and **Enter** or **Send** sends it. It goes out as Element
+sends one (MSC3245): Ogg Opus, 48 kHz mono at 24 kbit/s, with its length and a
+100-bar waveform, encrypted in encrypted rooms, so Element shows it as a voice
+message that plays. It records from the input device chosen in the voice
+settings (or the system default) through PulseAudio (PipeWire's pulse server
+works) and GStreamer: `gst-plugins-base` for Opus and Ogg, `gst-plugins-good`
+for the microphone. The microphone hides where you can't post, and it's off
+during a call, which has the microphone (and would hear the message too); a
+call joined mid-recording doesn't stop it. A recording stops at 15 minutes,
+ready to send. Received voice messages show their waveform as the seek bar,
+and their length before they play. Windows and the browser don't record yet.
+Test: [`scripts/qa_voice_messages.py`](scripts/qa_voice_messages.py).
+
 **Custom emoji and stickers:** A space's image packs serve all its
 channels, as a Discord server's emoji do; a room's own packs and your own
 pack work there too. They show in the emoji picker (by pack), in `:`
