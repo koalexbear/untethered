@@ -412,14 +412,22 @@ def element(world, shots):
             assert "error" not in body.inner_text().lower(), body.inner_text()
             if shots:
                 page.screenshot(path=str(shots / "element.png"))
-            body.locator(".mx_PlayPauseButton").first.click()
-            # Playing, the clock counts up from 00:00; stopped, it shows the length.
-            playing = page.wait_for_function(
-                "(sel) => { const c = document.querySelector(sel), t = c && c.textContent.trim();"
-                " return /^0?0:0[1-9]$/.test(t) && t; }",
-                arg=f'[data-event-id="{event}"] .mx_MVoiceMessageBody .mx_Clock', timeout=15000).json_value()
+            button = body.locator(".mx_PlayPauseButton").first
+            button.click()
+            # While it plays, the clock runs (and stops again at the end):
+            # several readings besides the length it shows when stopped.
+            seen, labels = [], set()
+            stop = time.monotonic() + ms / 1000 + 3
+            while time.monotonic() < stop:
+                reading = clock.inner_text().strip()
+                if not seen or seen[-1] != reading:
+                    seen.append(reading)
+                labels.add(button.get_attribute("aria-label") or "")
+                page.wait_for_timeout(150)
+            running = {r for r in seen if r != before}
+            assert len(running) >= 2, f"Element's clock didn't run: {seen}"
             print(f"Element: a voice message with {bars.count()} waveform bars, {before} long; it plays "
-                  f"(clock at {playing} while playing)", flush=True)
+                  f"(clock {' → '.join(seen)}; button {sorted(labels - {''})})", flush=True)
         finally:
             browser.close()
 
