@@ -21,70 +21,6 @@
    "updated": "2026-11-27T22:26:13Z",
    "worktree": "."
   },
-  "M13": {
-   "branch": "claude/m13-composer-15b65f",
-   "claimed": "2026-11-28T09:26:45Z",
-   "notes": [
-    {
-     "at": "2026-11-28T09:29:05Z",
-     "by": "n8-server-rail",
-     "text": "[N8] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: N8 server rail: view.rs only the rail column in screen() (spaces loop \u2192 server_rail.rs) and a mod line; main.rs a mod line, Msg::Rail, App.rail field, one update arm, a subscription line; README/ROADMAP only N8's row and lines. engine/mod.rs: RoomSummary.space_order, Command::SpaceOrder/SaveFolders, Event::Folders; rooms.rs: rail order"
-    },
-    {
-     "at": "2026-11-28T09:29:14Z",
-     "by": "c1-server-settings",
-     "text": "[C1] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: C1: small, separate edits only \u2014 view.rs: mod line, one overlay slot in view()'s stack, one Server Settings item in server_menu_view; main.rs: mod line, Msg::ServerSettings, App field, update arm, Escape arm, web picker prefix route; engine/mod.rs: mod space_settings, Command::SpaceSettings + dispatch arm, Event::SpaceSettings; engine/app.rs: one engine_event arm; permissions.rs: make can_send_state pub(crate); README/ROADMAP: C1 row, M11 known gap"
-    },
-    {
-     "at": "2026-11-28T09:29:58Z",
-     "by": "claude/u1-voice-panel-678cab",
-     "text": "U1 (u1-voice-panel) will touch: view.rs call_bar/call_dock/user_panel and the theater dock only (call block replaced by view/voice_panel.rs); main.rs a few Msg variants + call handlers (mute/deafen before joining, QA layout timer); icons.rs new call glyphs appended at the end of the enum/match (Mic, MicOff, Headphones, HeadphonesOff, ScreenShare, PhoneOff, Signal); README call section and ROADMAP U1 row only."
-    },
-    {
-     "at": "2026-11-28T09:30:02Z",
-     "by": "u1-voice-panel",
-     "text": "[U1] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: view.rs: call_bar/call_dock/user_panel/theater dock only; main.rs: call Msg variants and handlers, QA layout timer; icons.rs: new call glyphs appended; README call section, ROADMAP U1 row"
-    },
-    {
-     "at": "2026-11-28T09:58:21Z",
-     "by": "m13-composer",
-     "text": "Ready for review on claude/m13-composer-15b65f (cb9e484, 0368b6d), on main b6f46ea. Five checks pass; scripts/qa_composer_details.py passes live. Spell check not possible in Iced 0.14 (ROADMAP/README say so). Also fixes an M6 bug: the unread banner moved the timeline's scrollable, so an open channel scrolled up got yanked to the bottom and auto-read. Hand-over: side-session notes m13-composer.md."
-    }
-   ],
-   "owner": "m13-composer",
-   "paths": [
-    "README.md",
-    "ROADMAP.md",
-    "rust-client/Cargo.lock",
-    "rust-client/Cargo.toml",
-    "rust-client/src/autocomplete.rs",
-    "rust-client/src/commands.rs",
-    "rust-client/src/composer.rs",
-    "rust-client/src/dms.rs",
-    "rust-client/src/engine/app.rs",
-    "rust-client/src/engine/compose.rs",
-    "rust-client/src/engine/messaging.rs",
-    "rust-client/src/engine/mod.rs",
-    "rust-client/src/engine/timeline.rs",
-    "rust-client/src/highlight.rs",
-    "rust-client/src/jumbo.rs",
-    "rust-client/src/main.rs",
-    "rust-client/src/places.rs",
-    "rust-client/src/rich.rs",
-    "rust-client/src/rooms.rs",
-    "rust-client/src/rooms/engine.rs",
-    "rust-client/src/view.rs",
-    "rust-client/src/view/autocomplete.rs",
-    "rust-client/src/view/commands.rs",
-    "rust-client/src/view/rich.rs",
-    "rust-client/src/viewer.rs",
-    "scripts/qa_composer_details.py"
-   ],
-   "status": "review",
-   "title": "Composer details",
-   "updated": "2026-11-28T09:58:21Z",
-   "worktree": ".claude/worktrees/m13-composer-15b65f"
-  },
   "N8": {
    "branch": "claude/n8-server-rail-3c3a7d",
    "claimed": "2026-11-28T09:29:05Z",
@@ -574,6 +510,15 @@
    "owner": "c1-server-settings",
    "result": "merged as d0f34f4 (main de46d8d)",
    "title": "Server settings"
+  },
+  {
+   "branch": "claude/m13-composer-15b65f",
+   "claimed": "2026-11-28T09:26:45Z",
+   "finished": "2026-11-28T11:37:55Z",
+   "id": "M13",
+   "owner": "m13-composer",
+   "result": "merged as cafc355 (main de46d8d)",
+   "title": "Composer details"
   }
  ]
 }
