@@ -1,47 +1,135 @@
 //! Joined rooms and space edges from the SDK's store, re-read whenever a sync
 //! response or room-info update arrives. Simplified Sliding Sync's default
 //! `required_state` includes `m.space.child`, so space edges are local reads.
+//!
+//! The store can keep a room this account left elsewhere as joined: sliding
+//! sync mentions a left room once, relative to the position the client syncs
+//! from, so a fresh connection never does (the homeserver expired the old
+//! one: Synapse does after a week unused, or an hour once more than 100 rooms
+//! changed meanwhile).
+//! And Synapse 1.166 can send a newly left room with the old `join` as the
+//! account's member state, which is all the SDK reads. The room list leaves
+//! out the rooms the homeserver says this account isn't in
+//! ([`left_elsewhere`]).
 use super::{ChildEdge, Event, Failure, RoomList, RoomSummary, messaging};
 use crate::permissions::StateDoc;
 use async_channel::Sender;
+use futures_util::{FutureExt, Stream, StreamExt, future::FusedFuture};
 use matrix_sdk::{
     Client, Room,
+    config::RequestConfig,
     deserialized_responses::{RawAnySyncOrStrippedState, SyncOrStrippedState},
-    ruma::events::{
-        RoomAccountDataEventType, StateEventType, SyncStateEvent,
-        fully_read::FullyReadEventContent, space::child::SpaceChildEventContent,
+    ruma::{
+        OwnedRoomId,
+        api::client::membership::joined_rooms,
+        events::{
+            RoomAccountDataEventType, StateEventType, SyncStateEvent,
+            fully_read::FullyReadEventContent, space::child::SpaceChildEventContent,
+        },
     },
+    sync::RoomUpdates,
 };
+use matrix_sdk_ui::sync_service::State as SyncState;
 use serde_json::Value;
 
 /// `notifications::spaces::PREF`; that module is Linux and web only.
 const SPACE_ALERTS: &str = "com.untethered.space_alerts.v1";
-use std::time::Duration;
-use tokio::sync::broadcast::error::RecvError;
+use std::{collections::BTreeSet, time::Duration};
+use tokio::sync::broadcast::error::{RecvError, TryRecvError};
 
-pub async fn updates(client: Client, events: Sender<Event>) {
+/// Send the room list now and after every change. `sync` is the sync
+/// service's state: each time it's running again, the homeserver is asked
+/// which rooms this account is in, as it is when sync brings back a room
+/// left out as left (joined again, perhaps). The list doesn't wait for the
+/// answer.
+pub async fn updates(
+    client: Client,
+    mut sync: impl Stream<Item = SyncState> + Unpin,
+    events: Sender<Event>,
+) {
     let mut rooms = client.subscribe_to_all_room_updates();
     let mut info = client.room_info_notable_update_receiver();
+    let mut left = BTreeSet::new();
+    let mut asking = std::pin::pin!(left_elsewhere(&client).fuse());
+    let mut check = false;
+    let mut syncing = true;
     loop {
+        if check && asking.is_terminated() {
+            asking.set(left_elsewhere(&client).fuse());
+            check = false;
+        }
         if events
-            .send(Event::Rooms(snapshot(&client).await))
+            .send(Event::Rooms(snapshot(&client, &left).await))
             .await
             .is_err()
         {
             return;
         }
-        let closed = tokio::select! {
-            r = rooms.recv() => matches!(r, Err(RecvError::Closed)),
-            r = info.recv() => matches!(r, Err(RecvError::Closed)),
-        };
-        if closed {
-            return;
+        tokio::select! {
+            r = rooms.recv() => match r {
+                Ok(update) => check |= back(&update, &left),
+                // Updates were missed: any room may have come back.
+                Err(RecvError::Lagged(_)) => check = true,
+                Err(RecvError::Closed) => return,
+            },
+            r = info.recv() => if matches!(r, Err(RecvError::Closed)) {
+                return;
+            },
+            state = sync.next(), if syncing => match state {
+                Some(SyncState::Running) => check = true,
+                Some(_) => {}
+                None => syncing = false,
+            },
+            answer = asking.as_mut(), if !asking.is_terminated() => {
+                if let Some(now) = answer {
+                    left = now;
+                }
+            },
         }
         // Coalesce a burst (initial sync, many rooms) into one snapshot.
         super::rt::sleep(Duration::from_millis(80)).await;
-        while rooms.try_recv().is_ok() {}
+        loop {
+            match rooms.try_recv() {
+                Ok(update) => check |= back(&update, &left),
+                Err(TryRecvError::Lagged(_)) => check = true,
+                Err(_) => break,
+            }
+        }
         while info.try_recv().is_ok() {}
     }
+}
+
+/// Sync brings a room left out as left: it may have been joined again.
+fn back(update: &RoomUpdates, left: &BTreeSet<OwnedRoomId>) -> bool {
+    update.joined.keys().any(|id| left.contains(id))
+}
+
+/// The rooms the store has as joined that the homeserver says this account
+/// isn't in, or `None` when it can't be asked. The store's are read first,
+/// so a room joined while the answer is on its way isn't taken for left.
+async fn left_elsewhere(client: &Client) -> Option<BTreeSet<OwnedRoomId>> {
+    let stored: Vec<OwnedRoomId> = client
+        .joined_rooms()
+        .iter()
+        .map(|r| r.room_id().to_owned())
+        .collect();
+    if stored.is_empty() {
+        return Some(BTreeSet::new());
+    }
+    let response = client
+        .send(joined_rooms::v3::Request::new())
+        .with_request_config(RequestConfig::short_retry())
+        .await
+        .ok()?;
+    Some(not_joined(stored, &response.joined_rooms))
+}
+
+fn not_joined(stored: Vec<OwnedRoomId>, server: &[OwnedRoomId]) -> BTreeSet<OwnedRoomId> {
+    let server: BTreeSet<_> = server.iter().collect();
+    stored
+        .into_iter()
+        .filter(|id| !server.contains(id))
+        .collect()
 }
 
 /// Mark a room read at the newest event sync delivered to its event cache:
@@ -70,10 +158,13 @@ pub async fn leave(client: &Client, room: &str) -> Result<(), Failure> {
         .map_err(|e| messaging::http(&e))
 }
 
-async fn snapshot(client: &Client) -> RoomList {
+async fn snapshot(client: &Client, left: &BTreeSet<OwnedRoomId>) -> RoomList {
     let mut list = RoomList::default();
     list.invites = super::invites::list(client).await;
     for room in client.joined_rooms() {
+        if left.contains(room.room_id()) {
+            continue;
+        }
         let mut summary = summary(&room).await;
         if summary.space {
             summary.child_order = children(&room).await;
@@ -250,7 +341,21 @@ async fn children(space: &Room) -> Vec<ChildEdge> {
 
 #[cfg(test)]
 mod tests {
-    use super::pick_counts;
+    use super::{not_joined, pick_counts};
+    use matrix_sdk::ruma::{OwnedRoomId, owned_room_id};
+
+    #[test]
+    fn rooms_the_homeserver_no_longer_lists_are_left() {
+        let stored: Vec<OwnedRoomId> =
+            vec![owned_room_id!("!alpha:test"), owned_room_id!("!bravo:test")];
+        // The homeserver may list rooms the store doesn't know yet.
+        let server = [owned_room_id!("!bravo:test"), owned_room_id!("!delta:test")];
+        assert_eq!(
+            not_joined(stored.clone(), &server),
+            [owned_room_id!("!alpha:test")].into()
+        );
+        assert!(not_joined(stored.clone(), &[stored[0].clone(), stored[1].clone()]).is_empty());
+    }
 
     #[test]
     fn a_read_room_stays_read_whatever_the_homeserver_still_counts() {

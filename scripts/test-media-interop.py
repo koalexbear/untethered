@@ -66,15 +66,20 @@ def http(method, url, **kw):
     return r
 
 
-def seed(tmp, hs, *, encrypted=True):
+def seed(tmp, hs, *, encrypted=True, room=True):
+    """A new account signed in on a client profile under `tmp`; with `room`,
+    it has its own "media-proof" room (encrypted unless told otherwise)."""
     user = "media" + secrets.token_hex(4)
     pwd = secrets.token_urlsafe(24)
     auth = http("POST", hs+"/_matrix/client/v3/register", json={
         "auth": {"type": "m.login.dummy"}, "username": user, "password": pwd}).json()
     hdr = {"Authorization": "Bearer "+auth["access_token"]}
-    room = http("POST", hs+"/_matrix/client/v3/createRoom", headers=hdr, json={
-        "name": "media-proof", "preset": "private_chat", "initial_state": [
-            {"type": "m.room.encryption", "state_key": "", "content": {"algorithm": "m.megolm.v1.aes-sha2"}}] if encrypted else []}).json()["room_id"]
+    if room:
+        room = http("POST", hs+"/_matrix/client/v3/createRoom", headers=hdr, json={
+            "name": "media-proof", "preset": "private_chat", "initial_state": [
+                {"type": "m.room.encryption", "state_key": "", "content": {"algorithm": "m.megolm.v1.aes-sha2"}}] if encrypted else []}).json()["room_id"]
+    else:
+        room = None
     key = secrets.token_hex(32)
     with service([BACKEND, "--desktop"], tmp, stdout=subprocess.PIPE, env={
         **os.environ, "GOMUKS_ROOT": str(tmp/"seed"), "GOMUKS_DESKTOP_KEY": key}) as p:

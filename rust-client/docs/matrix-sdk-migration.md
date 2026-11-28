@@ -805,6 +805,17 @@ path, and fail clearly on servers that don't support it.**
   (`SyncServiceBuilder::with_room_list_timeline_limit`). That costs up to 20
   events per room on the first sync. Worth reporting upstream with the
   test; revisit room subscriptions once it is fixed.
+- Rooms left elsewhere can stay in the store as joined. Sliding sync reports
+  a left room once, relative to the connection's position: once the
+  homeserver expires a connection (Synapse: a week unused, or an hour once
+  more than 100 rooms changed), the fresh sync never mentions rooms left
+  meanwhile. And Synapse 1.166.0 can send a newly left room with the old
+  `join` as the account's member event in `required_state` (the leave only
+  in the timeline), which is all 0.20.0 reads membership from. `rooms.rs`
+  asks `/joined_rooms` whenever sync is running again, and when a room it
+  left out comes back, and leaves out the rooms the homeserver doesn't list;
+  `scripts/qa_left_rooms.py` covers the expired connection. Both are worth
+  reporting upstream.
 - Unread counts behave differently. The SDK computes message and mention
   counts locally from the events it has seen; with 20 events per room in
   the list, a room with more unread messages than that can show a low count
