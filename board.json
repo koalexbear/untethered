@@ -43,82 +43,6 @@
    "updated": "2026-11-28T14:28:22Z",
    "worktree": ".claude/worktrees/m14-selection-b651f0"
   },
-  "M15": {
-   "branch": "claude/m15-profiles-51cb01",
-   "claimed": "2026-11-28T12:55:52Z",
-   "notes": [
-    {
-     "at": "2026-11-28T12:57:43Z",
-     "by": "c2-roles",
-     "text": "[C2] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/names.rs, rust-client/src/view.rs, rust-client/src/view/names.rs: C2 (c2-roles): names.rs \u2014 badge part only: Role gains a Custom{name,colour} variant (stays Copy), role() and Room::role read custom role names from a new Room.titles; I don't touch the server-profile form. view/names.rs \u2014 tint()/tag() handle the Custom variant. rooms.rs \u2014 one new field, Room.titles. main.rs and view.rs \u2014 one 'mod roles;' line each. README/ROADMAP \u2014 C2 row and lines only. Bulk is in new roles.rs, view/roles.rs and C1's server_settings files."
-    },
-    {
-     "at": "2026-11-28T13:23:42Z",
-     "by": "claude/u2-voice-settings-44a6d7",
-     "text": "From U2 (u2-voice-settings): I moved the User Settings frame out of view.rs::settings_view into view/user_settings.rs::settings_frame (sidebar of pages, close control, the scrolling page). settings_view now starts with a Voice & Video dispatch and ends with 'self.settings_frame(page)'; the My Account rows in between are untouched, so add yours to 'page' as before. The sidebar is user_settings.rs::settings_nav if you ever need a page of your own."
-    },
-    {
-     "at": "2026-11-28T13:24:14Z",
-     "by": "claude/u2-voice-settings-44a6d7",
-     "text": "From U2 (u2-voice-settings), sharing big files: main.rs \u2014 Msg::SettingsPage + App.settings_page, Msg::CamerasListed/SelectCamera lost their call id, App.room_ptt removed (now App::push_to_talk(), saved), the Right Ctrl arms left the listen_with subscription (hotkeys::window replaces them), the VoiceMeter subscription became app.voice_subscription(). view.rs \u2014 mod user_settings, the user-panel gear tagged user-settings, ptt_control reads push_to_talk(), settings_view's frame moved to user_settings.rs. README: calls section only; ROADMAP: the U1/U2 lines of Phase 5."
-    },
-    {
-     "at": "2026-11-28T13:26:28Z",
-     "by": "m15-profiles",
-     "text": "[M15] Ready for review: ce41ece (feature) + 132f4c0 (fixture, README, ROADMAP) on claude/m15-profiles-51cb01, on main 4532e28. Checks: fmt, clippy (clean), 380 tests, wasm32, windows-gnu; scripts/qa_profiles.py passed twice (release build). Shared files: engine/mod.rs renames M12's SetNickname/FollowNickname to SetServerProfile/FollowServerProfile and adds ProfileFields; small hooks in main.rs, view.rs, engine/app.rs; README paragraph after Names; ROADMAP M15 row and two lines in the People summary. U2: my Account fields come from view::profile::settings(app), so keep calling it wherever the page moves. Hand-over: side-session-notes/m15-profiles.md."
-    },
-    {
-     "at": "2026-11-28T13:26:54Z",
-     "by": "m15-profiles",
-     "text": "[M15] Correction: 374 tests pass (11 ignored), not 380."
-    },
-    {
-     "at": "2026-11-28T14:21:24Z",
-     "by": "s6-perf-budgets",
-     "text": "[S6] shares README.md, ROADMAP.md, rust-client/src/engine/app.rs, rust-client/src/main.rs: S6: main.rs gets 'mod perf;', one perf::start() line at the top of main() and one perf note line in App::open; engine/app.rs gets one perf note call after Event::Rooms and one after Event::Timeline; README gets a testing-notes paragraph for scripts/qa_performance.py; ROADMAP only S6's row, the large-account memory known gap, and a checkpoint log entry."
-    },
-    {
-     "at": "2026-11-28T14:22:14Z",
-     "by": "n7-index",
-     "text": "[n7-index] shares README.md, ROADMAP.md, rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/main.rs: engine/mod.rs: a SearchIndex command variant, an Event variant, and spawning the indexer task in go_live; engine/app.rs: one arm routing the index event; main.rs: a Msg variant for the switch and handing activity (scrolling/call) to the engine; README/ROADMAP: only N7's row, the N7 known-gap lines and a search paragraph"
-    },
-    {
-     "at": "2026-11-28T14:23:13Z",
-     "by": "u5-incoming-call",
-     "text": "[U5] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: U5: view.rs replaces incoming_banner (the overlay slot in view()'s stack, a fixed strip slot under the chat header; removes the banner from mentions/stage/account/sign-in); main.rs: DecideRing takes an Answer enum, one tail call renamed (ring tasks); README call section paragraph; ROADMAP U5 row; calls plan U5 section/row; qa_desktop_dm reverse_call + qa_layout WORDS for the new card controls"
-    },
-    {
-     "at": "2026-11-28T14:28:22Z",
-     "by": "m14-selection",
-     "text": "[M14] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: view.rs: wrap the timeline feed Column in selection::area inside its scrollable (one spot in conversation()) and add 'mod selection;'. main.rs: 'mod selection;' and one Msg::ScrollTimeline(f32) variant + arm next to Msg::PageScroll. README/ROADMAP: only M14's row, its known-gap line and a short paragraph near the selection notes."
-    }
-   ],
-   "owner": "m15-profiles",
-   "paths": [
-    "README.md",
-    "ROADMAP.md",
-    "rust-client/src/avatars.rs",
-    "rust-client/src/engine/app.rs",
-    "rust-client/src/engine/mod.rs",
-    "rust-client/src/engine/names.rs",
-    "rust-client/src/engine/profile.rs",
-    "rust-client/src/engine/profile_fields.rs",
-    "rust-client/src/main.rs",
-    "rust-client/src/names.rs",
-    "rust-client/src/profile_fields.rs",
-    "rust-client/src/view.rs",
-    "rust-client/src/view/call_stage.rs",
-    "rust-client/src/view/names.rs",
-    "rust-client/src/view/profile.rs",
-    "rust-client/src/view/profile_fields.rs",
-    "rust-client/src/view/room_people.rs",
-    "scripts/qa_profiles.py"
-   ],
-   "status": "review",
-   "title": "Profile customization",
-   "updated": "2026-11-28T13:26:54Z",
-   "worktree": ".claude/worktrees/m15-profiles-51cb01"
-  },
   "S6": {
    "branch": "claude/s6-perf-budgets-7291bd",
    "claimed": "2026-11-28T14:21:24Z",
@@ -778,6 +702,15 @@
    "owner": "m10-voice-messages",
    "result": "merged as 07ab79e (main 1c45a60); recorder's voice_subscription renamed recorder_subscription in the U2 merge",
    "title": "Voice messages"
+  },
+  {
+   "branch": "claude/m15-profiles-51cb01",
+   "claimed": "2026-11-28T12:55:52Z",
+   "finished": "2026-11-28T14:37:12Z",
+   "id": "M15",
+   "owner": "m15-profiles",
+   "result": "merged as 8e2c625 (main 1c45a60)",
+   "title": "Profile customization"
   }
  ]
 }
