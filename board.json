@@ -237,9 +237,9 @@
     "scripts/qa_voice_room.py",
     "scripts/qa_voice_settings.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Voice & Video settings page",
-   "updated": "2026-11-28T13:24:02Z",
+   "updated": "2026-11-28T13:38:02Z",
    "worktree": ".claude/worktrees/u2-voice-settings-44a6d7"
   }
  },
