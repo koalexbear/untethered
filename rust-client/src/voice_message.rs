@@ -92,7 +92,7 @@ pub fn waveform(peaks: &[f32]) -> Vec<u16> {
 /// without being normalized against what is still to come.
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub fn live_level(peak: f32) -> f32 {
-    if !(peak > 0.) {
+    if peak.is_nan() || peak <= 0. {
         return 0.;
     }
     ((20. * peak.log10() + 50.) / 50.).clamp(0., 1.)

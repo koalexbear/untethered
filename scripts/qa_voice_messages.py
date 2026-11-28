@@ -98,7 +98,7 @@ def main():
         world = dict(tmp=tmp, hs=hs, hdr=hdr, me=me, enzo=enzo, enzo_pwd=enzo_pwd, key=key, peer=peer,
                      studio=studio, lounge=lounge)
         look(args.shots, world)
-        element(world)
+        element(world, args.shots)
         print("PASS: voice messages recorded from a known tone reach Matrix as Element sends them, encrypted "
               "or not, with the right length, waveform and sound; Escape sends nothing; the microphone hides "
               "where it doesn't apply", flush=True)
@@ -381,7 +381,7 @@ def look(shots, world):
         print("UI: announcements, read-only for the account, has no microphone", flush=True)
 
 
-def element(world):
+def element(world, shots):
     """Element Web, signed in as Enzo, shows lounge's voice message as one."""
     if not os.environ.get("ELEMENT_WEB_DIR"):
         print("Element: skipped (set ELEMENT_WEB_DIR to an extracted Element Web release)", flush=True)
@@ -410,14 +410,16 @@ def element(world):
             ms = world["lounge_event"]["content"]["info"]["duration"]
             assert before.endswith(f":{ms // 1000:02d}") or before.endswith(f":{-(-ms // 1000):02d}"), (before, ms)
             assert "error" not in body.inner_text().lower(), body.inner_text()
+            if shots:
+                page.screenshot(path=str(shots / "element.png"))
             body.locator(".mx_PlayPauseButton").first.click()
-            page.wait_for_function("([sel, was]) => { const c = document.querySelector(sel);"
-                                   " return c && c.textContent.trim() !== was; }",
-                                   arg=[f'[data-event-id="{event}"] .mx_MVoiceMessageBody .mx_Clock', before],
-                                   timeout=15000)
-            playing = clock.inner_text().strip()
+            # Playing, the clock counts up from 00:00; stopped, it shows the length.
+            playing = page.wait_for_function(
+                "(sel) => { const c = document.querySelector(sel), t = c && c.textContent.trim();"
+                " return /^0?0:0[1-9]$/.test(t) && t; }",
+                arg=f'[data-event-id="{event}"] .mx_MVoiceMessageBody .mx_Clock', timeout=15000).json_value()
             print(f"Element: a voice message with {bars.count()} waveform bars, {before} long; it plays "
-                  f"(clock {before} → {playing})", flush=True)
+                  f"(clock at {playing} while playing)", flush=True)
         finally:
             browser.close()
 

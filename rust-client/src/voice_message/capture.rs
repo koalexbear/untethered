@@ -200,8 +200,8 @@ fn cannot_open() -> String {
 
 /// Count S16LE mono samples into the duration and the stretches' peaks.
 fn measure(c: &mut Captured, bytes: &[u8]) {
-    for sample in bytes.chunks_exact(2) {
-        let level = f32::from(i16::from_le_bytes([sample[0], sample[1]])).abs() / 32768.;
+    for sample in bytes.as_chunks::<2>().0 {
+        let level = f32::from(i16::from_le_bytes(*sample)).abs() / 32768.;
         c.stretch_peak = c.stretch_peak.max(level);
         c.stretch_len += 1;
         if c.stretch_len == STRETCH {
