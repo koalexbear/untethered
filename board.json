@@ -71,6 +71,11 @@
      "at": "2026-11-28T12:57:43Z",
      "by": "c2-roles",
      "text": "[C2] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/rooms.rs, rust-client/src/view.rs: C2 (c2-roles): names.rs \u2014 badge part only: Role gains a Custom{name,colour} variant (stays Copy), role() and Room::role read custom role names from a new Room.titles; I don't touch the server-profile form. view/names.rs \u2014 tint()/tag() handle the Custom variant. rooms.rs \u2014 one new field, Room.titles. main.rs and view.rs \u2014 one 'mod roles;' line each. README/ROADMAP \u2014 C2 row and lines only. Bulk is in new roles.rs, view/roles.rs and C1's server_settings files."
+    },
+    {
+     "at": "2026-11-28T13:08:42Z",
+     "by": "claude/m10-voice-messages-1e5189",
+     "text": "Shared-file edits (small, separate places): main.rs \u2014 mod voice_message; Msg::VoiceMessage at the END of Msg; Request::Voice at the END of Request; App.voice_recorder at the END of App + init; one update arm after Msg::Sdk; Escape chain: one 'else if let Some(cancel) = self.escape_voice_message()' before the completion.picker branch; Msg::Engine arm: voice_refocus() after engine_event; one subscription line before the QA control map. view.rs: mod voice_message; the composer row wrapped in self.voice_bar().unwrap_or_else(..) and send = self.send_or_record(send, empty). engine/mod.rs: Command::SendVoice at the END of Command + its handler after SendMedia. engine/app.rs: one engine_done arm before Request::Send. media.rs: Media.voice field. Read-only from U2's area: App.local_audio.mic (the recorder records from it; if U2 moves the chosen input device, tell me or update voice_message/recorder.rs start_recording, one line)."
     }
    ],
    "owner": "m10-voice-messages",
