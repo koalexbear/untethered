@@ -120,7 +120,13 @@
   "fix-left-rooms": {
    "branch": "claude/great-lamport-46e7ea",
    "claimed": "2026-11-27T23:10:46Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-28T00:04:54Z",
+     "by": "fix-room-ptt",
+     "text": "fix-room-ptt: ready for review as fa047ba on claude/great-lamport-46e7ea (with cc7c62c for fix-room-ptt; main cfffeab merged in). engine/rooms.rs hides rooms the store has as joined that /joined_rooms doesn't list (rooms left elsewhere: expired sliding sync connection, or Synapse's stale required_state). Five checks pass; scripts/qa_left_rooms.py passes (failed without the fix). Hand-over: side-session-notes/local_42c37c4b-.../fix-room-ptt.md"
+    }
+   ],
    "owner": "fix-room-ptt",
    "paths": [
     "rust-client/docs/matrix-sdk-migration.md",
@@ -131,7 +137,7 @@
    ],
    "status": "review",
    "title": "Rooms left elsewhere while closed stay listed",
-   "updated": "2026-11-28T00:04:52Z",
+   "updated": "2026-11-28T00:04:54Z",
    "worktree": ".claude/worktrees/great-lamport-46e7ea"
   },
   "fix-room-ptt": {
