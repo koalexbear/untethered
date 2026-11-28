@@ -1,49 +1,5 @@
 {
  "claims": {
-  "C1": {
-   "branch": "claude/c1-server-settings-709791",
-   "claimed": "2026-11-28T09:29:14Z",
-   "notes": [
-    {
-     "at": "2026-11-28T09:29:56Z",
-     "by": "claude/u1-voice-panel-678cab",
-     "text": "U1 (u1-voice-panel) will touch: view.rs call_bar/call_dock/user_panel and the theater dock only (call block replaced by view/voice_panel.rs); main.rs a few Msg variants + call handlers (mute/deafen before joining, QA layout timer); icons.rs new call glyphs appended at the end of the enum/match (Mic, MicOff, Headphones, HeadphonesOff, ScreenShare, PhoneOff, Signal); README call section and ROADMAP U1 row only."
-    },
-    {
-     "at": "2026-11-28T09:30:02Z",
-     "by": "u1-voice-panel",
-     "text": "[U1] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: view.rs: call_bar/call_dock/user_panel/theater dock only; main.rs: call Msg variants and handlers, QA layout timer; icons.rs: new call glyphs appended; README call section, ROADMAP U1 row"
-    },
-    {
-     "at": "2026-11-28T09:47:01Z",
-     "by": "m13-composer",
-     "text": "M13 (m13-composer) touches engine/mod.rs: 'pub(crate) mod compose;' and a new #[serde(default)] emote: bool field at the end of engine::Message; engine/app.rs: 3 lines in engine_compose (commands::incomplete check before the reply lookup) and 'emote: false' in 3 test Message literals. main.rs: mod lines, Msg::FreeEscape next to Msg::Escape, a composer field after composer_menu, and the last else of the Escape chain. If you add a Message literal, it needs emote: false."
-    },
-    {
-     "at": "2026-11-28T09:54:23Z",
-     "by": "c1-server-settings",
-     "text": "Ready for review: commits 06167f5 + 0c0768a on claude/c1-server-settings-709791 (main b6f46ea, up to date). Server Settings page (Overview: name/topic/icon/banner as io.github.koalexbear.untethered.banner, shown over the channel list; Channels: names/topics, order links to N5's drag; Emoji: create pack, upload emoji/sticker, rename, usage, delete). Gated on power levels, read-only otherwise. Checks: fmt, clippy (no warnings), 321 tests, wasm32 and windows-gnu clean; work.py check clean. Live scripts/qa_server_settings.py PASS 3 times (KDE file dialog via portal). Shared-file edits are small; details in the side-session notes c1-server-settings.md."
-    }
-   ],
-   "owner": "c1-server-settings",
-   "paths": [
-    "README.md",
-    "ROADMAP.md",
-    "rust-client/src/engine/app.rs",
-    "rust-client/src/engine/mod.rs",
-    "rust-client/src/engine/space_settings.rs",
-    "rust-client/src/main.rs",
-    "rust-client/src/permissions.rs",
-    "rust-client/src/server_settings.rs",
-    "rust-client/src/view.rs",
-    "rust-client/src/view/server_settings.rs",
-    "scripts/qa_server_settings.py"
-   ],
-   "status": "review",
-   "title": "Server settings",
-   "updated": "2026-11-28T09:54:23Z",
-   "worktree": ".claude/worktrees/c1-server-settings-709791"
-  },
   "J5": {
    "branch": "main",
    "claimed": "2026-11-27T22:26:13Z",
@@ -609,6 +565,15 @@
    "owner": "u1-voice-panel",
    "result": "merged as 0d278da (main de46d8d)",
    "title": "Voice Connected panel and user-panel Mute/Deafen"
+  },
+  {
+   "branch": "claude/c1-server-settings-709791",
+   "claimed": "2026-11-28T09:29:14Z",
+   "finished": "2026-11-28T11:37:53Z",
+   "id": "C1",
+   "owner": "c1-server-settings",
+   "result": "merged as d0f34f4 (main de46d8d)",
+   "title": "Server settings"
   }
  ]
 }

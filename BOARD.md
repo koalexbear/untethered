@@ -4,13 +4,13 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
-| C1 | Server settings | c1-server-settings | `claude/c1-server-settings-709791` | review | 2026-11-28T09:54:23Z | `README.md`, `ROADMAP.md`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/space_settings.rs`, `rust-client/src/main.rs`, `rust-client/src/permissions.rs`, `rust-client/src/server_settings.rs`, `rust-client/src/view.rs`, `rust-client/src/view/server_settings.rs`, `scripts/qa_server_settings.py` |
 | J5 | Sign-in everywhere | codex-j5 | `main` | working | 2026-11-27T22:26:13Z | `rust-client/src/engine/browser.rs`, `rust-client/src/engine/session.rs`, `rust-client/src/engine/worker.rs`, `rust-client/src/view/sdk_account.rs`, `rust-client/web/auth.js`, `rust-client/web/engine.js`, `rust-client/web/index.html`, `scripts/qa_matrix_sdk.py`, `scripts/qa_web_login.py` |
 | M13 | Composer details | m13-composer | `claude/m13-composer-15b65f` | review | 2026-11-28T09:58:21Z | `README.md`, `ROADMAP.md`, `rust-client/Cargo.lock`, `rust-client/Cargo.toml`, `rust-client/src/autocomplete.rs`, `rust-client/src/commands.rs`, `rust-client/src/composer.rs`, `rust-client/src/dms.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/compose.rs`, `rust-client/src/engine/messaging.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/timeline.rs`, `rust-client/src/highlight.rs`, `rust-client/src/jumbo.rs`, `rust-client/src/main.rs`, `rust-client/src/places.rs`, `rust-client/src/rich.rs`, `rust-client/src/rooms.rs`, `rust-client/src/rooms/engine.rs`, `rust-client/src/view.rs`, `rust-client/src/view/autocomplete.rs`, `rust-client/src/view/commands.rs`, `rust-client/src/view/rich.rs`, `rust-client/src/viewer.rs`, `scripts/qa_composer_details.py` |
 | N8 | Server rail order and folders | n8-server-rail | `claude/n8-server-rail-3c3a7d` | review | 2026-11-28T09:54:01Z | `README.md`, `ROADMAP.md`, `rust-client/src/channel_order.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/rail.rs`, `rust-client/src/engine/rooms.rs`, `rust-client/src/main.rs`, `rust-client/src/rail_order.rs`, `rust-client/src/rooms.rs`, `rust-client/src/rooms/engine.rs`, `rust-client/src/shortcuts.rs`, `rust-client/src/view.rs`, `rust-client/src/view/channel_order.rs`, `rust-client/src/view/drag.rs`, `rust-client/src/view/icons.rs`, `rust-client/src/view/server_rail.rs`, `scripts/qa_server_rail.py` |
 
 ## Done
 
+- 2026-11-28 **C1** Server settings (c1-server-settings): merged as d0f34f4 (main de46d8d)
 - 2026-11-28 **U1** Voice Connected panel and user-panel Mute/Deafen (u1-voice-panel): merged as 0d278da (main de46d8d)
 - 2026-11-28 **fix-left-rooms** Rooms left elsewhere while closed stay listed (fix-room-ptt): merged as b6f46ea
 - 2026-11-28 **fix-room-ptt** Fix --room-ptt: open Atrium without joining (fix-room-ptt): merged as b6f46ea
@@ -40,4 +40,3 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 - 2026-11-27 **J3** DMs and blocking (main-session): merged as 5679235
 - 2026-11-27 **J2** Join by link (main-session): merged as 1582107
 - 2026-11-27 **M6** Message deletion and persistent drafts (codex-m6): merged as 60f368e (PR #6)
-- 2026-11-27 **J1** Invites with Accept and Decline (main-session): merged as 09754bb
