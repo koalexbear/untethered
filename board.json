@@ -186,6 +186,7 @@
     "scripts/qa_desktop_dm.py",
     "scripts/qa_events.py",
     "scripts/qa_layout.py",
+    "scripts/qa_room_camera.py",
     "scripts/qa_room_ptt.py",
     "scripts/qa_switch_camera.py",
     "scripts/qa_voice_processing.py",
@@ -194,7 +195,7 @@
    ],
    "status": "working",
    "title": "Voice & Video settings page",
-   "updated": "2026-11-28T12:54:59Z",
+   "updated": "2026-11-28T13:23:50Z",
    "worktree": ".claude/worktrees/u2-voice-settings-44a6d7"
   }
  },
