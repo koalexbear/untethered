@@ -4,13 +4,13 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
-| A2 | Voice processing and input sensitivity | a2-voice | `claude/a2-voice-a94df8` | review | 2026-11-28T00:07:48Z | `README.md`, `ROADMAP.md`, `experiments/rtc-audio/README.md`, `experiments/rtc-audio/run_element.sh`, `rust-client/docs/calls-parity-plan.md`, `rust-client/src/call_settings.rs`, `rust-client/src/desktop_call.rs`, `rust-client/src/desktop_call/audio.rs`, `rust-client/src/desktop_call/channel.rs`, `rust-client/src/desktop_call/voice.rs`, `rust-client/src/main.rs`, `rust-client/src/view.rs`, `rust-client/src/view/voice_settings.rs`, `scripts/qa_events.py`, `scripts/qa_rtc_audio.py`, `scripts/qa_voice_processing.py`, `scripts/qa_voice_room.py`, `scripts/test-media-interop.py` |
 | J5 | Sign-in everywhere | codex-j5 | `main` | working | 2026-11-27T22:26:13Z | `rust-client/src/engine/browser.rs`, `rust-client/src/engine/session.rs`, `rust-client/src/engine/worker.rs`, `rust-client/src/view/sdk_account.rs`, `rust-client/web/auth.js`, `rust-client/web/engine.js`, `rust-client/web/index.html`, `scripts/qa_matrix_sdk.py`, `scripts/qa_web_login.py` |
 | fix-left-rooms | Rooms left elsewhere while closed stay listed | fix-room-ptt | `claude/great-lamport-46e7ea` | review | 2026-11-28T00:04:54Z | `rust-client/docs/matrix-sdk-migration.md`, `rust-client/src/engine/live_test.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/rooms.rs`, `scripts/qa_left_rooms.py` |
 | fix-room-ptt | Fix --room-ptt: open Atrium without joining | fix-room-ptt | `claude/great-lamport-46e7ea` | review | 2026-11-27T23:06:17Z | `scripts/qa_room_ptt.py`, `scripts/qa_voice_room.py`, `scripts/test-media-interop.py` |
 
 ## Done
 
+- 2026-11-28 **A2** Voice processing and input sensitivity (a2-voice): merged as f785f79 (main b6f46ea)
 - 2026-11-27 **M12** Per-server nicknames and role badges (m12-names): merged as cfffeab
 - 2026-11-27 **N5** Drag to reorder channels and categories (n5-order): merged as b5422a0
 - 2026-11-27 **M11** Custom emoji and stickers (image packs) (main-session): merged as b6fa2b1
@@ -40,4 +40,3 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 - 2026-11-27 **M7** Link previews (main-session): merged as a3de2bf
 - 2026-11-27 **roadmap-nitro** Roadmap: Nitro features, free where Matrix allows (main-session): merged as e732170
 - 2026-11-27 **roadmap-gomuks** Roadmap: drop gomuks-era sections and mentions (main-session): merged as 508bd00
-- 2026-11-27 **roadmap-matrix** Roadmap: Matrix support per step and a policy for client-only features (main-session): merged as e46cc82

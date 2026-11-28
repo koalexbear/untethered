@@ -1,106 +1,5 @@
 {
  "claims": {
-  "A2": {
-   "branch": "claude/a2-voice-a94df8",
-   "claimed": "2026-11-27T21:28:20Z",
-   "notes": [
-    {
-     "at": "2026-11-27T21:28:55Z",
-     "by": "claude/m12-names-fc018c",
-     "text": "m12-names: M12 touches main.rs (mod names; Msg::Names; App.names field; Request::Nickname; one update arm and one Escape arm) and view.rs (a dialog slot, an 'Edit Server Profile' server-menu item, and the timeline header name gets a role colour/tag via view/names.rs). README/ROADMAP: the M12 row and a short Names paragraph only."
-    },
-    {
-     "at": "2026-11-27T21:28:57Z",
-     "by": "m12-names",
-     "text": "[M12] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: M12: engine/mod.rs+app.rs: Command::SetNickname, RoomSummary.own_name, one engine_done arm; main.rs/view.rs: Msg::Names, App.names, Request::Nickname, dialog slot, server-menu item, timeline name label; README/ROADMAP M12 row and a Names note"
-    },
-    {
-     "at": "2026-11-27T21:30:27Z",
-     "by": "n5-order",
-     "text": "[N5] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: N5: engine/mod.rs 'mod arrange;' + Command::Arrange {id, changes} with one dispatch arm near the poll arms, and RoomSummary.children (space child edges with order/ts, serde default); engine/app.rs one engine_done arm (Request::Arrange); engine/rooms.rs children() also returns order+ts; rooms.rs/rooms/engine.rs sort_rooms orders a space's channels by m.space.child order and builds subspace categories; main.rs mod channel_order, Msg::Order, App.order field, Request::Arrange, one update arm + Escape arm; view.rs channel_list grows subspace categories and wraps rows in drag slots (view/channel_order.rs); README/ROADMAP N5 row and a short Channel order note"
-    },
-    {
-     "at": "2026-11-27T21:43:12Z",
-     "by": "main-session",
-     "text": "[M11] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: engine/mod.rs+app.rs: packs module, three Commands, Event::Packs, a Live sender, one Paginate line, two app.rs arms and emote pills in send/edit; main.rs: mod emotes, Msg::Emote/EmoteReady, Request::Pack, an App field, two update arms, an Escape branch, schedule_emotes beside schedule_avatars; view.rs: mod emotes and a sticker button in the composer row; icons.rs: Icon::Sticker; README/ROADMAP: M11 row and an Emoji paragraph"
-    },
-    {
-     "at": "2026-11-27T21:51:14Z",
-     "by": "claude/a2-voice-a94df8",
-     "text": "a2-voice: client side done (desktop_call/voice.rs APM+gate, call_settings.rs voice.json, view/voice_settings.rs in the Devices panel). Fixtures: new --voice-processing; voice-room harness now starts clients with processing off (steady tones vs AEC3). Live runs in progress."
-    },
-    {
-     "at": "2026-11-27T21:52:16Z",
-     "by": "codex-n3",
-     "text": "N3 integration touches main.rs for discussion state and view.rs for the room header and side panel. The roadmap update follows N3 landing. No call UI changes."
-    },
-    {
-     "at": "2026-11-27T22:32:29Z",
-     "by": "a2-voice",
-     "text": "a2-voice: shared edits for the merger. main.rs: 'mod call_settings;' after mod call_devices; Msg::Voice(call_settings::Event) + Msg::VoiceMeter after Msg::Sound; App.voice field after App.sounds (+ init, + Settings::loaded() next to sounds::Settings::load() in boot); two update arms after Msg::Sound; one 50 ms subscription after the InlineTick one. view.rs: 'mod voice_settings;' after mod viewer, one details.push(voice_settings::section(..)) in call_bar's Devices panel after Refresh devices. README: one paragraph after the Devices paragraph in the calls section. ROADMAP: the Phase 5 paragraph only. scripts/qa_events.py use_profile now writes voice.json (processing off) for every fixture client; QA_VOICE overrides."
-    },
-    {
-     "at": "2026-11-27T22:46:24Z",
-     "by": "a2-voice",
-     "text": "a2-voice: ready for review as 5d16d57 (on main 7b99e29, nothing newer to merge). Five checks pass. --voice-processing passes on release builds; --voice-room, --desktop-dm, --incoming-dm, --call-controls, --call-devices pass; Element interop with processing on passes. --room-ptt fails before joining on main 7b99e29 too (pre-existing). Details: side-session-notes/.../a2-voice.md"
-    },
-    {
-     "at": "2026-11-27T22:50:10Z",
-     "by": "main-session",
-     "text": "main-session: main is now b6fa2b1 with N3 (pins and threads, 3d219fe) and M11 (custom emoji, b6fa2b1). M11 touches main.rs (mod emotes, Msg::Emote/EmoteReady, Request::Pack, an emotes field, schedule_emotes beside schedule_avatars, picker arms batching schedule_emotes), view.rs (a sticker button in the composer row), engine/mod.rs (pub mod packs, Command::{UsePack,SendSticker,ReactEmote}, Event::Packs, a Live sender, one Paginate line), engine/app.rs, rich.rs/selectable.rs, and emoji_picker::panel's signature (extra, custom, pick, active; no browse flag). Merge main before handing over."
-    },
-    {
-     "at": "2026-11-27T22:52:50Z",
-     "by": "fix-room-ptt",
-     "text": "fix-room-ptt: I'll touch scripts/qa_voice_room.py in two small places, apart from your hunks: Desktop.__init__'s synced() and attach()'s shown() (wait for Atrium to be the open room, no sidebar click), and a few lines in test_group right after the Atrium joins (each account leaves its seeded media-proof room, so Atrium is the only room and opens without a click). Your feed/capture/highlights/processing hunks are untouched."
-    },
-    {
-     "at": "2026-11-27T22:52:52Z",
-     "by": "fix-room-ptt",
-     "text": "[fix-room-ptt] shares scripts/qa_voice_room.py: synced()/shown() in Desktop and a few lines after the Atrium joins in test_group: leave media-proof so Atrium opens on its own"
-    },
-    {
-     "at": "2026-11-27T22:57:58Z",
-     "by": "fix-room-ptt",
-     "text": "fix-room-ptt: one more shared file: scripts/test-media-interop.py, only seed() (a room=True keyword so test_group can seed accounts without media-proof). Your argparse/audio_test hunks there are untouched. The leave-media-proof idea from my earlier note is dropped."
-    },
-    {
-     "at": "2026-11-27T23:04:04Z",
-     "by": "main-session",
-     "text": "main-session: held back at the user's request ('A2 still has something to do'). main is now cfffeab with N3, M11, N5 and M12; merge it before handing over. N5 and M12 add Commands/Events in engine/mod.rs and app.rs, Msg::Order/Names and Request::Arrange/Nickname in main.rs, and RoomSummary.child_order/me."
-    },
-    {
-     "at": "2026-11-28T00:07:48Z",
-     "by": "a2-voice",
-     "text": "a2-voice: merged main cfffeab (M11, N3, N5, M12) as a25a51a; only conflict was the adjacent mod lines in main.rs (both kept). Five checks pass (clippy fully clean); --voice-processing passes again on release builds. Ready to merge."
-    }
-   ],
-   "owner": "a2-voice",
-   "paths": [
-    "README.md",
-    "ROADMAP.md",
-    "experiments/rtc-audio/README.md",
-    "experiments/rtc-audio/run_element.sh",
-    "rust-client/docs/calls-parity-plan.md",
-    "rust-client/src/call_settings.rs",
-    "rust-client/src/desktop_call.rs",
-    "rust-client/src/desktop_call/audio.rs",
-    "rust-client/src/desktop_call/channel.rs",
-    "rust-client/src/desktop_call/voice.rs",
-    "rust-client/src/main.rs",
-    "rust-client/src/view.rs",
-    "rust-client/src/view/voice_settings.rs",
-    "scripts/qa_events.py",
-    "scripts/qa_rtc_audio.py",
-    "scripts/qa_voice_processing.py",
-    "scripts/qa_voice_room.py",
-    "scripts/test-media-interop.py"
-   ],
-   "status": "review",
-   "title": "Voice processing and input sensitivity",
-   "updated": "2026-11-28T00:07:48Z",
-   "worktree": ".claude/worktrees/a2-voice-a94df8"
-  },
   "J5": {
    "branch": "main",
    "claimed": "2026-11-27T22:26:13Z",
@@ -554,6 +453,15 @@
    "owner": "m12-names",
    "result": "merged as cfffeab",
    "title": "Per-server nicknames and role badges"
+  },
+  {
+   "branch": "claude/a2-voice-a94df8",
+   "claimed": "2026-11-27T21:28:20Z",
+   "finished": "2026-11-28T02:58:33Z",
+   "id": "A2",
+   "owner": "a2-voice",
+   "result": "merged as f785f79 (main b6f46ea)",
+   "title": "Voice processing and input sensitivity"
   }
  ]
 }
