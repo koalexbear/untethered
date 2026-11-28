@@ -5,6 +5,7 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
 | J5 | Sign-in everywhere | codex-j5 | `main` | working | 2026-11-27T22:26:13Z | `rust-client/src/engine/browser.rs`, `rust-client/src/engine/session.rs`, `rust-client/src/engine/worker.rs`, `rust-client/src/view/sdk_account.rs`, `rust-client/web/auth.js`, `rust-client/web/engine.js`, `rust-client/web/index.html`, `scripts/qa_matrix_sdk.py`, `scripts/qa_web_login.py` |
+| fix-u1-fixtures | Retarget switch-camera and app-sound fixtures to U1's controls | u1-voice-panel | `claude/u1-voice-panel-678cab` | working | 2026-11-28T11:40:25Z | `scripts/qa_app_sound.py`, `scripts/qa_switch_camera.py` |
 
 ## Done
 

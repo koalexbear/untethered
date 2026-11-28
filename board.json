@@ -20,6 +20,20 @@
    "title": "Sign-in everywhere",
    "updated": "2026-11-27T22:26:13Z",
    "worktree": "."
+  },
+  "fix-u1-fixtures": {
+   "branch": "claude/u1-voice-panel-678cab",
+   "claimed": "2026-11-28T11:40:25Z",
+   "notes": [],
+   "owner": "u1-voice-panel",
+   "paths": [
+    "scripts/qa_app_sound.py",
+    "scripts/qa_switch_camera.py"
+   ],
+   "status": "working",
+   "title": "Retarget switch-camera and app-sound fixtures to U1's controls",
+   "updated": "2026-11-28T11:40:25Z",
+   "worktree": ".claude/worktrees/u1-voice-panel-678cab"
   }
  },
  "done": [
