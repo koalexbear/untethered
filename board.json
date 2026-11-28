@@ -167,6 +167,7 @@
     "rust-client/src/sounds.rs",
     "rust-client/src/view.rs",
     "rust-client/src/view/call_controls.rs",
+    "rust-client/src/view/explore.rs",
     "rust-client/src/view/icons.rs",
     "rust-client/src/view/voice_panel.rs",
     "rust-client/src/view/voice_settings.rs",
@@ -181,7 +182,7 @@
    ],
    "status": "working",
    "title": "Voice Connected panel and user-panel Mute/Deafen",
-   "updated": "2026-11-28T09:30:02Z",
+   "updated": "2026-11-28T09:39:14Z",
    "worktree": ".claude/worktrees/u1-voice-panel-678cab"
   }
  },
