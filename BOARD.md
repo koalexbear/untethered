@@ -5,10 +5,10 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
 | J5 | Sign-in everywhere | codex-j5 | `main` | working | 2026-11-27T22:26:13Z | `rust-client/src/engine/browser.rs`, `rust-client/src/engine/session.rs`, `rust-client/src/engine/worker.rs`, `rust-client/src/view/sdk_account.rs`, `rust-client/web/auth.js`, `rust-client/web/engine.js`, `rust-client/web/index.html`, `scripts/qa_matrix_sdk.py`, `scripts/qa_web_login.py` |
-| fix-u1-fixtures | Retarget switch-camera and app-sound fixtures to U1's controls | u1-voice-panel | `claude/u1-voice-panel-678cab` | review | 2026-11-28T11:58:20Z | `README.md`, `ROADMAP.md`, `experiments/rtc-audio/README.md`, `rust-client/docs/calls-parity-plan.md`, `rust-client/src/desktop_call.rs`, `rust-client/src/main.rs`, `rust-client/src/qa_layout.rs`, `rust-client/src/view/voice_panel.rs`, `scripts/qa_app_sound.py`, `scripts/qa_dm_video.py`, `scripts/qa_element_video.py`, `scripts/qa_layout.py`, `scripts/qa_native_dm.py`, `scripts/qa_room_reconnect.py`, `scripts/qa_switch_camera.py`, `scripts/qa_voice_room.py` |
 
 ## Done
 
+- 2026-11-28 **fix-u1-fixtures** Retarget switch-camera and app-sound fixtures to U1's controls (u1-voice-panel): merged as 4532e28
 - 2026-11-28 **N8** Server rail order and folders (n8-server-rail): merged as de46d8d
 - 2026-11-28 **M13** Composer details (m13-composer): merged as cafc355 (main de46d8d)
 - 2026-11-28 **C1** Server settings (c1-server-settings): merged as d0f34f4 (main de46d8d)
@@ -38,4 +38,3 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 - 2026-11-27 **fix-unread-counts** Unread badges trust the client's counts (main-session): merged as 93e2e7d
 - 2026-11-27 **N2** Remember where you were (main-session): merged as 3777467
 - 2026-11-27 **N1** Quick switcher (main-session): merged as 5d1ff40
-- 2026-11-27 **J3** DMs and blocking (main-session): merged as 5679235

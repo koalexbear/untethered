@@ -20,40 +20,6 @@
    "title": "Sign-in everywhere",
    "updated": "2026-11-27T22:26:13Z",
    "worktree": "."
-  },
-  "fix-u1-fixtures": {
-   "branch": "claude/u1-voice-panel-678cab",
-   "claimed": "2026-11-28T11:40:25Z",
-   "notes": [
-    {
-     "at": "2026-11-28T11:58:20Z",
-     "by": "u1-voice-panel",
-     "text": "Ready for review: 8dcc71a + a5b5602 on claude/u1-voice-panel-678cab (on main de46d8d). Release client: --switch-camera, --element-video --dm-window (Stop app audio passes), --window-share, --room-camera, --room-layout pass; debug --call-controls and --voice-processing still pass. Five checks and work.py check clean. Voice Settings now lists cameras and apps as tagged items; the control map works in release builds (reverses U1's debug-only, like UNTETHERED_QA_EVENTS). Also retargeted qa_dm_video, qa_native_dm, qa_room_reconnect; --window-share got its media-proof room back (broken since cc7c62c)."
-    }
-   ],
-   "owner": "u1-voice-panel",
-   "paths": [
-    "README.md",
-    "ROADMAP.md",
-    "experiments/rtc-audio/README.md",
-    "rust-client/docs/calls-parity-plan.md",
-    "rust-client/src/desktop_call.rs",
-    "rust-client/src/main.rs",
-    "rust-client/src/qa_layout.rs",
-    "rust-client/src/view/voice_panel.rs",
-    "scripts/qa_app_sound.py",
-    "scripts/qa_dm_video.py",
-    "scripts/qa_element_video.py",
-    "scripts/qa_layout.py",
-    "scripts/qa_native_dm.py",
-    "scripts/qa_room_reconnect.py",
-    "scripts/qa_switch_camera.py",
-    "scripts/qa_voice_room.py"
-   ],
-   "status": "review",
-   "title": "Retarget switch-camera and app-sound fixtures to U1's controls",
-   "updated": "2026-11-28T11:58:20Z",
-   "worktree": ".claude/worktrees/u1-voice-panel-678cab"
   }
  },
  "done": [
@@ -506,6 +472,15 @@
    "owner": "n8-server-rail",
    "result": "merged as de46d8d",
    "title": "Server rail order and folders"
+  },
+  {
+   "branch": "claude/u1-voice-panel-678cab",
+   "claimed": "2026-11-28T11:40:25Z",
+   "finished": "2026-11-28T12:08:32Z",
+   "id": "fix-u1-fixtures",
+   "owner": "u1-voice-panel",
+   "result": "merged as 4532e28",
+   "title": "Retarget switch-camera and app-sound fixtures to U1's controls"
   }
  ]
 }
