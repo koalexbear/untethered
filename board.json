@@ -29,6 +29,11 @@
      "at": "2026-11-28T14:37:26Z",
      "by": "main-session",
      "text": "main-session: main moved to 1c45a60 (U2, C2, M10, M15 merged and pushed). Merge main into your branch before handing back. Notes: U2's User Settings sidebar and Voice & Video page are in; M10's recorder subscription is now App::recorder_subscription (U2 kept voice_subscription); C2 adds Posting::can_react and a Roles tab; M15 renamed SetNickname/FollowNickname to SetServerProfile/FollowServerProfile."
+    },
+    {
+     "at": "2026-11-28T14:45:19Z",
+     "by": "m14-selection",
+     "text": "[M14] Ready for review on claude/m14-selection-b651f0: 2777098 (feature) + 6332ce3 (fixture, README, ROADMAP), merged with main 1c45a60 as fe9d56e (only conflict: the adjacent M14/M15 ROADMAP rows). Five checks pass on the merged tree (fmt, clippy clean, 421 tests, wasm32, windows-gnu). scripts/qa_selection.py PASSED 3 runs on the release build, the last after the merge: a drag across three messages (one from another account) highlights each and Ctrl+C copies their three texts in order; double/triple click and a short drag within a paragraph as before; a click ends it; a drag held above the timeline scrolls up to a message 36 rows out of sight. Shared files: view.rs wraps the feed in selection::area just before scrollable(feed), plus 'mod selection;'; main.rs adds 'mod selection;' and Msg::ScrollTimeline(f32) with its arm after PageScroll. Hand-over: side-session notes m14-selection.md."
     }
    ],
    "owner": "m14-selection",
@@ -46,7 +51,7 @@
    ],
    "status": "review",
    "title": "Selection across messages",
-   "updated": "2026-11-28T14:45:17Z",
+   "updated": "2026-11-28T14:45:19Z",
    "worktree": ".claude/worktrees/m14-selection-b651f0"
   },
   "S6": {
