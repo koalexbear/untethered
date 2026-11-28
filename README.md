@@ -95,6 +95,20 @@ cancels. Only the moved channel gets a new `order` where its neighbours leave
 room, so Element and other clients show the same order
 ([live test](scripts/qa_channel_order.py)).
 
+**Server rail:** servers line up in the rail in the order Element's space
+panel shows them: by each space's `org.matrix.msc3230.space_order` (MSC3230),
+then by room ID; a subspace has its own place there too. Drag a server to
+move it; a line shows where it lands and Escape cancels. Only the moved server
+gets a new order where its neighbours leave room (servers without one ahead
+of it get one too), so Element shows the same order. As on Discord, drop a
+server on another to make a folder: click the folder to open or close it,
+drop more servers on it, drag one out to take it out (a folder left empty
+goes), and right-click it for **Folder Settings**, its name and colour. A
+closed folder adds up its servers' unreads and mentions. Folders are kept in
+your account data (`io.github.koalexbear.untethered.space_folders`), so your
+other devices show them; other Matrix apps show the same servers in the same
+order, without folders ([live test](scripts/qa_server_rail.py)).
+
 **Quick switcher:** **Ctrl+K**, also while typing a message, opens a search of
 your rooms, DMs and spaces: type a few letters, move with the arrow keys and
 press **Enter**. Unread rooms come first, mentions before them. Start with `#`

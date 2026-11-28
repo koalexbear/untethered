@@ -1,29 +1,25 @@
 //! A space's sidebar with its categories, and dragging channels and
 //! categories to reorder them (ROADMAP N5, channel_order.rs).
 //!
-//! Each row sits in a [`Slot`] that notices a press moving far enough to
-//! lift it, and, while something's held, which half of the row the pointer
-//! is over. The App's subscription drops it wherever the button comes up.
-//! The drop line is drawn inside the row it touches, and rows are neither
-//! added nor removed while dragging (an empty heading keeps its slot as an
-//! empty space), so Iced keeps every row's state, the pressed button's
-//! included, where it was (Iced keeps widget state by position).
-use super::{App, BLURPLE, El, Msg, SIDE};
+//! Each row sits in a drag [`slot`](super::drag::slot) that notices a press
+//! moving far enough to lift it, and, while something's held, which half of
+//! the row the pointer is over. The App's subscription drops it wherever
+//! the button comes up. Rows are neither added nor removed while dragging
+//! (an empty heading keeps its slot as an empty space), so Iced keeps every
+//! row's state, the pressed button's included, where it was (Iced keeps
+//! widget state by position).
+use super::{
+    App, El, Msg, SIDE,
+    drag::{self, Look, Report},
+};
 use crate::{
     channel_order::{Group, Held, Input, Line, Spot},
     rooms::Room,
 };
 use iced::{
-    Background, Color, Element, Event, Length, Point, Rectangle, Renderer, Size, Theme, Vector,
-    advanced::{
-        Clipboard, Layout, Shell, Widget, layout, mouse, overlay, renderer,
-        widget::{Operation, Tree, tree},
-    },
+    Color,
     widget::{Column, Space},
 };
-
-/// How far a press moves before it lifts the row, so a click still opens.
-const LIFT: f32 = 6.;
 
 impl App {
     /// A space's channels: its own under TEXT CHANNELS and VOICE CHANNELS,
@@ -179,235 +175,25 @@ impl App {
             (Some(Held::Category { space, .. }), Spot::Category { space: s }) => space == s,
             _ => false,
         };
-        Element::new(Slot {
-            content,
-            lift,
-            spot,
-            dragging: held.is_some(),
-            lifted,
-            line,
-        })
-    }
-}
-
-pub(super) struct Slot<'a> {
-    content: El<'a>,
-    lift: Option<Held>,
-    spot: Spot,
-    /// Something is held.
-    dragging: bool,
-    /// This row is what's held: drawn dimmed.
-    lifted: bool,
-    /// Draw the drop line here: on the bottom edge, or the top.
-    line: Option<bool>,
-}
-
-#[derive(Default)]
-struct SlotState {
-    /// Where a press on this row started, while the button is down.
-    pressed: Option<Point>,
-    lifted: bool,
-    /// The half of this row under the pointer, last told: lower or not.
-    over: Option<bool>,
-}
-
-impl Widget<Msg, Theme, Renderer> for Slot<'_> {
-    fn tag(&self) -> tree::Tag {
-        tree::Tag::of::<SlotState>()
-    }
-    fn state(&self) -> tree::State {
-        tree::State::new(SlotState::default())
-    }
-    fn children(&self) -> Vec<Tree> {
-        vec![Tree::new(&self.content)]
-    }
-    fn diff(&self, tree: &mut Tree) {
-        tree.diff_children(std::slice::from_ref(&self.content));
-    }
-    fn size(&self) -> Size<Length> {
-        self.content.as_widget().size()
-    }
-    fn size_hint(&self) -> Size<Length> {
-        self.content.as_widget().size_hint()
-    }
-    fn layout(
-        &mut self,
-        tree: &mut Tree,
-        renderer: &Renderer,
-        limits: &layout::Limits,
-    ) -> layout::Node {
-        self.content
-            .as_widget_mut()
-            .layout(&mut tree.children[0], renderer, limits)
-    }
-    fn draw(
-        &self,
-        tree: &Tree,
-        renderer: &mut Renderer,
-        theme: &Theme,
-        style: &renderer::Style,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        viewport: &Rectangle,
-    ) {
-        self.content.as_widget().draw(
-            &tree.children[0],
-            renderer,
-            theme,
-            style,
-            layout,
-            cursor,
-            viewport,
-        );
-        let bounds = layout.bounds();
-        if !self.lifted && self.line.is_none() {
-            return;
-        }
-        let area = bounds.expand(2.);
-        iced::advanced::Renderer::with_layer(renderer, area, |renderer| {
-            if self.lifted {
-                iced::advanced::Renderer::fill_quad(
-                    renderer,
-                    renderer::Quad {
-                        bounds,
-                        ..Default::default()
-                    },
-                    Background::Color(Color { a: 0.6, ..SIDE }),
-                );
-            }
-            if let Some(below) = self.line {
-                let y = if below {
-                    bounds.y + bounds.height - 1.
-                } else {
-                    bounds.y - 1.
-                };
-                iced::advanced::Renderer::fill_quad(
-                    renderer,
-                    renderer::Quad {
-                        bounds: Rectangle {
-                            x: bounds.x + 8.,
-                            y,
-                            width: (bounds.width - 8.).max(0.),
-                            height: 2.,
-                        },
-                        border: iced::Border::default().rounded(1),
-                        ..Default::default()
-                    },
-                    Background::Color(BLURPLE),
-                );
-            }
+        let report = held.is_some().then(|| {
+            let report: Report<'a> = Box::new(move |zone| {
+                Msg::Order(match zone {
+                    Some(half) => Input::Over(spot.clone(), half == 1),
+                    None => Input::Leave(spot.clone()),
+                })
+            });
+            (2, report)
         });
-    }
-    fn update(
-        &mut self,
-        tree: &mut Tree,
-        event: &Event,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        renderer: &Renderer,
-        clipboard: &mut dyn Clipboard,
-        shell: &mut Shell<'_, Msg>,
-        viewport: &Rectangle,
-    ) {
-        let bounds = layout.bounds();
-        let state = tree.state.downcast_mut::<SlotState>();
-        let mut cursor = cursor;
-        match event {
-            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
-                state.pressed = cursor.position_over(bounds).filter(|_| self.lift.is_some());
-                state.lifted = false;
-            }
-            Event::Mouse(mouse::Event::CursorMoved { .. }) => {
-                if let (Some(from), Some(at), Some(held)) =
-                    (state.pressed, cursor.position(), &self.lift)
-                    && !state.lifted
-                    && from.distance(at) > LIFT
-                {
-                    state.lifted = true;
-                    shell.publish(Msg::Order(Input::Lift(held.clone())));
-                }
-                let over = if self.dragging {
-                    cursor
-                        .position_over(bounds)
-                        .map(|at| at.y > bounds.center_y())
-                } else {
-                    None
-                };
-                if over != state.over {
-                    if let Some(lower) = over {
-                        shell.publish(Msg::Order(Input::Over(self.spot.clone(), lower)));
-                    } else if self.dragging {
-                        shell.publish(Msg::Order(Input::Leave(self.spot.clone())));
-                    }
-                    state.over = over;
-                }
-            }
-            Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
-                // A drag, not a click: the button forgets its press unclicked.
-                // The App drops what's held from its own subscription.
-                if std::mem::take(&mut state.lifted) {
-                    cursor = mouse::Cursor::Unavailable;
-                }
-                state.pressed = None;
-                state.over = None;
-            }
-            _ => {}
-        }
-        self.content.as_widget_mut().update(
-            &mut tree.children[0],
-            event,
-            layout,
-            cursor,
-            renderer,
-            clipboard,
-            shell,
-            viewport,
-        );
-    }
-    fn mouse_interaction(
-        &self,
-        tree: &Tree,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        viewport: &Rectangle,
-        renderer: &Renderer,
-    ) -> mouse::Interaction {
-        if self.dragging && cursor.is_over(layout.bounds()) {
-            return mouse::Interaction::Grabbing;
-        }
-        self.content.as_widget().mouse_interaction(
-            &tree.children[0],
-            layout,
-            cursor,
-            viewport,
-            renderer,
-        )
-    }
-    fn operate(
-        &mut self,
-        tree: &mut Tree,
-        layout: Layout<'_>,
-        renderer: &Renderer,
-        operation: &mut dyn Operation,
-    ) {
-        self.content
-            .as_widget_mut()
-            .operate(&mut tree.children[0], layout, renderer, operation);
-    }
-    fn overlay<'b>(
-        &'b mut self,
-        tree: &'b mut Tree,
-        layout: Layout<'b>,
-        renderer: &Renderer,
-        viewport: &Rectangle,
-        translation: Vector,
-    ) -> Option<overlay::Element<'b, Msg, Theme, Renderer>> {
-        self.content.as_widget_mut().overlay(
-            &mut tree.children[0],
-            layout,
-            renderer,
-            viewport,
-            translation,
+        drag::slot(
+            content,
+            lift.map(|held| Msg::Order(Input::Lift(held))),
+            report,
+            Look {
+                dim: lifted.then_some(Color { a: 0.6, ..SIDE }),
+                line,
+                inset: 8.,
+                gap: 0.,
+            },
         )
     }
 }

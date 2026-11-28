@@ -67,6 +67,7 @@ impl Rooms {
             room.encrypted = s.encrypted;
             room.link_previews = s.link_previews;
             room.successor = s.successor;
+            room.space_order = s.space_order;
             room.dm_peer = s.dm_peer;
             room.me = s.me;
             #[cfg(target_os = "linux")]

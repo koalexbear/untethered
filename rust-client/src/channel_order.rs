@@ -123,6 +123,19 @@ pub fn spread(lo: Option<&str>, hi: Option<&str>, n: usize) -> Option<Vec<String
 /// them as possible are renumbered. Siblings without an order sort after
 /// every one with, so those ahead of `child` get one too.
 pub fn reorder(siblings: &[ChildEdge], child: &str, before: Option<&str>) -> Vec<(String, String)> {
+    reorder_block(siblings, &[child], before)
+}
+
+/// The same for several children kept together in this order, as the
+/// server rail moves a folder's servers (rail_order.rs).
+pub fn reorder_block(
+    siblings: &[ChildEdge],
+    block: &[&str],
+    before: Option<&str>,
+) -> Vec<(String, String)> {
+    if block.is_empty() {
+        return Vec::new();
+    }
     let at = before
         .and_then(|b| siblings.iter().position(|s| s.child == b))
         .unwrap_or(siblings.len());
@@ -130,15 +143,16 @@ pub fn reorder(siblings: &[ChildEdge], child: &str, before: Option<&str>) -> Vec
         .iter()
         .map(|s| (s.child.as_str(), s.order.as_deref().filter(|o| valid(o))))
         .collect();
-    list.insert(at, (child, None));
+    list.splice(at..at, block.iter().map(|child| (*child, None)));
     let order = |i: usize| list.get(i).and_then(|(_, o)| *o);
-    // Everything from the first sibling without an order up to `child`.
+    // Everything from the first sibling without an order up to the block's
+    // last child.
     let (mut first, mut last) = (
         list[..at]
             .iter()
             .position(|(_, o)| o.is_none())
             .unwrap_or(at),
-        at,
+        at + block.len() - 1,
     );
     loop {
         let lo = first.checked_sub(1).and_then(order);

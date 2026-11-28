@@ -60,6 +60,7 @@ mod player;
 mod polls;
 mod presence;
 mod preview;
+mod rail_order;
 mod reactions;
 mod reading;
 mod replies;
@@ -274,6 +275,8 @@ enum Msg {
     Poll(polls::Input),
     /// Dragging channels and categories in a space's sidebar (channel_order.rs).
     Order(channel_order::Input),
+    /// Arranging servers and folders in the rail (rail_order.rs).
+    Rail(rail_order::Input),
     /// Edit Server Profile (names.rs).
     Names(names::Input),
     /// The composer's + menu: Upload a File, Create Poll.
@@ -515,6 +518,8 @@ enum Request {
     Pack(emotes::Op),
     /// Reordering or moving channels and categories (channel_order.rs).
     Arrange,
+    /// Reordering the server rail or changing its folders (rail_order.rs).
+    ArrangeRail,
     /// Setting a server nickname (names.rs).
     Nickname(names::Write),
 }
@@ -596,6 +601,8 @@ struct App {
     emotes: emotes::Emotes,
     /// A channel or category being dragged in the sidebar (channel_order.rs).
     order: channel_order::Drag,
+    /// The server rail's folders and dragging in it (rail_order.rs).
+    rail: rail_order::Rail,
     composer_menu: bool,
     started_dm: Option<String>,
     /// Ctrl+K's quick switcher (switcher.rs).
@@ -758,6 +765,7 @@ impl App {
             polling: None,
             emotes: Default::default(),
             order: Default::default(),
+            rail: Default::default(),
             composer_menu: false,
             started_dm: None,
             switcher: None,
@@ -1869,6 +1877,7 @@ impl App {
             Msg::Emote(input) => self.emote(input),
             Msg::EmoteReady(url, picture) => self.emotes.complete(url, picture),
             Msg::Order(input) => return self.arrange_input(input),
+            Msg::Rail(input) => return self.rail_input(input),
             Msg::Names(input) => return self.names(input),
             Msg::ComposerMenu(open) => self.composer_menu = open && self.can_stage(),
             Msg::Switcher(input) => return self.switcher(input),
@@ -1929,6 +1938,9 @@ impl App {
             Msg::ServerMenu(open) => self.server_menu = open,
             Msg::Escape if self.context_menu.is_open() => self.context_menu.dismiss(),
             Msg::Escape if self.order.held.is_some() => self.order = Default::default(),
+            Msg::Escape if self.rail.busy() => {
+                self.rail.escape();
+            }
             Msg::Escape if self.sdk_ui.profile.card.is_some() => {
                 return self.profile_action(engine::profile::Action::Close);
             }
@@ -2477,6 +2489,7 @@ fn main() -> iced::Result {
                 app.typing_subscription(),
                 app.presence_subscription(),
                 app.order_subscription(),
+                app.rail_subscription(),
                 // A moment after the timeline stops moving, note the place.
                 if app.place_unnoted {
                     iced::time::every(std::time::Duration::from_millis(400)).map(|_| Msg::NotePlace)

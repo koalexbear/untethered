@@ -39,6 +39,8 @@ pub struct Room {
     #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
     pub space_alerts: crate::notifications::Mode,
     pub posting: crate::permissions::Posting,
+    /// A space's MSC3230 order in the server rail, when valid (rail_order.rs).
+    pub space_order: Option<String>,
     pub name: String,
     pub topic: String,
     pub space: bool,

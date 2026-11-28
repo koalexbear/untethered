@@ -9,6 +9,7 @@ mod channel_order;
 mod community;
 mod context_menu;
 mod dms;
+mod drag;
 mod emoji_picker;
 mod emotes;
 mod explore;
@@ -37,6 +38,7 @@ mod room_people;
 mod room_search;
 mod sdk_account;
 mod selectable;
+mod server_rail;
 mod shortcuts;
 #[cfg(target_os = "linux")]
 mod sounds;
@@ -558,66 +560,7 @@ impl Mark {
         }
     }
 }
-/// A rail entry: the server's icon, or its initials while it has none.
-fn rail_button<'a>(
-    glyph: String,
-    picture: Option<&iced::widget::image::Handle>,
-    hint: &'a str,
-    active: bool,
-    msg: Msg,
-    mark: Mark,
-) -> El<'a> {
-    let size = if glyph.chars().count() > 2 { 15 } else { 18 };
-    let face: El = match picture {
-        Some(p) => image(p.clone()).width(48).height(48).into(),
-        None => text(glyph).font(BOLD).size(size).into(),
-    };
-    let b = button(container(face).center(48))
-        .padding(0)
-        .on_press(msg)
-        .style(move |_, s| {
-            let highlighted = active || s == button::Status::Hovered;
-            button::Style {
-                background: Some(if highlighted { BLURPLE } else { CHAT }.into()),
-                text_color: if highlighted { Color::WHITE } else { BODY },
-                border: Border::default().rounded(if highlighted { 16 } else { 24 }),
-                ..Default::default()
-            }
-        });
-    let icon: El = if mark.mentions > 0 {
-        stack![
-            b,
-            container(
-                container(badge(mark.mentions))
-                    .padding(3)
-                    .style(|_| surface(RAIL, 11.))
-            )
-            .align_right(48)
-            .align_bottom(48)
-            .padding(Padding {
-                right: 0.,
-                bottom: 0.,
-                ..Padding::ZERO
-            })
-        ]
-        .into()
-    } else {
-        b.into()
-    };
-    let marker = container(pill(if active {
-        40.
-    } else if mark.unread {
-        8.
-    } else {
-        0.
-    }))
-    .center_y(48);
-    with_tip(
-        row![marker, icon].spacing(8).align_y(Center),
-        hint,
-        tooltip::Position::Right,
-    )
-}
+use server_rail::rail_button;
 
 impl App {
     /// Reactions, reply, edit and report, shown while a message is hovered:
@@ -1343,6 +1286,7 @@ impl App {
             .or_else(|| self.new_message_dialog())
             .or_else(|| self.forward_dialog())
             .or_else(|| names::dialog(self))
+            .or_else(|| server_rail::folder_dialog(self))
             .or_else(|| self.poll_dialog())
             .or_else(|| self.end_poll_dialog())
             .or_else(|| self.shortcuts_view())
@@ -1934,29 +1878,8 @@ impl App {
             })
         ]
         .spacing(8);
-        for (id, r) in &store.list {
-            if r.space {
-                let s = Section::Space(id.clone());
-                let initials = r
-                    .name
-                    .split_whitespace()
-                    .take(3)
-                    .filter_map(|s| s.chars().next())
-                    .collect::<String>()
-                    .to_uppercase();
-                let mark = self.rail_mark(&s);
-                icons = icons.push(rail_button(
-                    initials,
-                    self.avatars.get(r.avatar.as_deref()),
-                    &r.name,
-                    // An open invite's card, or Explore, is what's shown,
-                    // not the section.
-                    self.section == s && self.invite_open.is_none() && !exploring,
-                    Msg::Section(s),
-                    mark,
-                ));
-            }
-        }
+        // Servers and folders (server_rail.rs).
+        icons = self.server_rail(icons);
         for invite in self.invite_rail() {
             icons = icons.push(invite);
         }
