@@ -1552,6 +1552,23 @@ mod tests {
         }
 
         #[test]
+        fn escape_closes_the_page_after_using_the_pickers() {
+            let (mut app, rx) = app(100);
+            roles(&mut app, Input::View(View::Permissions));
+            roles(&mut app, Input::Channel(Some("!announcements:h".into())));
+            roles(
+                &mut app,
+                Input::Perm("!announcements:h".into(), Perm::React, 25),
+            );
+            let Some((id, engine::Request::Power { .. })) = sent(&rx) else {
+                panic!("no power levels change");
+            };
+            app.space_settings_answer(id, Ok(Reply::Power(Vec::new())));
+            let _ = app.update(Msg::FreeEscape);
+            assert!(app.server_settings.page.is_none());
+        }
+
+        #[test]
         fn a_moderator_gives_only_roles_below_their_own() {
             let (mut app, rx) = app(50);
             // Power levels need 50 to change here (state_default).

@@ -176,7 +176,7 @@ source's resolution, with no tier to pay for.
 | Step | Matrix | Deliverable | Done when |
 |---|---|---|---|
 | **C1. Server settings** · done | Spec (name, picture, topic; image packs, MSC2545); banner: own state event | A settings page for a space: name, icon, banner, topic, its channels' names and topics (order is N5's drag), and its emoji pack: upload emoji and stickers, rename, choose their use, delete, or create the pack. Gated on power levels; read-only otherwise. | Changing a space's name, icon and topic here shows in other clients; an emoji added, renamed or deleted here follows in the pickers and the pack's state event; a member without permission sees the page read-only. |
-| **C2. Roles and channel permissions** | Spec (power levels); role names and colours: own state event | Role presets on power levels (Admin, Moderator, Member, and named custom levels) and per-channel overrides, such as an announcement channel only moderators post in. | A second account meets every configured limit, as in the existing permission tests. |
+| **C2. Roles and channel permissions** · done | Spec (power levels); role names and colours: own state event | Role presets on power levels (Admin, Moderator, Member, and named custom levels) and per-channel overrides, such as an announcement channel only moderators post in. | A second account meets every configured limit, as in the existing permission tests. |
 | **C3. Moderation history and join links** | Client (from room history); expiring links need a bot | A moderation log (kicks, bans, permission, name and topic changes, with who and when), the bans list, and the space's join links and pending invites, which a moderator can revoke. | A kick and a ban done in Element appear in the log here with their reasons. |
 
 ### Phase 7 — settings, account and release
@@ -211,6 +211,9 @@ source's resolution, with no tier to pay for.
 - A space's banner (C1) is read when the space is first opened in a
   session and whenever its Server Settings load, so another member's new
   banner shows after that, not live.
+- A space's custom role names (C2) are read the same way: another admin's
+  new role shows on badges after a restart or once the space's Server
+  Settings load here. Power levels themselves follow sync.
 - Polls under MSC3381's stable `m.poll.*` names don't show: matrix-sdk's
   timeline reads only the unstable `org.matrix.msc3381.poll.*` events
   Element sends, which is also what Untethered sends. Editing a poll before
