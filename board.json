@@ -1,5 +1,28 @@
 {
  "claims": {
+  "C1": {
+   "branch": "claude/c1-server-settings-709791",
+   "claimed": "2026-11-28T09:29:14Z",
+   "notes": [],
+   "owner": "c1-server-settings",
+   "paths": [
+    "README.md",
+    "ROADMAP.md",
+    "rust-client/src/engine/app.rs",
+    "rust-client/src/engine/mod.rs",
+    "rust-client/src/engine/space_settings.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/permissions.rs",
+    "rust-client/src/server_settings.rs",
+    "rust-client/src/view.rs",
+    "rust-client/src/view/server_settings.rs",
+    "scripts/qa_server_settings.py"
+   ],
+   "status": "working",
+   "title": "Server settings",
+   "updated": "2026-11-28T09:29:14Z",
+   "worktree": ".claude/worktrees/c1-server-settings-709791"
+  },
   "J5": {
    "branch": "main",
    "claimed": "2026-11-27T22:26:13Z",
@@ -29,6 +52,11 @@
      "at": "2026-11-28T09:29:05Z",
      "by": "n8-server-rail",
      "text": "[N8] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: N8 server rail: view.rs only the rail column in screen() (spaces loop \u2192 server_rail.rs) and a mod line; main.rs a mod line, Msg::Rail, App.rail field, one update arm, a subscription line; README/ROADMAP only N8's row and lines. engine/mod.rs: RoomSummary.space_order, Command::SpaceOrder/SaveFolders, Event::Folders; rooms.rs: rail order"
+    },
+    {
+     "at": "2026-11-28T09:29:14Z",
+     "by": "c1-server-settings",
+     "text": "[C1] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: C1: small, separate edits only \u2014 view.rs: mod line, one overlay slot in view()'s stack, one Server Settings item in server_menu_view; main.rs: mod line, Msg::ServerSettings, App field, update arm, Escape arm, web picker prefix route; engine/mod.rs: mod space_settings, Command::SpaceSettings + dispatch arm, Event::SpaceSettings; engine/app.rs: one engine_event arm; permissions.rs: make can_send_state pub(crate); README/ROADMAP: C1 row, M11 known gap"
     }
    ],
    "owner": "m13-composer",
@@ -60,7 +88,13 @@
   "N8": {
    "branch": "claude/n8-server-rail-3c3a7d",
    "claimed": "2026-11-28T09:29:05Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-28T09:29:14Z",
+     "by": "c1-server-settings",
+     "text": "[C1] shares README.md, ROADMAP.md, rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: C1: small, separate edits only \u2014 view.rs: mod line, one overlay slot in view()'s stack, one Server Settings item in server_menu_view; main.rs: mod line, Msg::ServerSettings, App field, update arm, Escape arm, web picker prefix route; engine/mod.rs: mod space_settings, Command::SpaceSettings + dispatch arm, Event::SpaceSettings; engine/app.rs: one engine_event arm; permissions.rs: make can_send_state pub(crate); README/ROADMAP: C1 row, M11 known gap"
+    }
+   ],
    "owner": "n8-server-rail",
    "paths": [
     "README.md",
