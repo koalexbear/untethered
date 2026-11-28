@@ -159,6 +159,11 @@
      "at": "2026-11-28T13:26:28Z",
      "by": "m15-profiles",
      "text": "[M15] Ready for review: ce41ece (feature) + 132f4c0 (fixture, README, ROADMAP) on claude/m15-profiles-51cb01, on main 4532e28. Checks: fmt, clippy (clean), 380 tests, wasm32, windows-gnu; scripts/qa_profiles.py passed twice (release build). Shared files: engine/mod.rs renames M12's SetNickname/FollowNickname to SetServerProfile/FollowServerProfile and adds ProfileFields; small hooks in main.rs, view.rs, engine/app.rs; README paragraph after Names; ROADMAP M15 row and two lines in the People summary. U2: my Account fields come from view::profile::settings(app), so keep calling it wherever the page moves. Hand-over: side-session-notes/m15-profiles.md."
+    },
+    {
+     "at": "2026-11-28T13:26:54Z",
+     "by": "m15-profiles",
+     "text": "[M15] Correction: 374 tests pass (11 ignored), not 380."
     }
    ],
    "owner": "m15-profiles",
@@ -184,7 +189,7 @@
    ],
    "status": "review",
    "title": "Profile customization",
-   "updated": "2026-11-28T13:26:28Z",
+   "updated": "2026-11-28T13:26:54Z",
    "worktree": ".claude/worktrees/m15-profiles-51cb01"
   },
   "U2": {
