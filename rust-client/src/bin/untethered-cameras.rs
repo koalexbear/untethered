@@ -1,5 +1,7 @@
 //! Enumerate only the registry exposed by the desktop Camera portal. A
-//! numeric object serial survives new client connections but not a hotplug.
+//! numeric object serial survives new client connections but not a hotplug;
+//! the node name, also printed, survives restarts and is what Untethered
+//! saves for the chosen camera.
 #[cfg(target_os = "linux")]
 mod linux {
     use pipewire as pw;
@@ -10,7 +12,10 @@ mod linux {
         time::{Duration, Instant},
     };
 
-    pub fn enumerate() -> Result<Vec<(String, u64)>, &'static str> {
+    /// A camera's name, object serial and node name.
+    type Entry = (String, u64, Option<String>);
+
+    pub fn enumerate() -> Result<Vec<Entry>, &'static str> {
         let fd = std::io::stdin()
             .as_fd()
             .try_clone_to_owned()
@@ -40,7 +45,8 @@ mod linux {
                         .unwrap_or("Camera");
                     let label: String =
                         label.chars().filter(|c| !c.is_control()).take(96).collect();
-                    entries.borrow_mut().push((label, serial));
+                    let node = p.get("node.name").map(str::to_owned);
+                    entries.borrow_mut().push((label, serial, node));
                 }
             })
             .register();

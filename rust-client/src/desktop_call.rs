@@ -31,14 +31,17 @@ use url::Url;
 mod audio;
 mod cameras;
 mod channel;
+mod device_test;
 mod recovery;
 mod room_video;
 mod share_audio;
 mod voice;
 use audio::{AudioIo, Kind, Mixer};
 pub(crate) use cameras::{CameraChoice, list_cameras};
+pub(crate) use device_test::mic_test;
 use recovery::{LeaseWatch, Lost, Rejoin, Step, close, encrypted_tracks, select_key, select_one};
 pub(super) use room_video::{Feed, Layer, Previews, VideoInput};
+pub(crate) use room_video::{Preview, preview};
 pub(crate) use voice::InputLevel;
 use voice::Voice;
 
@@ -65,11 +68,6 @@ const ENDED: &str = "Call ended.";
 const SECOND: Duration = Duration::from_secs(1);
 const LEASE: Duration = Duration::from_secs(16);
 const RECOVERY_LIMIT: Duration = Duration::from_secs(60);
-
-/// How long capture stays open after the talk key is released: the 40 ms
-/// capture buffer plus the last 20 ms Opus frame, so the end of a word isn't
-/// cut off. U2 makes it adjustable, as Discord's is.
-pub(super) const RELEASE_DELAY: Duration = Duration::from_millis(100);
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub(super) enum TalkGate {
@@ -129,7 +127,8 @@ impl AudioMode {
             // A manual mute or deafen overrides the key at once.
             _ if self.muted || self.deafened => TalkGate::Waiting,
             _ if down => TalkGate::Held,
-            TalkGate::Held => TalkGate::Releasing(Instant::now() + RELEASE_DELAY),
+            // Capture stays open for the release delay (Voice & Video).
+            TalkGate::Held => TalkGate::Releasing(Instant::now() + self.voice.release()),
             waiting => waiting,
         };
         if next == self.talk {
@@ -157,7 +156,8 @@ impl AudioMode {
 }
 /// Mute, deafen and the chosen microphone and speaker. They outlive calls,
 /// as on Discord: set before joining, they start the next call; set during
-/// one, they stay for the next (calls plan U1). Not saved yet (U2).
+/// one, they stay for the next (calls plan U1). The devices are saved on
+/// this computer with the other Voice & Video settings (call_settings.rs).
 #[derive(Default)]
 pub struct LocalAudio {
     pub muted: bool,
@@ -169,6 +169,11 @@ pub struct LocalAudio {
     pub devices: Catalog,
     pub loading: bool,
     pub list_error: Option<&'static str>,
+    /// The cameras the Voice & Video page lists, read when asked: listing
+    /// them goes through the camera portal, which may ask for permission.
+    pub cameras: Vec<CameraChoice>,
+    pub camera_listing: bool,
+    pub camera_note: Option<&'static str>,
 }
 impl LocalAudio {
     pub fn route(&self, port: Port) -> Route {
@@ -181,17 +186,20 @@ impl LocalAudio {
         }
     }
 }
-/// The popups of the user panel and the Voice Connected panel.
+/// The popups of the user panel, the Voice Connected panel and the Voice &
+/// Video page.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VoiceMenu {
     /// Mute's chevron: input devices.
     Input,
     /// Deafen's chevron: output devices.
     Output,
-    /// Voice settings until the Voice & Video page (U2): push-to-talk,
-    /// input sensitivity, voice processing, camera, shared audio and each
-    /// participant's volume.
+    /// The call's settings that have no other home yet: shared audio (U4)
+    /// and each participant's volume (U3), with a link to the page.
     Settings,
+    /// The page's input and output device lists.
+    PageInput,
+    PageOutput,
 }
 pub struct ActiveCall {
     pub room: String,
@@ -203,9 +211,6 @@ pub struct ActiveCall {
     pub cancel: Sender<()>,
     pub audio: watch::Sender<AudioMode>,
     pub id: uuid::Uuid,
-    pub cameras: Vec<CameraChoice>,
-    pub camera_listing: bool,
-    pub camera_note: Option<&'static str>,
     pub mic_error: bool,
     pub speaker_error: bool,
     pub video_status: [room_video::Status; 2],
@@ -363,8 +368,10 @@ impl crate::App {
                 )
                 .then(uuid::Uuid::new_v4),
             ],
-            talk: TalkGate::from_ptt(group && self.room_ptt),
+            // Push to talk is the input mode for every call, as on Discord.
+            talk: TalkGate::from_ptt(self.push_to_talk()),
             voice: self.voice.voice,
+            camera: CameraChoice::saved(self.voice.camera.as_ref()),
             // Muted, deafened or on another device before joining: the
             // call starts that way.
             muted: self.local_audio.muted,
@@ -391,6 +398,8 @@ impl crate::App {
                 level,
             },
         };
+        // The mic test can't share the microphone with a call.
+        self.voice.mic_test = None;
         if self
             .commands
             .try_send(crate::backend::Command::Voice {
@@ -410,9 +419,6 @@ impl crate::App {
                 cancel,
                 audio,
                 id: uuid::Uuid::new_v4(),
-                cameras: vec![],
-                camera_listing: false,
-                camera_note: None,
                 mic_error: false,
                 speaker_error: false,
                 video_status: Default::default(),
@@ -508,16 +514,22 @@ impl crate::App {
             Err(e) => local.list_error = Some(e),
         }
     }
-    /// Use `device` from now on: in the call at once, and in the next one.
-    pub(super) fn select_device(&mut self, port: Port, device: crate::call_devices::Choice) {
+    /// Use `device` from now on: in the call at once, in the next one and
+    /// after a restart.
+    pub(super) fn select_device(
+        &mut self,
+        port: Port,
+        device: crate::call_devices::Choice,
+    ) -> iced::Task<crate::Msg> {
         if !self.local_audio.devices.list(port).contains(&device) {
-            return;
+            return iced::Task::none();
         }
         match port {
             Port::Mic => self.local_audio.mic = device.name.clone(),
             Port::Speaker => self.local_audio.speaker = device.name.clone(),
         }
         self.voice_popup = None;
+        self.mic_test_device(port);
         if let Some(call) = self.call.as_mut().filter(|c| !c.cancel.is_closed()) {
             call.audio.send_modify(|s| {
                 let route = match port {
@@ -533,6 +545,43 @@ impl crate::App {
                 Port::Speaker => call.speaker_error = false,
             }
         }
+        self.save_voice()
+    }
+    /// List the cameras for the Voice & Video page.
+    pub(super) fn list_cameras(&mut self) -> iced::Task<crate::Msg> {
+        let local = &mut self.local_audio;
+        if local.camera_listing {
+            return iced::Task::none();
+        }
+        local.camera_listing = true;
+        local.camera_note = None;
+        iced::Task::perform(list_cameras(), crate::Msg::CamerasListed)
+    }
+    pub(super) fn cameras_listed(&mut self, list: Result<Vec<CameraChoice>>) {
+        let local = &mut self.local_audio;
+        local.camera_listing = false;
+        match list {
+            Ok(v) => {
+                local.camera_note = (v.len() == 1).then_some("No selectable cameras reported.");
+                local.cameras = v;
+            }
+            Err(why) => {
+                local.cameras.clear();
+                local.camera_note = Some(why);
+            }
+        }
+    }
+    /// The camera chosen on the page: in the call at once (switching a live
+    /// camera keeps its publication), in the preview, and saved.
+    pub(super) fn select_camera(&mut self, choice: CameraChoice) -> iced::Task<crate::Msg> {
+        if !self.local_audio.cameras.contains(&choice) {
+            return iced::Task::none();
+        }
+        self.voice.camera = choice.to_saved();
+        if let Some(call) = self.live_call() {
+            call.audio.send_modify(|s| s.camera = choice);
+        }
+        self.save_voice()
     }
 }
 pub(super) fn now() -> u64 {

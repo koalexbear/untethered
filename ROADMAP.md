@@ -165,12 +165,17 @@ saved on this computer. U1 is done: calls show in Discord's Voice Connected
 panel above the user panel (status, the call's room linking to its stage,
 Disconnect, Camera and Screen), and Mute and Deafen sit in the user panel with
 menus of microphones and speakers; muting or deafening before you join starts
-the call that way. A Voice Settings popup keeps push-to-talk, A2's controls,
-the camera, shared audio and each participant's volume reachable, and the call
-fixtures click icon-only controls through a control map
-(`UNTETHERED_QA_LAYOUT`). Next come U2–U6: a persisted Voice & Video settings
-page (which takes over the popup), participant menus, Go Live and Watch Stream,
-the incoming call card, and stage polish. Stream quality is a choice, up to 60 fps at the
+the call that way, and the call fixtures click icon-only controls through a
+control map (`UNTETHERED_QA_LAYOUT`). U2 is done: User Settings has a sidebar
+of pages, and its **Voice & Video** page (from the user panel's gear or either
+device menu) has the input and output devices and volumes, a mic test (a local
+loopback with a level meter), Voice Activity or Push to Talk with a recorded
+key and release delay, input sensitivity, the processing switches, and the
+camera with a preview that publishes nothing. Every choice applies to the
+call at once and to every later call, and is saved on this computer across
+restarts. The panel's Voice Settings popup keeps only shared audio and each
+participant's volume. Next come U3–U6: participant menus, Go Live and Watch
+Stream, the incoming call card, and stage polish. Stream quality is a choice, up to 60 fps at the
 source's resolution, with no tier to pay for.
 
 ### Phase 6 — community management

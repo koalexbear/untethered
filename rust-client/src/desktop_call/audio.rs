@@ -228,8 +228,14 @@ impl Sources {
                 *sum += i32::from(sample) * gain / 100;
             }
         }
+        // The output volume (Voice & Video) on top of each source's own.
+        let volume = i32::from(mode.voice.output_volume);
         for (out, sum) in out.iter_mut().zip(sum) {
-            *out = clip(sum);
+            *out = clip(if volume == 100 {
+                sum
+            } else {
+                sum * volume / 100
+            });
         }
     }
 }
@@ -478,6 +484,19 @@ mod tests {
         // The other frame queued in each ring follows the same rules.
         mode.share_silent = true;
         assert_eq!(mixed(&mut sources, &mode)[0], 2_000 + 1_500);
+    }
+
+    #[test]
+    fn the_output_volume_scales_the_whole_mix() {
+        let mut mode = mode();
+        mode.voice.output_volume = 50;
+        mode.set_volume("@b:x".into(), 200);
+        let mut sources = Sources::default();
+        source(&mut sources, Kind::Voice, Some("@b:x"), &[4_000, 30_000]);
+        source(&mut sources, Kind::Voice, None, &[1_000, 30_000]);
+        let out = mixed(&mut sources, &mode);
+        // (8_000 + 1_000) / 2, and a clipped sum halved before clipping.
+        assert_eq!(out[..2], [4_500, i16::MAX]);
     }
 
     #[test]

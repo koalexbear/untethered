@@ -1,9 +1,9 @@
 """Exercise the actual camera selector and verify routing at the portal and rendered pixels.
 
-The cameras are listed in Voice Settings, opened from the Voice Connected
-panel's gear; each is a control `camera-item-N` in the QA control map
-(qa_layout.py). The popup sits over the stage, so it's closed before any
-pixel check."""
+The cameras are listed on the Voice & Video settings page (calls plan U2),
+opened from the user panel's gear; each is a control `camera-item-N` in the
+QA control map (qa_layout.py). The page replaces the stage, so it's closed
+before any pixel check."""
 import json
 from contextlib import ExitStack
 from qa_native_paste import wait_for
@@ -24,25 +24,28 @@ def verify_switch(stack,desk,remote_box,local_box,fresh_audio,tracks,baseline,am
     def cameras():
         return {n:(c["text"],c["state"]) for n,c in layout.items("camera-item-")}
     def choose(label):
-        desk.settings()
+        desk.voice_page()
         name=wait_for(label+" in the camera list",lambda:layout.item("camera-item-",label),10)
         if layout.state(name)!="selected":
-            desk.press(*desk.reveal(name))
+            desk.press(*desk.reveal_page(name))
             wait_for(label+" chosen",lambda:layout.state(name)=="selected",8)
-        # Voice Settings covers part of the stage: close it before looking.
-        desk.settings(False)
+        # The page replaces the stage, and opening it docks the call: close
+        # it and open the stage again before looking.
+        desk.voice_page(False)
+        desk.open_stage()
     def listed():
         if dialog(kde):return False
-        desk.settings()
+        desk.voice_page()
         refresh=layout.text("cameras-refresh").lower()
         if "refresh" in refresh and cameras():return True
-        if "list" in refresh:desk.press(*desk.reveal("cameras-refresh"))
+        if "list" in refresh:desk.press(*desk.reveal_page("cameras-refresh"))
         return False
     try:grant_camera(kde,listed)
     except Exception:
         print("Cameras:",cameras(),layout.missing(),"Windows:",kde.command("kdotool","search","--title",".","getwindowname","%@").stdout,flush=True);raise
-    print("Voice Settings listed the cameras:",", ".join(t for t,_ in cameras().values()),flush=True)
-    desk.settings(False)
+    print("The Voice & Video page listed the cameras:",", ".join(t for t,_ in cameras().values()),flush=True)
+    desk.voice_page(False)
+    desk.open_stage()
     for label,source,pattern,change in (("cobalt","qa-second-camera",second,cobalt),("amber","qa-room-camera",first,amber)):
         change(0);choose(label)
         grant_camera(kde,lambda:graph()==[source] and remote_box(pattern[0]))

@@ -199,7 +199,7 @@ modifies `main.rs`. **Phase 2** starts after the restyle is committed to `main`.
 | 1 | **V2** Simulcast, per-tile quality, pause hidden video | Camera simulcast. Thumbnails use the low layer | 8 |
 | 1 | **K1** Global push-to-talk backend | Portal/X11 global key with a release delay | 6 |
 | 2 | **U1** Voice Connected panel and user-panel Mute/Deafen · done | Discord sidebar layout | 4 |
-| 2 | **U2** Voice & Video settings page (persisted) | Devices, volume, VAD/PTT, keybind, processing toggles, mic test, camera preview | 4, 6 |
+| 2 | **U2** Voice & Video settings page (persisted) · done | Devices, volume, VAD/PTT, keybind, processing toggles, mic test, camera preview | 4, 6 |
 | 2 | **U3** Participant rows and right-click user menu | Avatars, speaking ring, state icons, LIVE, User Volume | 7 |
 | 2 | **U4** Go Live sheet and Watch Stream | Source/quality/fps/audio sheet, opt-in viewing, restore token | 5 |
 | 2 | **U5** Incoming call card and desktop notification | Name/avatar, accept with video, ring when unfocused | 9 |
@@ -605,6 +605,47 @@ Pre-join mute: join `--voice-room` muted. Peers must hear silence and the SFU mu
 report the mic muted from the first sample.
 
 ### U2 — Voice & Video settings page, persisted (Phase 2, M)
+
+> **Done** on branch `claude/u2-voice-settings-44a6d7` (2026-11-28), not
+> merged yet. User Settings became an area with a sidebar of pages
+> (`view/user_settings.rs`: My Account, Voice & Video; S1 adds the rest),
+> opened from the user panel's gear; the device menus' **Voice Settings**
+> opens the Voice & Video page. It has input and output device dropdowns,
+> input and output volume (0–200 %: the microphone scaled before processing,
+> the whole mix after each participant's volume), a **mic test** (Discord's
+> "Let's Check": the microphone through the call's processing and gate into
+> an A1 mixer to the chosen speaker, with the A2 meter; a subscription, so
+> leaving the page stops it), **Input mode** (Voice Activity / Push to Talk,
+> now for DM calls too), A2's sensitivity, the push-to-talk key with a
+> binding dialog (an ordinary key with its modifiers, or a modifier alone on
+> release; the in-window listener and the X11 backend both use it, the
+> portal gets it as the preferred trigger) and its release delay
+> (0–2000 ms, replacing K1's fixed 100 ms), the processing switches, and a
+> camera list with **Test Video**: a preview through the same portal and
+> GStreamer reader as a call's camera, without LiveKit. `call_settings.rs`
+> saves all of it in `voice.json` (one flat object, so A2's files still
+> load); the camera by its PipeWire node name, which survives restarts
+> (the camera helper now prints it). Mute and deafen stay per session, as
+> on Discord. U1's popup keeps only shared audio (until U4) and each
+> participant's volume (until U3), with a link to the page. Noise
+> suppression stays on/off: A2b didn't ship.
+>
+> Verified 2026-11-28: `--call-devices` picks Cobalt and Grove on the page
+> before calling and the call starts on them (Element measured 730 Hz, Grove
+> played 960 Hz), then switches through the menus as before; afterwards it
+> sets both devices, input 150 %, output 60 %, a −42 dB threshold, echo
+> cancellation, Push to Talk on F9 through the binding dialog and a 300 ms
+> release delay, closes the window with `WM_DELETE_WINDOW` (exit 0), starts
+> the client on the same profile and finds every choice on the page.
+> `--voice-processing` clicks every switch on the page (echo 28.6 dB down,
+> noise 12.8 dB) and sweeps the threshold slider through the control map
+> across Alice's −16 dBFS tone: at −70, −40 and −24 dB Bruno and Clara hear
+> her and her meter reports voice, at −10 and 0 dB neither. `--room-camera`
+> (release, KWin) ends with Test Video showing the virtual camera's two
+> patterns through one reader while Twirp `ListParticipants` stays empty in
+> every sample. `--call-controls`, `--room-ptt` (disarmed through the page),
+> `--room-ptt --global`, `--voice-room` and `--switch-camera` (cameras listed
+> and switched on the page) pass.
 
 **Files:** a new `view/voice_settings.rs` opened from the user panel `Gear` (beside
 the existing Account view), a new `rust-client/src/call_settings.rs` saved as JSON

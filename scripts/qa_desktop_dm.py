@@ -20,6 +20,7 @@ import requests
 from qa_layout import WORDS, Layout, resolve
 from qa_native_paste import child, isolated_env, start_display, wait_for
 from qa_ui import CHAT_X, RAIL, Ui, clean, read
+from qa_voice_settings import Page as VoicePage, check_persisted
 
 # The call's controls are icons (calls plan U1): Mute and Deafen in the user
 # panel, the call's status, Camera, Screen and Disconnect in the Voice
@@ -135,13 +136,18 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
         prefix=relay_links["desktop"].prefix
         env["UNTETHERED_QA_ICE_STATS"]="1"
         logs["stderr"]=stack.enter_context(native_log.open("w"))
-    client=stack.enter_context(child([*prefix,root/"rust-client/target/debug/untethered-iced"],env,**logs))
+    client=win=None
     def window():
         assert client.poll() is None,"desktop exited"
         return cmd("xdotool","search","--onlyvisible","--name","Untethered.*media-proof",text=True).stdout.strip()
-    win=wait_for("desktop verified DM",window,40).splitlines()[0]
-    cmd("xdotool","windowmove",win,"0","0",check=True)
-    cmd("xdotool","windowsize",win,"1180","760",check=True)
+    def start_client():
+        # Again after a quit, on the same profile (qa_voice_settings).
+        nonlocal client,win
+        client=stack.enter_context(child([*prefix,root/"rust-client/target/debug/untethered-iced"],env,**logs))
+        win=wait_for("desktop verified DM",window,40).splitlines()[0]
+        cmd("xdotool","windowmove",win,"0","0",check=True)
+        cmd("xdotool","windowsize",win,"1180","760",check=True)
+    start_client()
     def shot():
         return Image.open(io.BytesIO(cmd("import","-window",win,"png:-",check=True).stdout)).convert("RGB")
     def words():
@@ -178,6 +184,11 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
     def hover(pos):cmd("xdotool","mousemove","--window",win,*map(str,pos),check=True)
     def press(pos):cmd("xdotool","mousemove","--window",win,*map(str,pos),"click","1",check=True)
     ui=Ui(words,hover,width=1180,height=760)
+    def scroll(x,y,dy):
+        cmd("xdotool","mousemove","--window",win,str(x),str(y),"click","--repeat",str(max(1,abs(dy)//60)),"5" if dy>0 else "4",check=True)
+    def keys(*names):cmd("xdotool","windowfocus",win,"key",*names,check=True)
+    # The Voice & Video settings page (calls plan U2).
+    settings=VoicePage(layout,lambda x,y:press((x,y)),scroll,keys,lambda x,y:hover((x,y)))
     def call_ready():
         # The DM header's phone icon (tooltip "Start Voice Call") starts a call.
         return ui.header("start voice call")
@@ -224,6 +235,14 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
         sockets=[]
         if controls or devices:
             page.on("websocket",lambda ws:sockets.append(ws) if urlsplit(ws.url).netloc=="127.0.0.1:18820" else None)
+        if devices:
+            # The call starts on the devices chosen on the settings page.
+            settings.open()
+            settings.device("input","Cobalt")
+            settings.device("output","Grove")
+            evidence("dm-voice-video-page")
+            settings.close()
+            print("Voice & Video page before joining: chose Cobalt and Grove.",flush=True)
         click("Voice")
         toast=page.locator(".mx_IncomingCallToast_content")
         toast.get_by_text("Incoming voice call",exact=True).wait_for(timeout=25000)
@@ -239,12 +258,14 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
         toast.get_by_role("button",name="Join",exact=True).click()
         wait_for("both accepted members",lambda:set(roster())=={alice,bob},25)
         widget=next(f for f in page.frames if urlsplit(f.url).path.startswith("/widgets/element-call/"))
-        wait_for("Element decodes desktop mic's 480 Hz",lambda:widget.evaluate("window.qaAudioStats?.().then(s=>s.got480) ?? false"),30)
+        # With --call-devices the call starts on the page's Cobalt (730 Hz).
+        hz=730 if devices else 480
+        wait_for(f"Element decodes desktop mic's {hz} Hz",lambda:widget.evaluate(f"window.qaAudioStats?.().then(s=>s.got{hz}) ?? false"),30)
         assert received.wait(10),"desktop speaker did not render Element's 960 Hz"
         assert len(streams("source-outputs"))==len(streams("sink-inputs"))==1
         tracks=sfu_audio(secret)
         assert len(tracks)==2 and all(v==["GCM"] for v in tracks.values()) and {p.rsplit(":",1)[0] for p in tracks}=={alice,bob}, tracks
-        print("Element accepted; Element measured 480 Hz on received WebRTC audio, desktop speaker monitor measured 960 Hz for 600 ms.",flush=True)
+        print(f"Element accepted; Element measured {hz} Hz on received WebRTC audio, desktop speaker monitor measured 960 Hz for 600 ms.",flush=True)
         print("LiveKit independently reports GCM on both microphone publications.",flush=True)
         evidence("dm-call")
         if relay_links:
@@ -265,7 +286,7 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
                 press(layout.find(name))
                 wait_for(port+" menu closed",lambda:not layout.get(kind+"-menu"),5)
             shots=[]
-            device_switch(widget,select,click,speakers,streams,cmd,secret,sockets,alice,bob,spare)
+            device_switch(widget,select,click,speakers,streams,cmd,secret,sockets,alice,bob,spare,page_choice=True)
         elif controls:
             def change_room():
                 x,y=wait_for("Sidechat sidebar entry",lambda:sidebar_room("sidechat"))
@@ -311,6 +332,14 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
         wait_for("desktop released both audio devices",lambda:not streams("source-outputs") and not streams("sink-inputs"))
         wait_for("desktop ready to call again",lambda:find("Voice"),12)
         print("Hangup → empty Element call roster, 0 desktop capture/playback streams; call control available again.",flush=True)
+        if devices:
+            from qa_linux_upgrade import close_helper
+            closer=close_helper(tmp)
+            def quit_client():
+                cmd(str(closer),win,check=True)
+                assert client.wait(timeout=20)==0,"the client didn't quit cleanly"
+            check_persisted(settings,env["UNTETHERED_PROFILE"],quit_client,start_client,
+                            (("Cobalt","QAMicB.monitor"),("Grove","QASpeakerB")),evidence)
     except Exception:
         if relay_links:
             from qa_rtc_turn import counters
@@ -480,7 +509,7 @@ def continuity(widget,secret,sockets,alice,bob):
     return stats,check_tracks
 
 
-def device_switch(widget,select,click,speakers,streams,cmd,secret,sockets,alice,bob,spare):
+def device_switch(widget,select,click,speakers,streams,cmd,secret,sockets,alice,bob,spare,page_choice=False):
     stats,check_tracks=continuity(widget,secret,sockets,alice,bob)
     def server_defaults():
         return tuple(cmd("env","-u","PULSE_SOURCE","-u","PULSE_SINK","pactl","get-default-"+kind,check=True).stdout
@@ -504,7 +533,14 @@ def device_switch(widget,select,click,speakers,streams,cmd,secret,sockets,alice,
         print(f"Device route: Element received {730 if mic_b else 480} Hz; "
               f"{'Grove' if speaker_b else 'Harbor'} played 960 Hz, {'Harbor' if speaker_b else 'Grove'} silent "
               "(12 fresh 100 ms windows at all three measurement points).",flush=True)
-    check(False,False)
+    if page_choice:
+        # Joined on Cobalt and Grove from the settings page; back to the
+        # defaults through the menus first.
+        check(True,True)
+        print("The call started on the page's choices.",flush=True)
+        select("Microphone","Amber");check(False,True)
+        select("Speaker","Harbor");check(False,False)
+    else:check(False,False)
     select("Microphone","Cobalt");check(True,False)
     select("Speaker","Grove");check(True,True)
     select("Microphone","Amber");check(False,True)

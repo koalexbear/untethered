@@ -207,8 +207,8 @@ class Desktop:
         """A click outside an open popup only closes it: close any that
         `name` isn't in before clicking it. The control that opened one
         closes it anyway."""
-        if name in ("voice-settings-open","mute-menu","deafen-menu"):return
-        for popup in ("voice-settings","input-menu","output-menu"):
+        if name in ("voice-settings-open","mute-menu","deafen-menu","settings-input","settings-output"):return
+        for popup in ("voice-settings","input-menu","output-menu","settings-input-menu","settings-output-menu"):
             if self.layout.get(popup) and not self.layout.inside(name,popup):
                 self.press(*self.layout.find(name))
                 wait_for(popup+" closed",lambda:not self.layout.get(popup),6)
@@ -223,6 +223,35 @@ class Desktop:
                 self.scroll(x,y,120 if c["y"]>area["y"] else -120)
             time.sleep(.45)
         raise RuntimeError(f"{name} not shown in Voice Settings; {self.layout.missing()}")
+
+    def voice_page(self,open=True):
+        """Open User Settings on its Voice & Video page (calls plan U2), from
+        the user panel's gear and the sidebar, or close it."""
+        layout=self.layout
+        if not open:
+            if layout.get("settings-close"):
+                self.close_popups("settings-close")
+                self.press(*layout.find("settings-close"))
+                wait_for("User Settings closed",lambda:not layout.get("settings-close"),8)
+            return
+        if layout.state("settings-voice")=="selected":return
+        if not layout.get("settings-voice"):
+            self.close_popups("user-settings")
+            self.press(*layout.wait("user-settings"))
+        self.press(*layout.wait("settings-voice"))
+        wait_for("Voice & Video page",lambda:layout.state("settings-voice")=="selected"
+                 and layout.get("input-mode-voice"),8)
+
+    def reveal_page(self,name):
+        """Scroll the settings page until `name` shows whole; its centre."""
+        for _ in range(30):
+            if self.layout.inside(name,"settings-page"):return self.layout.find(name)
+            c,area=self.layout.get(name),self.layout.get("settings-page")
+            if c and area:
+                x,y=self.layout.centre(area)
+                self.scroll(x,y,120 if c["y"]>area["y"] else -120)
+            time.sleep(.45)
+        raise RuntimeError(f"{name} not shown on the settings page; {self.layout.missing()}")
 
     def title(self):
         if self.kde:return self.kde.command("kdotool","getwindowname",self.win,check=False).stdout
@@ -241,13 +270,16 @@ class Desktop:
             self.press(*wait_for(tip,lambda:self.ui.header(tip),20))
             return
         if label=="push-to-talk":
-            # Beside Join voice before joining; in Voice Settings during a call.
+            # Beside Join voice before joining; during a call, the input mode
+            # on the Voice & Video page.
             if spot:=self.layout.find("ptt-header"):
                 self.press(*spot)
                 return
-            self.settings()
-            self.press(*self.reveal("ptt"))
-            self.settings(False)
+            self.voice_page()
+            want="input-mode-voice" if self.layout.state("input-mode-ptt")=="selected" else "input-mode-ptt"
+            self.press(*self.reveal_page(want))
+            wait_for("input mode "+want,lambda:self.layout.state(want)=="selected",6)
+            self.voice_page(False)
             return
         if label in WORDS or label in ("stop","cancel","sharing"):
             # The call's icon-only controls, through the control map.
@@ -560,7 +592,7 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
                 window_share(stack,desks,secret,tracks,publications)
             if camera:
                 from qa_room_camera import room_camera
-                room_camera(stack,desks,secret,tracks,publications)
+                preview=room_camera(stack,desks,secret,tracks,publications)
             if not layout:desks[2].click("leave")
             wait_for("third device left MatrixRTC",lambda:members()==sorted(users[:2]))
             remaining=wait_for("third device left SFU",lambda:publications(2))
@@ -576,6 +608,9 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
             wait_for("all desktop audio streams released",lambda:audio_counts()==[(0,0)]*3)
             no_ring()
             print("Final leave: 0 active memberships, 0 Untethered audio streams, 0 ring events.",flush=True)
+            if camera:
+                from qa_room_camera import camera_preview
+                camera_preview(desks[0],secret,*preview)
             if ptt=="wayland":
                 from qa_room_ptt import check_restart
                 check_restart(desks[0],keys,lambda:members()==users[:1],lambda:not members())

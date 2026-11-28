@@ -3,8 +3,8 @@ the other voice-room clients' speakers.
 
 Runs inside --voice-room (`--voice-processing`), whose clients all start
 from saved settings with every switch off and the gate below the test tones
-(`qa_events.RAW_VOICE`). Each switch is clicked in Alice's Voice Settings
-popup, and her `voice.json` must follow. The signals are speech-like (syllables) and
+(`qa_events.RAW_VOICE`). Each switch is clicked on Alice's Voice & Video
+settings page (U2), and her `voice.json` must follow. The signals are speech-like (syllables) and
 the far end is silent or speaking in syllables: a tone that never pauses
 looks like noise to noise suppression (held about 13 dB down), and as the
 far end it makes the echo canceller suppress the near end (see `voice.rs`'s
@@ -139,9 +139,8 @@ def latest(desk, n):
 
 
 class Panel:
-    """Alice's voice settings: in the Voice Settings popup from her Voice
-    Connected panel until the Voice & Video page (U2). Its switches are
-    found through the control map (qa_layout.py)."""
+    """Alice's voice settings, on her Voice & Video settings page (U2). Its
+    switches are found through the control map (qa_layout.py)."""
 
     # The words the steps name a switch by, and its control.
     LINES = {
@@ -171,21 +170,18 @@ class Panel:
 
     def find(self, *line):
         """The centre of the control for `line`, scrolled into view."""
-        return self.desk.reveal(self.LINES[line])
+        return self.desk.reveal_page(self.LINES[line])
 
     def toggle(self):
-        """Open or close Voice Settings with the panel's gear."""
-        layout = self.desk.layout
-        before = layout.state("voice-settings-open")
-        self.desk.press(*layout.wait("voice-settings-open"))
-        wait_for("Voice Settings " + ("closed" if before == "on" else "open"),
-                 lambda: layout.state("voice-settings-open") not in (before, None), 6)
+        """Open or close the Voice & Video page: from the user panel's gear,
+        back with its close control."""
+        self.desk.voice_page(not self.desk.layout.get("settings-close"))
 
     def switch(self, line, key, on):
         x, y = self.find(*line)
         self.desk.press(x, y)
         self.wait_saved(**{key: on})
-        print(f"Alice's Voice Settings: {' '.join(line).capitalize()} {'on' if on else 'off'}; voice.json saved it.", flush=True)
+        print(f"Alice's Voice & Video page: {' '.join(line).capitalize()} {'on' if on else 'off'}; voice.json saved it.", flush=True)
 
     def threshold(self, target):
         """Move the manual threshold with the arrow keys over its slider."""
@@ -194,14 +190,34 @@ class Panel:
         d = self.desk
         d.cmd("xdotool", "windowfocus", d.win, "mousemove", "--window", d.win, str(x), str(y))
         steps = round(target - current)
-        d.cmd("xdotool", "key", "--repeat", str(abs(steps)), "--delay", "40", "Up" if steps > 0 else "Down")
+        if steps:
+            d.cmd("xdotool", "key", "--repeat", str(abs(steps)), "--delay", "40", "Up" if steps > 0 else "Down")
         self.wait_saved(threshold=float(target))
         print(f"Alice's threshold slider: {current:.0f} dB to {target:.0f} dB with the arrow keys; voice.json saved it.", flush=True)
+
+    def sweep(self, desks):
+        """Input sensitivity swept with the slider through the control map:
+        Alice's steady 410 Hz (-16 dBFS, processing off) passes while the
+        threshold is below it and is gated above it, at Bruno and Clara, and
+        her meter says which side it's on."""
+        alice, bruno, clara = desks
+        for target, passes in ((-70, True), (-40, True), (-24, True), (-10, False), (0, False),
+                               (-24, True), (-70, True)):
+            self.threshold(target)
+            heard = ({410, 1030}, {410, 670}) if passes else ({1030}, {670})
+            for d in (bruno, clara):
+                d.windows.clear()
+            wait_for(f"Alice {'heard' if passes else 'gated'} at a {target} dB threshold",
+                     lambda: bruno.hears(heard[0]) and clara.hears(heard[1]), 10)
+            meter = alice.layout.get("voice-meter")
+            assert meter and (meter["state"] == "voice") == passes, meter
+            print(f"  Threshold {target} dB: Bruno and Clara {'hear' if passes else 'do not hear'} Alice's 410 Hz; "
+                  f"her meter at {meter['tip']} {'opens' if passes else 'holds'} the gate.", flush=True)
 
     def meter(self):
         """Pixels of the manual meter's bright colours: (below, above) the
         threshold."""
-        self.desk.reveal("voice-meter")
+        self.desk.reveal_page("voice-meter")
         left, top, right, bottom = self.desk.layout.box(self.desk.layout.get("voice-meter"))
         im = self.desk.image()
         below = above = 0
@@ -228,7 +244,7 @@ def check_processing(desks, names, secret, users, dirs):
     for line in (("input", "sensitivity"), ("echo", "cancellation"), ("noise", "suppression"),
                  ("automatic", "gain", "control")):
         panel.find(*line)
-    print("Alice's Voice Settings show Input sensitivity, Echo cancellation, Noise suppression and "
+    print("Alice's Voice & Video page shows Input sensitivity, Echo cancellation, Noise suppression and "
           "Automatic gain control; all off as her saved voice.json says.", flush=True)
 
     # Echo: Alice's speaker plays into her microphone.
@@ -313,7 +329,7 @@ def check_processing(desks, names, secret, users, dirs):
         # A tuple: perfect silence (0.0) would read as "not yet".
         return (worst,) if worst < 30 else None
     worst, = wait_for("silence from Alice's gate at Bruno and Clara", silent, 10)
-    # With her Voice Settings open Alice's own roster isn't read; Bruno's and
+    # With her settings page open Alice's own roster isn't read; Bruno's and
     # Clara's show what the SFU reports. Her own ring is checked below.
     rosters("nobody speaking at Bruno and Clara", (bruno, clara), set())
     alice_id = users[0]
@@ -413,6 +429,10 @@ def check_processing(desks, names, secret, users, dirs):
     panel.switch(("automatic", "gain", "control"), "gain_control", False)
     panel.switch(("automatically", "determine"), "auto_sensitivity", False)
     panel.threshold(RAW["threshold"])
-    assert panel.saved() == RAW, panel.saved()
+    saved = panel.saved()
+    assert all(saved.get(k) == v for k, v in RAW.items()), saved
+    print("Every switch back off from the page; voice.json has the fixtures' unprocessed settings again.", flush=True)
+    print("Input sensitivity sweep, with the threshold's slider:", flush=True)
+    panel.sweep(desks)
+    panel.threshold(RAW["threshold"])
     panel.toggle()
-    print("Every switch back off from the panel; voice.json is the fixtures' unprocessed settings again.", flush=True)

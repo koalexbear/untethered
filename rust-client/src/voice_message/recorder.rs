@@ -201,7 +201,7 @@ impl App {
     }
 
     /// The timer and levels while recording, Enter while the bar shows.
-    pub(crate) fn voice_subscription(&self) -> Subscription<Msg> {
+    pub(crate) fn recorder_subscription(&self) -> Subscription<Msg> {
         let Some(rec) = &self.voice_recorder.current else {
             return Subscription::none();
         };

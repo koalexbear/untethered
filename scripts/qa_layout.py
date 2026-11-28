@@ -7,21 +7,38 @@ a state ("on", "off", "live", "selected"…), its tooltip and the text inside
 it. The call fixtures click through it instead of hovering icons and reading
 their tooltips with OCR.
 
-The call's controls (calls plan U1):
-  user panel        mute (off/on/deafened), mute-menu, deafen (off/on), deafen-menu
+The call's controls (calls plan U1, U2):
+  user panel        mute (off/on/deafened), mute-menu, deafen (off/on), deafen-menu,
+                    user-settings (the gear: User Settings)
   device menus      input-menu, input-device-N (text: the device, state
-                    "selected"), input-refresh, input-settings; output-… alike
+                    "selected"), input-refresh, input-settings (opens the
+                    Voice & Video page); output-… alike
   Voice Connected   call-status (text; state "connected"), call-room,
                     voice-settings-open, disconnect, camera and screen
                     (off/starting/live), call-notes (text), share-sound-panel
                     (Play shared audio, while someone shares)
-  Voice Settings    voice-settings, ptt, voice-auto, voice-echo, voice-noise,
-                    voice-gain, voice-slider, voice-meter, camera-item-N and
-                    app-audio-N (text: the camera or app; state "selected"),
-                    cameras-refresh, app-audio-stop, devices-refresh,
-                    share-sound, volume-N (text: name and percent),
-                    volume-slider-N, volume-reset-N
+  Voice Settings    voice-settings, voice-settings-page (opens the page),
+                    app-audio-N (text: the app; state "selected"),
+                    app-audio-stop, devices-refresh, share-sound, volume-N
+                    (text: name and percent), volume-slider-N, volume-reset-N
   voice header      ptt-header (Push-to-talk beside Join voice)
+  User Settings     settings-account and settings-voice (the sidebar; state
+                    "selected"), settings-page (the scrolling page),
+                    settings-close
+  Voice & Video     settings-input (text: the device; state on while its list
+                    is open), settings-input-menu, settings-input-N (state
+                    "selected"), settings-input-refresh; settings-output-… alike;
+                    input-volume and output-volume (tip "100%"), with
+                    …-volume-slider; mic-test (on/off), mic-meter (state
+                    "voice"; tip the level, "-42 dB"); input-mode-voice and
+                    input-mode-ptt (state "selected"); voice-auto, voice-slider
+                    (tip the threshold), voice-meter; ptt-key (text: the key),
+                    ptt-key-record, ptt-key-default, ptt-key-dialog,
+                    ptt-key-cancel, ptt-release (tip "100 ms") and
+                    ptt-release-slider; voice-echo, voice-noise, voice-gain
+                    (on/off); camera-item-N (text: the camera; state
+                    "selected"), cameras-refresh, camera-preview
+                    (off/starting/live), camera-test (on/off)
 """
 import json
 import time

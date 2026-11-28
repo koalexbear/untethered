@@ -46,6 +46,7 @@ mod sounds;
 mod tray;
 mod typing;
 mod upgrades;
+pub(crate) mod user_settings;
 mod viewer;
 mod voice_message;
 #[cfg(target_os = "linux")]
@@ -833,14 +834,15 @@ impl App {
         })
         .into()
     }
-    /// Push-to-talk beside Join voice, armed before joining.
+    /// Push-to-talk beside Join voice, armed before joining: the Voice &
+    /// Video page's input mode (user_settings.rs).
     #[cfg(target_os = "linux")]
     fn ptt_control(&self) -> El<'_> {
         crate::qa_layout::tag(
             "ptt-header",
-            if self.room_ptt { "on" } else { "off" },
+            if self.push_to_talk() { "on" } else { "off" },
             "",
-            iced::widget::checkbox(self.room_ptt)
+            iced::widget::checkbox(self.push_to_talk())
                 .label("Push-to-talk")
                 .size(16)
                 .text_size(14)
@@ -1517,17 +1519,20 @@ impl App {
         // Mute and Deafen, with or without a call (view/voice_panel.rs).
         #[cfg(target_os = "linux")]
         let controls = controls.push(self.voice_buttons());
-        container(controls.push(icon_button(
+        let gear = icon_button(
             Icon::Gear,
             "User Settings",
             self.account,
             Some(Msg::Account),
             tooltip::Position::Top,
-        )))
-        .width(Fill)
-        .padding([8, 8])
-        .style(|_| surface(TRAY, 0.))
-        .into()
+        );
+        #[cfg(target_os = "linux")]
+        let gear = crate::qa_layout::tag("user-settings", "", "User Settings", gear);
+        container(controls.push(gear))
+            .width(Fill)
+            .padding([8, 8])
+            .style(|_| surface(TRAY, 0.))
+            .into()
     }
     fn screen(&self) -> El<'_> {
         if self.account || self.logged_in && !self.verified {
@@ -3539,34 +3544,13 @@ impl App {
         })
         .into()
     }
-    /// Discord-style User Settings: a category list on the left, the page on
-    /// the right and a close control that returns to the conversation.
+    /// User Settings' My Account page, in the frame of user_settings.rs,
+    /// which also has the other pages.
     fn settings_view(&self) -> El<'_> {
-        let nav = column![
-            container(label("USER SETTINGS")).padding([6, 10]),
-            button(text("My Account").size(16))
-                .width(Fill)
-                .padding([6, 10])
-                .style(|_, _| button::Style {
-                    background: Some(ACTIVE.into()),
-                    text_color: TEXT,
-                    border: Border::default().rounded(4),
-                    ..Default::default()
-                }),
-        ]
-        .spacing(2)
-        .width(218);
-        let left = container(nav)
-            .width(Length::FillPortion(1))
-            .height(Fill)
-            .align_x(iced::alignment::Horizontal::Right)
-            .padding(Padding {
-                top: 60.,
-                right: 8.,
-                bottom: 20.,
-                left: 20.,
-            })
-            .style(|_| surface(SIDE, 0.));
+        #[cfg(target_os = "linux")]
+        if self.settings_page == user_settings::Page::Voice {
+            return self.settings_frame(self.voice_video_page());
+        }
         let secondary = |_: &Theme, s: button::Status| button::Style {
             background: Some(
                 match s {
@@ -3748,54 +3732,6 @@ impl App {
         if !self.status.is_empty() {
             page = page.push(text(&self.status).size(14).color(MUTED));
         }
-        let close = column![
-            with_tip(
-                button(container(icon(Icon::Close, 18., ICON)).center(36))
-                    .padding(0)
-                    .on_press(Msg::Back)
-                    .style(|_, s| button::Style {
-                        background: (s == button::Status::Hovered).then(|| HOVER.into()),
-                        border: Border {
-                            color: if s == button::Status::Hovered {
-                                BODY
-                            } else {
-                                ICON
-                            },
-                            width: 2.,
-                            radius: 18.0.into(),
-                        },
-                        ..Default::default()
-                    }),
-                "Back to rooms",
-                tooltip::Position::Bottom
-            ),
-            text("ESC").size(13).font(BOLD).color(CHANNEL)
-        ]
-        .spacing(8)
-        .align_x(Center);
-        let right = container(
-            row![
-                scrollable(container(page.max_width(740)).padding(Padding {
-                    top: 60.,
-                    right: 20.,
-                    bottom: 60.,
-                    left: 40.,
-                }))
-                .direction(thin_scrollbar())
-                .style(scroll_style(None))
-                .width(Fill)
-                .height(Fill),
-                container(close).padding(Padding {
-                    top: 60.,
-                    right: 21.,
-                    ..Padding::ZERO
-                })
-            ]
-            .height(Fill),
-        )
-        .width(Length::FillPortion(2))
-        .height(Fill)
-        .style(|_| surface(CHAT, 0.));
-        row![left, right].height(Fill).into()
+        self.settings_frame(page)
     }
 }
