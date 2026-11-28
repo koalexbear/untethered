@@ -48,6 +48,8 @@ them. Calls continue in their own plan
   where the homeserver shares presence, and your own status from the user
   panel; a nickname per server (Edit Server Profile), and Owner, Admin and
   Moderator badges from each room's power levels.
+  A picture per server too, and a banner, About Me and accent colour on
+  your profile card.
 - **Files and media:** drop, paste and pick files with progress, cancel and
   retry; every image previews inline, keeping its space while it loads;
   animated GIFs, WebPs, stickers and profile pictures, paused off screen;
@@ -116,7 +118,7 @@ doesn't:
 | **M12. Names** · done | Spec (per-room names); badges and colours client-side | Per-server nicknames (Matrix's per-room display names) and an Admin or Moderator badge, or a name colour, from the sender's power level, standing in for Discord's role colours. | A nickname set in one space shows only there, also in Element; a moderator's badge shows wherever their name does. |
 | **M13. Composer details** · done (no spell check) | Spec (`m.emote`); the rest client-side | Up arrow in an empty composer edits your last message; Escape marks the channel read; a message of only emoji shows larger; code blocks get syntax highlighting; `/me`, `/shrug` and `/spoiler`, listed when `/` starts the composer. Spell check isn't possible yet: Iced 0.14's `text_editor` has no spell checking and no way to underline or replace a misspelt word, and in the browser build the editor is drawn on a canvas, out of the browser's own checker's reach. | Each works as on Discord, and `/me` arrives in Element as an emote. |
 | **M14. Selection across messages** | Client | Drag a selection from one message into the next, and copy their text in order. Today a selection stays within one paragraph. | Dragging across three messages and pressing Ctrl+C pastes their three texts. |
-| **M15. Profile customization** | Spec (per-room names and pictures; profile fields since v1.16); the extra fields only Untethered shows | A profile picture per server (Matrix's per-room member avatar, alongside M12's nicknames), and a banner, bio and accent colour on your profile card as extended profile fields under our own names. Animated pictures play (P1). | A per-server picture set here shows only in that space, also in Element; a banner and bio set here show on your card in another Untethered. |
+| **M15. Profile customization** · done | Spec (per-room names and pictures; profile fields since v1.16); the extra fields only Untethered shows | A profile picture per server (Matrix's per-room member avatar, alongside M12's nicknames), and a banner, bio and accent colour on your profile card as extended profile fields under our own names. Animated pictures play (P1). | A per-server picture set here shows only in that space, also in Element; a banner and bio set here show on your card in another Untethered. |
 
 ### Phase 2 — getting people in
 

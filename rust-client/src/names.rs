@@ -1,11 +1,13 @@
-//! Names (ROADMAP M12): per-server nicknames and role badges.
+//! Names (ROADMAP M12): per-server nicknames and role badges, and per-server
+//! pictures (M15).
 //!
-//! Matrix has no per-space name. A server nickname is this account's display
-//! name in each room of the space: the space itself, its joined subspaces
-//! and channels (`m.room.member`, engine/names.rs), so Element and other
-//! clients show it in those rooms only. A channel joined after the nickname
-//! was set gets it too, while it still shows the global name it joined with.
-//! Clearing the nickname puts the global name back everywhere in the space.
+//! Matrix has no per-space profile. A server nickname is this account's
+//! display name, and a server picture its avatar, in each room of the space:
+//! the space itself, its joined subspaces and channels (`m.room.member`,
+//! engine/names.rs), so Element and other clients show them in those rooms
+//! only. A channel joined after they were set gets them too, while it still
+//! shows the global name or picture it joined with. Clearing them puts the
+//! global name or picture back everywhere in the space.
 //!
 //! Badges stand in for Discord's role colours: Matrix's own named power
 //! levels, from the room's power levels (Admin at 100, Moderator at 50, the
@@ -14,13 +16,20 @@
 //! name is.
 use crate::{
     App, Msg, Request, Section,
-    engine::{Command, names::Own},
+    engine::{
+        Command,
+        names::{Change, Own, Picture},
+    },
+    media::LocalFile,
     rooms::{Room, Rooms},
 };
-use iced::{Task, widget::operation};
+use iced::{Task, widget::image::Handle, widget::operation};
 use std::collections::{BTreeSet, VecDeque};
+use std::sync::Arc;
 
 pub const FIELD: &str = "server-nickname";
+/// The file picker's answer for a server picture (`Msg::Files`).
+pub const PICKER: &str = "server-picture:";
 /// Discord's limit on a nickname.
 pub const LENGTH: usize = 32;
 /// A version 12 room's creators outrank every power level (permissions.rs).
@@ -151,7 +160,23 @@ impl Rooms {
 pub struct Form {
     pub space: String,
     pub input: String,
+    /// A new server picture to save, shown in the form until then.
+    pub picture: Option<Arc<Picked>>,
+    /// The file picker is open, as this request.
+    pub picking: Option<i64>,
     pub problem: Option<&'static str>,
+}
+
+/// A picked picture's bytes, and how it looks once cut round.
+pub struct Picked {
+    pub bytes: Vec<u8>,
+    pub preview: Option<Handle>,
+}
+
+impl std::fmt::Debug for Picked {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Picked({} bytes)", self.bytes.len())
+    }
 }
 
 #[derive(Default)]
@@ -170,6 +195,11 @@ pub enum Input {
     Save,
     /// Clear the nickname: the global name shows again.
     Reset,
+    /// Choose a server picture with the file picker.
+    PickPicture,
+    Picked(i64, Result<Option<Arc<Picked>>, &'static str>),
+    /// Clear the server picture: the global one shows again.
+    ResetPicture,
     Close,
 }
 
@@ -205,6 +235,36 @@ impl App {
         let global = self.global_name()?;
         let r = self.live.list.get(space).filter(|r| r.space)?;
         shown(r.me.as_ref()?).filter(|name| Some(*name) != global)
+    }
+
+    /// This account's picture in a server: its picture in the space, where
+    /// that isn't the global one (ROADMAP M15).
+    pub fn server_picture(&self, space: &str) -> Option<&str> {
+        // The global profile is known once its name is.
+        self.global_name()?;
+        let r = self.live.list.get(space).filter(|r| r.space)?;
+        let global = self.own_avatar.as_deref();
+        r.me.as_ref()?
+            .avatar
+            .as_deref()
+            .filter(|avatar| Some(*avatar) != global)
+    }
+
+    /// The picture this account shows in a room: its server picture there,
+    /// or the global one.
+    pub fn own_picture<'a>(&'a self, r: &'a Room) -> Option<&'a str> {
+        r.me.as_ref()
+            .and_then(|me| me.avatar.as_deref())
+            .or(self.own_avatar.as_deref())
+    }
+
+    /// Someone's picture (mxc URI) in a room, as its members see it.
+    pub fn member_avatar<'a>(&'a self, r: &'a Room, user: &str) -> Option<&'a str> {
+        if user == self.matrix_id {
+            self.own_picture(r)
+        } else {
+            r.avatars.get(user).map(String::as_str)
+        }
     }
 
     /// The server a room belongs to: the open one if it's there, or else
@@ -247,6 +307,8 @@ impl App {
                 self.names.form = Some(Form {
                     space,
                     input,
+                    picture: None,
+                    picking: None,
                     problem: None,
                 });
                 self.server_menu = false;
@@ -262,23 +324,84 @@ impl App {
             Input::Save => {
                 if let Some(form) = &self.names.form {
                     let name = Some(form.input.trim().to_owned()).filter(|n| !n.is_empty());
+                    let change = Change {
+                        name: (name.as_deref() != self.nickname(&form.space)).then_some(name),
+                        avatar: form
+                            .picture
+                            .as_ref()
+                            .map(|p| Some(Picture::Upload(p.bytes.clone()))),
+                    };
                     let space = form.space.clone();
-                    self.save_nickname(space, name);
+                    self.save_server_profile(space, change);
                 }
             }
             Input::Reset => {
                 if let Some(form) = &self.names.form {
                     let space = form.space.clone();
-                    self.save_nickname(space, None);
+                    let change = Change {
+                        name: Some(None),
+                        ..Change::default()
+                    };
+                    self.save_server_profile(space, change);
+                }
+            }
+            Input::ResetPicture => {
+                if let Some(form) = &self.names.form {
+                    let space = form.space.clone();
+                    let change = Change {
+                        avatar: Some(None),
+                        ..Change::default()
+                    };
+                    self.save_server_profile(space, change);
+                }
+            }
+            Input::PickPicture if self.connected && !self.nickname_saving() => {
+                if let Some(form) = &mut self.names.form {
+                    self.seq += 1;
+                    form.picking = Some(self.seq);
+                    form.problem = None;
+                    let token = format!("{PICKER}{}", self.seq);
+                    return crate::profile_fields::pick_picture(token, "Choose a server picture");
+                }
+            }
+            Input::Picked(id, result) => {
+                if let Some(form) = &mut self.names.form
+                    && form.picking == Some(id)
+                {
+                    form.picking = None;
+                    match result {
+                        Ok(Some(picked)) => form.picture = Some(picked),
+                        Ok(None) => {}
+                        Err(problem) => form.problem = Some(problem),
+                    }
                 }
             }
             Input::Close if !self.nickname_saving() => self.names.form = None,
-            Input::Edit(_) | Input::Close => {}
+            Input::Edit(_) | Input::Close | Input::PickPicture => {}
         }
         Task::none()
     }
 
-    fn save_nickname(&mut self, space: String, name: Option<String>) {
+    /// The file picker's answer for a server picture: read and checked off
+    /// the UI thread, with a round preview.
+    pub fn server_picture_picked(&mut self, id: i64, file: Option<LocalFile>) -> Task<Msg> {
+        if !self
+            .names
+            .form
+            .as_ref()
+            .is_some_and(|f| f.picking == Some(id))
+        {
+            return Task::none();
+        }
+        let Some(file) = file else {
+            return self.names(Input::Picked(id, Ok(None)));
+        };
+        Task::perform(crate::profile_fields::read_picture(file, true), move |r| {
+            Msg::Names(Input::Picked(id, r.map(Some)))
+        })
+    }
+
+    fn save_server_profile(&mut self, space: String, change: Change) {
         if self.nickname_saving() || !self.connected {
             return;
         }
@@ -291,11 +414,14 @@ impl App {
         if rooms.is_empty() {
             return;
         }
+        if change == Change::default() {
+            return;
+        }
         if let Some(form) = &mut self.names.form {
             form.problem = None;
         }
         self.command(
-            move |id| Command::SetNickname { id, rooms, name },
+            move |id| Command::SetServerProfile { id, rooms, change },
             Request::Nickname(Write::Server(space)),
         );
     }
@@ -310,7 +436,7 @@ impl App {
                     self.names.form = None;
                 } else {
                     form.problem =
-                        Some("Couldn't change your nickname in every channel. Try again.");
+                        Some("Couldn't change your server profile in every channel. Try again.");
                 }
             }
             // Tried once; the room keeps the global name it joined with.
@@ -318,11 +444,11 @@ impl App {
         }
     }
 
-    /// Give rooms joined after their server's nickname was set that
-    /// nickname, as Discord does for a server's new channels. Only while a
-    /// room still shows the global name it joined with: a name set there
-    /// since, here or in another client, is left alone.
-    pub fn follow_nicknames(&mut self) {
+    /// Give rooms joined after their server's nickname or picture was set
+    /// that profile, as Discord does for a server's new channels. Only while
+    /// a room still shows the global name or picture it joined with: one set
+    /// there since, here or in another client, is left alone.
+    pub fn follow_server_profiles(&mut self) {
         if !self.logged_in || !self.verified || !self.connected || self.sdk.is_none() {
             return;
         }
@@ -336,30 +462,46 @@ impl App {
             };
             // Whether a member event the store can't place is the join, the
             // engine finds out.
-            if me.joined == Some(false) || shown(me) != global || self.names.followed.contains(id) {
+            if me.joined == Some(false) || self.names.followed.contains(id) {
                 continue;
             }
-            if let Some(name) = self.inherited(id, me.since) {
-                todo.push((id.clone(), name.to_owned()));
+            let name = (shown(me) == global)
+                .then(|| self.inherited(id, me.since, App::nickname))
+                .flatten();
+            let avatar = (me.avatar.as_deref() == self.own_avatar.as_deref())
+                .then(|| self.inherited(id, me.since, App::server_picture))
+                .flatten();
+            if name.is_some() || avatar.is_some() {
+                todo.push((
+                    id.clone(),
+                    name.map(str::to_owned),
+                    avatar.map(str::to_owned),
+                ));
             }
         }
-        for (room, name) in todo {
+        for (room, name, avatar) in todo {
             self.names.followed.insert(room.clone());
             let target = room.clone();
             self.command(
-                move |id| Command::FollowNickname {
+                move |id| Command::FollowServerProfile {
                     id,
                     room: target,
                     name,
+                    avatar,
                 },
                 Request::Nickname(Write::Follow(room)),
             );
         }
     }
 
-    /// The nickname of the nearest space above `room` that has one, set
-    /// before `joined`.
-    fn inherited(&self, room: &str, joined: i64) -> Option<&str> {
+    /// What `field` gives the nearest space above `room` that has it set,
+    /// set before `joined`.
+    fn inherited(
+        &self,
+        room: &str,
+        joined: i64,
+        field: for<'a> fn(&'a App, &str) -> Option<&'a str>,
+    ) -> Option<&str> {
         let mut seen = BTreeSet::from([room]);
         let mut todo = VecDeque::from([room]);
         while let Some(id) = todo.pop_front() {
@@ -368,10 +510,10 @@ impl App {
                     continue;
                 }
                 let set = self.live.list.get(space).and_then(|r| r.me.as_ref());
-                if let Some(name) = self.nickname(space)
+                if let Some(value) = field(self, space)
                     && set.is_some_and(|me| me.since < joined)
                 {
-                    return Some(name);
+                    return Some(value);
                 }
                 todo.push_back(space);
             }
@@ -402,6 +544,7 @@ mod tests {
     fn me(name: &str, since: i64, joined: bool) -> Option<Own> {
         Some(Own {
             name: Some(name.into()),
+            avatar: None,
             since,
             joined: Some(joined),
         })
@@ -521,10 +664,10 @@ mod tests {
         assert_eq!(app.names.form.as_ref().unwrap().input, "");
         let _ = app.names(Input::Edit(" Captain ".into()));
         let _ = app.names(Input::Save);
-        let Ok(Command::SetNickname {
+        let Ok(Command::SetServerProfile {
             id,
             mut rooms,
-            name,
+            change,
         }) = rx.try_recv()
         else {
             panic!("expected a nickname");
@@ -534,7 +677,8 @@ mod tests {
             rooms,
             ["!deep:x", "!general:x", "!new:x", "!space:x", "!sub:x"]
         );
-        assert_eq!(name.as_deref(), Some("Captain"));
+        assert_eq!(change.name, Some(Some("Captain".into())));
+        assert_eq!(change.avatar, None, "the picture stays");
         // One save at a time, and the form stays until it's done.
         let _ = app.names(Input::Save);
         let _ = app.names(Input::Close);
@@ -547,10 +691,10 @@ mod tests {
         assert!(app.names.form.as_ref().unwrap().problem.is_some());
 
         let _ = app.names(Input::Reset);
-        let Ok(Command::SetNickname { id, name, .. }) = rx.try_recv() else {
+        let Ok(Command::SetServerProfile { id, change, .. }) = rx.try_recv() else {
             panic!("expected a reset");
         };
-        assert_eq!(name, None);
+        assert_eq!(change.name, Some(None));
         app.engine_event(crate::engine::Event::Done { id, result: Ok(()) });
         assert!(app.names.form.is_none());
     }
@@ -598,14 +742,21 @@ mod tests {
         // Joined after the nickname was set (5), still with the global name.
         app.live
             .apply_engine(list(me("Captain", 5, false), me("Me", 9, true)));
-        app.follow_nicknames();
-        let Ok(Command::FollowNickname { room, name, .. }) = rx.try_recv() else {
+        app.follow_server_profiles();
+        let Ok(Command::FollowServerProfile {
+            room, name, avatar, ..
+        }) = rx.try_recv()
+        else {
             panic!("expected the new channel to follow");
         };
-        assert_eq!((room.as_str(), name.as_str()), ("!new:x", "Captain"));
+        assert_eq!(
+            (room.as_str(), name.as_deref()),
+            ("!new:x", Some("Captain"))
+        );
+        assert_eq!(avatar, None);
         // Rooms joined before it, and rooms in no space, are left alone.
         assert!(rx.try_recv().is_err());
-        app.follow_nicknames();
+        app.follow_server_profiles();
         assert!(rx.try_recv().is_err(), "once per room");
 
         // A member event the store can't place goes to the engine, which
@@ -615,10 +766,10 @@ mod tests {
         unknown.as_mut().unwrap().joined = None;
         app.live
             .apply_engine(list(me("Captain", 5, false), unknown));
-        app.follow_nicknames();
+        app.follow_server_profiles();
         assert!(matches!(
             rx.try_recv(),
-            Ok(Command::FollowNickname { room, .. }) if room == "!new:x"
+            Ok(Command::FollowServerProfile { room, .. }) if room == "!new:x"
         ));
     }
 
@@ -631,7 +782,7 @@ mod tests {
         ] {
             let (mut app, rx) = app();
             app.live.apply_engine(list(me("Captain", 5, false), new));
-            app.follow_nicknames();
+            app.follow_server_profiles();
             assert!(rx.try_recv().is_err());
         }
         // A subspace's own nickname is nearer than the server's.
@@ -640,10 +791,146 @@ mod tests {
         rooms.rooms[1].me = me("Sub name", 6, false);
         rooms.rooms[3].me = me("Me", 9, true);
         app.live.apply_engine(rooms);
-        app.follow_nicknames();
-        let Ok(Command::FollowNickname { room, name, .. }) = rx.try_recv() else {
+        app.follow_server_profiles();
+        let Ok(Command::FollowServerProfile { room, name, .. }) = rx.try_recv() else {
             panic!("expected the deep channel to follow");
         };
-        assert_eq!((room.as_str(), name.as_str()), ("!deep:x", "Sub name"));
+        assert_eq!(
+            (room.as_str(), name.as_deref()),
+            ("!deep:x", Some("Sub name"))
+        );
+    }
+
+    fn pictured(name: &str, avatar: Option<&str>, since: i64, joined: bool) -> Option<Own> {
+        Some(Own {
+            name: Some(name.into()),
+            avatar: avatar.map(Into::into),
+            since,
+            joined: Some(joined),
+        })
+    }
+
+    fn picked() -> Arc<Picked> {
+        Arc::new(Picked {
+            bytes: vec![1, 2, 3],
+            preview: None,
+        })
+    }
+
+    #[test]
+    fn the_server_picture_is_the_space_picture_unless_it_is_the_global_one() {
+        let (mut app, _) = app();
+        app.own_avatar = Some("mxc://h/global".into());
+        app.live
+            .apply_engine(list(pictured("Me", Some("mxc://h/global"), 1, true), None));
+        assert_eq!(app.server_picture("!space:x"), None);
+        app.live.apply_engine(list(
+            pictured("Me", Some("mxc://h/server"), 5, false),
+            pictured("Me", Some("mxc://h/global"), 1, true),
+        ));
+        assert_eq!(app.server_picture("!space:x"), Some("mxc://h/server"));
+        assert_eq!(app.server_picture("!general:x"), None, "not a server");
+        // Where members see it: the space's picture there, the global one
+        // in a room with no picture of its own, someone else's from the room.
+        let space = &app.live.list["!space:x"];
+        assert_eq!(
+            app.member_avatar(space, "@me:example.org"),
+            Some("mxc://h/server")
+        );
+        let general = &app.live.list["!general:x"];
+        assert_eq!(
+            app.member_avatar(general, "@me:example.org"),
+            Some("mxc://h/global")
+        );
+        assert_eq!(app.member_avatar(general, "@mira:x"), None);
+    }
+
+    #[test]
+    fn a_picked_picture_saves_with_the_name_in_one_change() {
+        let (mut app, rx) = app();
+        app.live
+            .apply_engine(list(me("Captain", 5, false), me("Me", 1, true)));
+        let _ = app.names(Input::Open("!space:x".into()));
+        let _ = app.names(Input::PickPicture);
+        let picking = app.names.form.as_ref().unwrap().picking.unwrap();
+        // A stale picker's answer is ignored.
+        let _ = app.names(Input::Picked(picking + 1, Ok(Some(picked()))));
+        assert!(app.names.form.as_ref().unwrap().picture.is_none());
+        let _ = app.names(Input::Picked(picking, Ok(Some(picked()))));
+        assert!(app.names.form.as_ref().unwrap().picture.is_some());
+        let _ = app.names(Input::Save);
+        let Ok(Command::SetServerProfile { change, .. }) = rx.try_recv() else {
+            panic!("expected the picture to save");
+        };
+        // The nickname didn't change, so only the picture is written.
+        assert_eq!(change.name, None);
+        assert_eq!(change.avatar, Some(Some(Picture::Upload(vec![1, 2, 3]))));
+    }
+
+    #[test]
+    fn reset_picture_puts_the_global_one_back_and_keeps_the_name() {
+        let (mut app, rx) = app();
+        app.own_avatar = Some("mxc://h/global".into());
+        app.live.apply_engine(list(
+            pictured("Captain", Some("mxc://h/server"), 5, false),
+            None,
+        ));
+        let _ = app.names(Input::Open("!space:x".into()));
+        let _ = app.names(Input::ResetPicture);
+        let Ok(Command::SetServerProfile {
+            id,
+            mut rooms,
+            change,
+        }) = rx.try_recv()
+        else {
+            panic!("expected a picture reset");
+        };
+        rooms.sort_unstable();
+        assert_eq!(
+            rooms,
+            ["!deep:x", "!general:x", "!new:x", "!space:x", "!sub:x"]
+        );
+        assert_eq!(change.avatar, Some(None));
+        assert_eq!(change.name, None);
+        app.engine_event(crate::engine::Event::Done { id, result: Ok(()) });
+        assert!(app.names.form.is_none());
+        // Nothing to save: no write.
+        let _ = app.names(Input::Open("!space:x".into()));
+        let _ = app.names(Input::Edit("Captain".into()));
+        let _ = app.names(Input::Save);
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn a_channel_joined_after_the_server_picture_gets_it() {
+        let (mut app, rx) = app();
+        app.own_avatar = Some("mxc://h/global".into());
+        // No nickname, a server picture set at 5; joined at 9 with the
+        // global picture.
+        app.live.apply_engine(list(
+            pictured("Me", Some("mxc://h/server"), 5, false),
+            pictured("Me", Some("mxc://h/global"), 9, true),
+        ));
+        app.follow_server_profiles();
+        let Ok(Command::FollowServerProfile {
+            room, name, avatar, ..
+        }) = rx.try_recv()
+        else {
+            panic!("expected the new channel to take the picture");
+        };
+        assert_eq!(room, "!new:x");
+        assert_eq!(name, None, "no nickname to take");
+        assert_eq!(avatar.as_deref(), Some("mxc://h/server"));
+        assert!(rx.try_recv().is_err(), "rooms joined earlier keep theirs");
+
+        // A picture set there since joining stays.
+        let (mut app, rx) = super::tests::app();
+        app.own_avatar = Some("mxc://h/global".into());
+        app.live.apply_engine(list(
+            pictured("Me", Some("mxc://h/server"), 5, false),
+            pictured("Me", Some("mxc://h/mine"), 9, true),
+        ));
+        app.follow_server_profiles();
+        assert!(rx.try_recv().is_err());
     }
 }

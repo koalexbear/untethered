@@ -30,6 +30,7 @@ mod names;
 mod popover;
 mod presence;
 mod profile;
+mod profile_fields;
 mod reaction_bar;
 mod rich;
 mod room_people;
@@ -1418,17 +1419,18 @@ impl App {
         }
         list
     }
-    /// A member's loaded profile picture in `r`.
+    /// A member's loaded profile picture in `r`: a server picture where
+    /// they set one (names.rs).
     pub(super) fn user_picture(
         &self,
         r: &Room,
         user: &str,
     ) -> Option<&iced::widget::image::Handle> {
-        self.avatars.get(r.avatars.get(user).map(String::as_str))
+        self.avatars.get(self.member_avatar(r, user))
     }
     /// A member's profile picture in `r`, playing if it's animated (P1).
     pub(super) fn user_face(&self, r: &Room, user: &str, name: &str, size: f32) -> El<'static> {
-        let mxc = r.avatars.get(user).map(String::as_str);
+        let mxc = self.member_avatar(r, user);
         match self.avatars.moving(mxc) {
             Some(frames) => animated::animated(frames.clone())
                 .width(size)
@@ -1915,7 +1917,7 @@ impl App {
                     &self.matrix_id,
                     &call_stage::Pictures {
                         avatars: &self.avatars,
-                        own: self.own_avatar.as_deref(),
+                        own: self.own_picture(r),
                     },
                 ));
             let panel = container(panel)
