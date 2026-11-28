@@ -5,10 +5,10 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
 | J5 | Sign-in everywhere | codex-j5 | `main` | working | 2026-11-27T22:26:13Z | `rust-client/src/engine/browser.rs`, `rust-client/src/engine/session.rs`, `rust-client/src/engine/worker.rs`, `rust-client/src/view/sdk_account.rs`, `rust-client/web/auth.js`, `rust-client/web/engine.js`, `rust-client/web/index.html`, `scripts/qa_matrix_sdk.py`, `scripts/qa_web_login.py` |
-| N8 | Server rail order and folders | n8-server-rail | `claude/n8-server-rail-3c3a7d` | review | 2026-11-28T09:54:01Z | `README.md`, `ROADMAP.md`, `rust-client/src/channel_order.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/rail.rs`, `rust-client/src/engine/rooms.rs`, `rust-client/src/main.rs`, `rust-client/src/rail_order.rs`, `rust-client/src/rooms.rs`, `rust-client/src/rooms/engine.rs`, `rust-client/src/shortcuts.rs`, `rust-client/src/view.rs`, `rust-client/src/view/channel_order.rs`, `rust-client/src/view/drag.rs`, `rust-client/src/view/icons.rs`, `rust-client/src/view/server_rail.rs`, `scripts/qa_server_rail.py` |
 
 ## Done
 
+- 2026-11-28 **N8** Server rail order and folders (n8-server-rail): merged as de46d8d
 - 2026-11-28 **M13** Composer details (m13-composer): merged as cafc355 (main de46d8d)
 - 2026-11-28 **C1** Server settings (c1-server-settings): merged as d0f34f4 (main de46d8d)
 - 2026-11-28 **U1** Voice Connected panel and user-panel Mute/Deafen (u1-voice-panel): merged as 0d278da (main de46d8d)
@@ -38,4 +38,3 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 - 2026-11-27 **N2** Remember where you were (main-session): merged as 3777467
 - 2026-11-27 **N1** Quick switcher (main-session): merged as 5d1ff40
 - 2026-11-27 **J3** DMs and blocking (main-session): merged as 5679235
-- 2026-11-27 **J2** Join by link (main-session): merged as 1582107

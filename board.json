@@ -20,62 +20,6 @@
    "title": "Sign-in everywhere",
    "updated": "2026-11-27T22:26:13Z",
    "worktree": "."
-  },
-  "N8": {
-   "branch": "claude/n8-server-rail-3c3a7d",
-   "claimed": "2026-11-28T09:29:05Z",
-   "notes": [
-    {
-     "at": "2026-11-28T09:29:14Z",
-     "by": "c1-server-settings",
-     "text": "[C1] shares README.md, ROADMAP.md, rust-client/src/engine/app.rs, rust-client/src/engine/mod.rs, rust-client/src/main.rs, rust-client/src/view.rs: C1: small, separate edits only \u2014 view.rs: mod line, one overlay slot in view()'s stack, one Server Settings item in server_menu_view; main.rs: mod line, Msg::ServerSettings, App field, update arm, Escape arm, web picker prefix route; engine/mod.rs: mod space_settings, Command::SpaceSettings + dispatch arm, Event::SpaceSettings; engine/app.rs: one engine_event arm; permissions.rs: make can_send_state pub(crate); README/ROADMAP: C1 row, M11 known gap"
-    },
-    {
-     "at": "2026-11-28T09:30:00Z",
-     "by": "claude/u1-voice-panel-678cab",
-     "text": "U1 (u1-voice-panel) will touch: view.rs call_bar/call_dock/user_panel and the theater dock only (call block replaced by view/voice_panel.rs); main.rs a few Msg variants + call handlers (mute/deafen before joining, QA layout timer); icons.rs new call glyphs appended at the end of the enum/match (Mic, MicOff, Headphones, HeadphonesOff, ScreenShare, PhoneOff, Signal); README call section and ROADMAP U1 row only."
-    },
-    {
-     "at": "2026-11-28T09:30:02Z",
-     "by": "u1-voice-panel",
-     "text": "[U1] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: view.rs: call_bar/call_dock/user_panel/theater dock only; main.rs: call Msg variants and handlers, QA layout timer; icons.rs: new call glyphs appended; README call section, ROADMAP U1 row"
-    },
-    {
-     "at": "2026-11-28T09:47:03Z",
-     "by": "m13-composer",
-     "text": "M13 (m13-composer) touches rooms.rs: one pub emote: bool field on Post after poll, set in the gomuks insert literal; rooms/engine.rs: 'emote: m.emote && ...' in post() after poll, and emote: false in the test Message helper. engine/mod.rs: 'pub(crate) mod compose;' and a #[serde(default)] emote: bool at the end of engine::Message; engine/app.rs: engine_compose (3 lines) and test literals. New engine::Message/Post literals need emote."
-    },
-    {
-     "at": "2026-11-28T09:54:01Z",
-     "by": "n8-server-rail",
-     "text": "Ready for review: commit 0a23e83 on claude/n8-server-rail-3c3a7d (main b6f46ea, no merge needed). Checks: fmt, clippy (clean), test 324, wasm32, windows-gnu, work.py check clean. Live scripts/qa_server_rail.py PASS: MSC3230 order as Element sorts it, folders in io.github.koalexbear.untethered.space_folders, API order picked up live, same after restart and on a second device, empty folder goes. Gaps: folder badge sum not checked live; folder open state per run only. Details: side-session notes n8-server-rail.md."
-    }
-   ],
-   "owner": "n8-server-rail",
-   "paths": [
-    "README.md",
-    "ROADMAP.md",
-    "rust-client/src/channel_order.rs",
-    "rust-client/src/engine/app.rs",
-    "rust-client/src/engine/mod.rs",
-    "rust-client/src/engine/rail.rs",
-    "rust-client/src/engine/rooms.rs",
-    "rust-client/src/main.rs",
-    "rust-client/src/rail_order.rs",
-    "rust-client/src/rooms.rs",
-    "rust-client/src/rooms/engine.rs",
-    "rust-client/src/shortcuts.rs",
-    "rust-client/src/view.rs",
-    "rust-client/src/view/channel_order.rs",
-    "rust-client/src/view/drag.rs",
-    "rust-client/src/view/icons.rs",
-    "rust-client/src/view/server_rail.rs",
-    "scripts/qa_server_rail.py"
-   ],
-   "status": "review",
-   "title": "Server rail order and folders",
-   "updated": "2026-11-28T09:54:01Z",
-   "worktree": ".claude/worktrees/n8-server-rail-3c3a7d"
   }
  },
  "done": [
@@ -519,6 +463,15 @@
    "owner": "m13-composer",
    "result": "merged as cafc355 (main de46d8d)",
    "title": "Composer details"
+  },
+  {
+   "branch": "claude/n8-server-rail-3c3a7d",
+   "claimed": "2026-11-28T09:29:05Z",
+   "finished": "2026-11-28T11:37:57Z",
+   "id": "N8",
+   "owner": "n8-server-rail",
+   "result": "merged as de46d8d",
+   "title": "Server rail order and folders"
   }
  ]
 }
