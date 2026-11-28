@@ -27,12 +27,25 @@
    "notes": [],
    "owner": "u1-voice-panel",
    "paths": [
+    "README.md",
+    "ROADMAP.md",
+    "experiments/rtc-audio/README.md",
+    "rust-client/docs/calls-parity-plan.md",
+    "rust-client/src/desktop_call.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/qa_layout.rs",
+    "rust-client/src/view/voice_panel.rs",
     "scripts/qa_app_sound.py",
-    "scripts/qa_switch_camera.py"
+    "scripts/qa_dm_video.py",
+    "scripts/qa_element_video.py",
+    "scripts/qa_layout.py",
+    "scripts/qa_native_dm.py",
+    "scripts/qa_switch_camera.py",
+    "scripts/qa_voice_room.py"
    ],
    "status": "working",
    "title": "Retarget switch-camera and app-sound fixtures to U1's controls",
-   "updated": "2026-11-28T11:40:25Z",
+   "updated": "2026-11-28T11:43:08Z",
    "worktree": ".claude/worktrees/u1-voice-panel-678cab"
   }
  },
