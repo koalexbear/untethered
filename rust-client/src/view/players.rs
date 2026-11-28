@@ -14,6 +14,9 @@ use iced::{
 };
 use std::time::Duration;
 
+/// A voice message's waveform in its card, at most this many bars.
+const WAVE_BARS: usize = 44;
+
 /// A small round control.
 fn control<'a>(glyph: Icon, size: f32, msg: Msg) -> El<'a> {
     button(container(icon(glyph, size * 0.5, Color::WHITE)).center(size))
@@ -112,10 +115,44 @@ impl App {
             .into()
     }
 
+    /// A voice message's waveform as its seek bar (ROADMAP M10): the
+    /// played part brighter, with the slider's handle over it once loaded.
+    fn wave_bar<'a>(bars: &[u16], present: bool, at: f32) -> El<'a> {
+        let wave = container(super::voice_message::waveform(
+            &crate::voice_message::heights(bars, WAVE_BARS),
+            if present { at } else { 0. },
+            28.,
+        ))
+        .center_y(28)
+        .width(Fill)
+        .clip(true);
+        if !present {
+            return wave.into();
+        }
+        let seek = slider(0.0_f32..=1.0, at, Msg::InlineScrub)
+            .step(0.001_f32)
+            .on_release(Msg::InlineControl(Control::Seek(at)))
+            .width(Fill)
+            .height(28)
+            .style(|theme, status| {
+                let mut style = slider::default(theme, status);
+                style.rail.backgrounds = (Color::TRANSPARENT.into(), Color::TRANSPARENT.into());
+                style.with_circular_handle(5.)
+            });
+        stack![wave, seek].width(Fill).into()
+    }
+
     /// Play/pause, the time, a seek bar and mute, for an audio card.
     fn play_bar<'a>(&'a self, event: &str, media: &'a Media) -> El<'a> {
         use crate::player::clock;
-        let p = self.progress(event);
+        let mut p = self.progress(event);
+        let voice = media.voice.as_ref();
+        // Its length before it plays, from the event.
+        if p.total.is_zero()
+            && let Some(ms) = voice.and_then(|v| v.duration_ms)
+        {
+            p.total = Duration::from_millis(ms);
+        }
         let toggle = Msg::PlayInline(event.to_owned(), media.clone());
         let mut bar = row![
             control(
@@ -129,10 +166,10 @@ impl App {
         ]
         .spacing(8)
         .align_y(Center);
-        bar = bar.push(if p.present {
-            Self::seek_bar(p.at)
-        } else {
-            Space::new().width(Fill).into()
+        bar = bar.push(match voice.filter(|v| !v.waveform.is_empty()) {
+            Some(v) => Self::wave_bar(&v.waveform, p.present, p.at),
+            None if p.present => Self::seek_bar(p.at),
+            None => Space::new().width(Fill).into(),
         });
         if p.present {
             bar = bar.push(control(
@@ -244,7 +281,15 @@ impl App {
         let failed = self.inline_playing(Some(event)).is_some_and(|p| p.failed);
         let mut card = column![
             row![
-                icon(Icon::Speaker, 22., Color::from_rgb8(0x94, 0x9c, 0xf7)),
+                icon(
+                    if media.voice.as_ref().is_some_and(|v| v.voice) {
+                        Icon::Mic
+                    } else {
+                        Icon::Speaker
+                    },
+                    22.,
+                    Color::from_rgb8(0x94, 0x9c, 0xf7)
+                ),
                 column![
                     text(&media.name).size(15).font(BOLD).color(TEXT),
                     text(if failed {

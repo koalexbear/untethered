@@ -20,6 +20,7 @@ use matrix_sdk::{
     room::edit::EditedContent,
     ruma::{
         EventId, OwnedEventId, OwnedRoomId, OwnedTransactionId, RoomId,
+        serde::Raw,
         events::{
             AnyMessageLikeEventContent, Mentions,
             room::message::{
@@ -493,6 +494,40 @@ impl Timelines {
         sent(&queue, &mut updates, vec![handle]).await
     }
 
+    /// Upload and send a voice message (ROADMAP M10). Its content goes as
+    /// JSON, as Element sends it: MSC1767's text and file blocks have no
+    /// place in the SDK's typed audio content, which would drop them.
+    pub async fn send_voice(
+        &self,
+        room: &str,
+        clip: crate::voice_message::Clip,
+        reply_to: Option<String>,
+    ) -> Result<(), Failure> {
+        // Open, so its local echo shows while it sends.
+        self.get(room).await?;
+        let joined = RoomId::parse(room)
+            .ok()
+            .and_then(|id| self.client.get_room(&id))
+            .ok_or(Failure::Unavailable)?;
+        let encrypt = joined
+            .latest_encryption_state()
+            .await
+            .map_err(|_| Failure::Unreachable)?
+            .is_encrypted();
+        let mut content = super::media::voice_content(&self.client, &clip, encrypt).await?;
+        if let Some(target) = reply_to {
+            content = voice_reply(&joined, content, target).await?;
+        }
+        let raw = serde_json::value::to_raw_value(&content).map_err(|_| Failure::Failed)?;
+        let queue = joined.send_queue();
+        let (_, mut updates) = queue.subscribe().await.map_err(|_| Failure::Failed)?;
+        let handle = queue
+            .send_raw(Raw::from_json(raw), "m.room.message".into())
+            .await
+            .map_err(|_| Failure::Failed)?;
+        sent(&queue, &mut updates, vec![handle]).await
+    }
+
     /// Forward `event`, a message `room` shows, to the room `to` (ROADMAP
     /// M8), as Element does: its content sent again with no reply or
     /// thread, so an attachment reuses its file, and its key, rather than
@@ -713,6 +748,40 @@ pub(super) fn html_body(msgtype: &MessageType) -> Option<String> {
     }
     .filter(|f: &&FormattedBody| f.format == MessageFormat::Html)
     .map(|f| f.body.clone())
+}
+
+/// `content` as a reply to `target`, with the relation and mentions the
+/// SDK gives replies, keeping the fields its typed content has no place for.
+async fn voice_reply(
+    room: &matrix_sdk::Room,
+    content: serde_json::Value,
+    target: String,
+) -> Result<serde_json::Value, Failure> {
+    use matrix_sdk::room::reply::{EnforceThread, Reply as ReplyTo};
+    use matrix_sdk::ruma::events::room::message::AddMentions;
+    let typed: RoomMessageEventContent =
+        serde_json::from_value(content.clone()).map_err(|_| Failure::Failed)?;
+    let reply = ReplyTo {
+        event_id: EventId::parse(target).map_err(|_| Failure::Unavailable)?,
+        enforce_thread: EnforceThread::MaybeThreaded,
+        add_mentions: AddMentions::Yes,
+    };
+    let replied = room
+        .make_reply_event(
+            RoomMessageEventContentWithoutRelation::new(typed.msgtype),
+            reply,
+        )
+        .await
+        .map_err(|_| Failure::Unavailable)?;
+    let mut out = serde_json::to_value(replied).map_err(|_| Failure::Failed)?;
+    if let (serde_json::Value::Object(out), serde_json::Value::Object(original)) =
+        (&mut out, content)
+    {
+        for (key, value) in original {
+            out.entry(key).or_insert(value);
+        }
+    }
+    Ok(out)
 }
 
 /// Wait for the homeserver to accept what `handles` queued, in one room. On

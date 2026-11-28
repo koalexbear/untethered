@@ -46,6 +46,7 @@ mod tray;
 mod typing;
 mod upgrades;
 mod viewer;
+mod voice_message;
 #[cfg(target_os = "linux")]
 mod voice_panel;
 #[cfg(target_os = "linux")]
@@ -3279,7 +3280,11 @@ impl App {
             }
             None => Space::new().into(),
         };
-        let field = column![staged].push(
+        // While recording a voice message, its bar takes the row's place;
+        // while the composer is empty, the microphone takes Send's
+        // (view/voice_message.rs).
+        let send = self.send_or_record(send, !has_files && self.editor.text().trim().is_empty());
+        let field = column![staged].push(self.voice_bar().unwrap_or_else(|| {
             row![attach, editor, emoji, self.sticker_button(restricted), send]
                 .spacing(14)
                 .align_y(Center)
@@ -3287,8 +3292,9 @@ impl App {
                     left: 16.,
                     right: 8.,
                     ..Padding::ZERO
-                }),
-        );
+                })
+                .into()
+        }));
         let attached = reply.is_some();
         let composer = container(field)
             .width(Fill)
