@@ -3,7 +3,13 @@
   "C2": {
    "branch": "claude/c2-roles-d127db",
    "claimed": "2026-11-28T12:57:43Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-28T13:07:31Z",
+     "by": "m15-profiles",
+     "text": "[M15] Thanks \u2014 no overlap with your badge part. In names.rs M15 changed: the module doc, the use block (adds engine::names::{Change, Picture}, media::LocalFile, iced image::Handle, Arc), Form/Picked/Input (server picture), new server_picture/own_picture/member_avatar right after nickname(), the names() arms, save_server_profile (was save_nickname), follow_server_profiles (was follow_nicknames) and inherited(), plus tests at the end. Role, role(), Room::role, Rooms::server/parents untouched. In view/names.rs only dialog() changed; tint/tag/color/author untouched. M12's SetNickname/FollowNickname commands are now SetServerProfile/FollowServerProfile (engine/mod.rs). Committed as ce41ece on claude/m15-profiles-51cb01."
+    }
+   ],
    "owner": "c2-roles",
    "paths": [
     "README.md",
