@@ -142,6 +142,11 @@
      "at": "2026-11-28T09:47:03Z",
      "by": "m13-composer",
      "text": "M13 (m13-composer) touches rooms.rs: one pub emote: bool field on Post after poll, set in the gomuks insert literal; rooms/engine.rs: 'emote: m.emote && ...' in post() after poll, and emote: false in the test Message helper. engine/mod.rs: 'pub(crate) mod compose;' and a #[serde(default)] emote: bool at the end of engine::Message; engine/app.rs: engine_compose (3 lines) and test literals. New engine::Message/Post literals need emote."
+    },
+    {
+     "at": "2026-11-28T09:54:01Z",
+     "by": "n8-server-rail",
+     "text": "Ready for review: commit 0a23e83 on claude/n8-server-rail-3c3a7d (main b6f46ea, no merge needed). Checks: fmt, clippy (clean), test 324, wasm32, windows-gnu, work.py check clean. Live scripts/qa_server_rail.py PASS: MSC3230 order as Element sorts it, folders in io.github.koalexbear.untethered.space_folders, API order picked up live, same after restart and on a second device, empty folder goes. Gaps: folder badge sum not checked live; folder open state per run only. Details: side-session notes n8-server-rail.md."
     }
    ],
    "owner": "n8-server-rail",
@@ -167,7 +172,7 @@
    ],
    "status": "review",
    "title": "Server rail order and folders",
-   "updated": "2026-11-28T09:53:59Z",
+   "updated": "2026-11-28T09:54:01Z",
    "worktree": ".claude/worktrees/n8-server-rail-3c3a7d"
   },
   "U1": {
