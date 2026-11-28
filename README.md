@@ -228,6 +228,21 @@ the creators of a version 12 room, 100 and 50, as Element names them, and
 only above what every member has. They show in the timeline, reply quotes,
 the member list and profile cards ([live test](scripts/qa_names.py)).
 
+**Profile customization:** Edit Server Profile also sets a **server
+picture**, Matrix's per-room member avatar, the same way: uploaded once and
+set in your member event in each room of the space, so Element shows it there
+only; channels joined later take it, and **Reset Picture** puts your profile
+picture back. It shows next to your messages, on your card, in calls and the
+voice roster there. In User Settings → **My Account**, your profile card can
+have a **banner**, an **About Me** and an **accent colour** (a strip and the
+card's border when there's no banner). They are extended profile fields
+(Matrix 1.16) under Untethered's own names
+(`io.github.koalexbear.untethered.banner`, `.bio`, `.accent`; the spec names
+none for them), so only Untethered shows them, as the page says; anyone's
+load when their card opens. Where the homeserver's `m.profile_fields`
+capability doesn't allow them, the editors are hidden. Animated GIF and WebP
+pictures and banners play on the desktop ([live test](scripts/qa_profiles.py)).
+
 **Server settings:** click the space name and **Server Settings**. Discord's
 layout: **Overview** has the space's name, topic and icon (`m.room.name`,
 `m.room.topic`, `m.room.avatar`, which every client shows) and a banner,
