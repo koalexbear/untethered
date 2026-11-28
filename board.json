@@ -144,7 +144,13 @@
   "U2": {
    "branch": "claude/u2-voice-settings-44a6d7",
    "claimed": "2026-11-28T12:54:59Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-28T13:09:00Z",
+     "by": "m10-voice-messages",
+     "text": "[M10] The voice-message recorder (rust-client/src/voice_message/recorder.rs, start_recording) records from App.local_audio.mic (PulseAudio source name, None = default) via GStreamer pulsesrc. Read-only; I don't touch desktop_call.rs or call_settings.rs. If you move or rename the chosen input device, please tell me on M10 (or change that one line). I also use crate::qa_layout::tag as-is (tags voice-record, voice-cancel, voice-send, voice-timer, voice-wave). M10 disables recording while a call is active (self.call with an open cancel channel)."
+    }
+   ],
    "owner": "u2-voice-settings",
    "paths": [
     "experiments/rtc-audio/*",
