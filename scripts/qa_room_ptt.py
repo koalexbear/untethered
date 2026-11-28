@@ -23,7 +23,7 @@ class X11Keys:
 
     def __init__(self, stack, alice):
         self.alice = alice
-        # Below the 1180×760 client, clear of the call dock's hover tooltips.
+        # Below the 1180×760 client, clear of the call panel's hover tooltips.
         stack.enter_context(child(["xmessage", "-title", "PTT focus target", "-geometry", "220x80+10+790",
                                    "Isolated focus test"], alice.env))
         self.target = wait_for("private focus target", lambda: alice.cmd(
@@ -110,10 +110,11 @@ def check_ptt(stack,desks,audio_counts,same_tracks,mode=None):
 
     keys=PortalKeys(stack,alice) if mode=="wayland" else X11Keys(stack,alice)
     name,key,focus=keys.name,keys.key,keys.focus
-    # The call dock names the key that works: "Hold Right Ctrl to talk while
-    # Untethered is focused." in-window, "Hold <key> to talk." desktop-wide.
+    # The Voice Connected panel names the key that works: "Hold Right Ctrl to
+    # talk while Untethered is focused." in-window, "Hold <key> to talk."
+    # desktop-wide (its notes, in the control map).
     def hint():
-        words=[w for w,_,_ in alice.words()]
+        words=alice.layout.text("call-notes").lower().replace(".","").split()
         return "talk" in words and (("focused" in words)==(mode is None)) and name.split()[-1].lower() in words
     wait_for(f"push-to-talk hint for {name}",hint,15)
     def edge(down,stage,tone):

@@ -5,7 +5,6 @@ import io
 import json
 import math
 import os
-import re
 import subprocess as sp
 import threading
 import time
@@ -17,8 +16,9 @@ from urllib.parse import quote
 
 from PIL import Image
 from qa_desktop_dm import sfu_participants
+from qa_layout import WORDS, Layout, resolve
 from qa_native_paste import child, isolated_env, start_display, wait_for
-from qa_ui import CHAT_X, RAIL, SIDEBAR, USER_PANEL, Ui, clean, icon_buttons, read
+from qa_ui import CHAT_X, USER_PANEL, Ui, clean, read
 
 MEMBER = "org.matrix.msc3401.call.member"
 TONES = (410, 670, 1030, 530, 830)
@@ -50,6 +50,9 @@ class Desktop:
         self.windows=deque(maxlen=12)
         self.audit=None
         self.stats=None  # UNTETHERED_QA_VIDEO_STATS log, when enabled
+        # The call controls' map (qa_layout.py); a KWin window's content
+        # starts below its 28 px title bar.
+        self.layout=Layout(env["UNTETHERED_QA_LAYOUT"],(0,28) if kde else (0,0))
         # When a list: (monotonic time read, 12 kHz samples) per 100 ms window.
         self.capture=None
         # When the current input signal started feeding (qa_voice_processing).
@@ -188,35 +191,38 @@ class Desktop:
                       "click","--repeat",str(max(1,abs(dy)//60)),"5" if dy>0 else "4")
 
     def devices_panel(self,end):
-        """Scroll the call dock's Devices panel to its "top" or "bottom".
-
-        The panel is at most 160 px tall, just above the user panel at the
-        foot of the sidebar; the camera section is below its fold."""
-        x,y=self.ui.at(RAIL+SIDEBAR//2,self.ui.height-USER_PANEL-60)
+        """Scroll the Voice Settings popup to its "top" or "bottom"."""
+        x,y=self.layout.wait("voice-settings")
         self.scroll(x,y,600 if end=="bottom" else -600)
 
-    def tooltip(self,x,y):
-        """Hover a control and OCR only the tooltip that appears above it.
+    def settings(self,open=True):
+        """Open or close Voice Settings from the Voice Connected panel."""
+        want="on" if open else "off"
+        if self.layout.state("voice-settings-open")!=want:
+            self.press(*self.layout.wait("voice-settings-open"))
+            wait_for("Voice Settings "+("open" if open else "closed"),
+                     lambda:self.layout.state("voice-settings-open")==want,6)
 
-        Status text can sit right behind the tooltip ("In voice · 3 connected"
-        does in the dock), so read only the pixels that got brighter between
-        the pointer resting below the row and hovering: the tooltip's light
-        text, not the text it covers."""
-        from PIL import ImageChops,ImageOps
-        area=(max(0,x-150),max(0,y-70),x+150,y-19)
-        self.hover(x,y+60);time.sleep(.25)
-        before=self.shot().crop(area)
-        self.hover(x,y);time.sleep(.4)
-        after=self.shot().crop(area)
-        if debug:=os.environ.get("KWIN_QA_DEBUG"):
-            before.save(Path(debug)/f"tooltip-{self.i}-{x}-before.png");after.save(Path(debug)/f"tooltip-{self.i}-{x}-after.png")
-        gain=ImageChops.subtract(after.convert("L"),before.convert("L"))
-        if not (box:=gain.point(lambda v:255 if v>24 else 0).getbbox()):return ""
-        # Keep the grey levels: a hard threshold thins "Stop" into "step".
-        im=gain.crop((max(0,box[0]-4),max(0,box[1]-4),min(gain.width,box[2]+4),min(gain.height,box[3]+4)))
-        im=ImageOps.invert(ImageOps.autocontrast(im))
-        buf=io.BytesIO();im.resize((im.width*3,im.height*3),Image.LANCZOS).save(buf,"PNG")
-        return sp.run(["tesseract","stdin","stdout","--psm","7"],input=buf.getvalue(),capture_output=True).stdout.decode().lower()
+    def close_popups(self,name):
+        """A click outside an open popup only closes it: close any that
+        `name` isn't in before clicking it. The control that opened one
+        closes it anyway."""
+        if name in ("voice-settings-open","mute-menu","deafen-menu"):return
+        for popup in ("voice-settings","input-menu","output-menu"):
+            if self.layout.get(popup) and not self.layout.inside(name,popup):
+                self.press(*self.layout.find(name))
+                wait_for(popup+" closed",lambda:not self.layout.get(popup),6)
+
+    def reveal(self,name):
+        """Scroll Voice Settings until `name` shows whole; its centre."""
+        for _ in range(20):
+            if self.layout.inside(name,"voice-settings"):return self.layout.find(name)
+            c,area=self.layout.get(name),self.layout.get("voice-settings")
+            if c and area:
+                x,y=self.layout.centre(area)
+                self.scroll(x,y,120 if c["y"]>area["y"] else -120)
+            time.sleep(.45)
+        raise RuntimeError(f"{name} not shown in Voice Settings; {self.layout.missing()}")
 
     def title(self):
         if self.kde:return self.kde.command("kdotool","getwindowname",self.win,check=False).stdout
@@ -234,23 +240,25 @@ class Desktop:
             tip="start "+label+" call"
             self.press(*wait_for(tip,lambda:self.ui.header(tip),20))
             return
-        icons={"mute":[0],"unmute":[0],"start":[1],"camera":[1],"share":[2],"sharing":[2],
-               "stop":[2,1],"cancel":[2,1],"leave":[3],"hang":[3]}
-        read={}
-        def locate():
-            if label in icons:
-                buttons=icon_buttons(self.shot())
-                # Try the usual slot first; the tooltip text decides.
-                order=[i for i in icons[label] if i<len(buttons)]
-                for i in order+[i for i in range(len(buttons)) if i not in order]:
-                    read[buttons[i]]=tip=self.tooltip(*buttons[i])
-                    if re.search(r"\b"+label+r"\b",tip):return buttons[i]
-                return None
-            return next(((x,y) for word,x,y in self.words() if word==label),None)
-        try:x,y=wait_for(label,locate,12)
-        except RuntimeError:
-            if label in icons:print(f"Desktop {self.i+1} dock tooltips:",{k:v.strip() for k,v in read.items()},flush=True)
-            raise
+        if label=="push-to-talk":
+            # Beside Join voice before joining; in Voice Settings during a call.
+            if spot:=self.layout.find("ptt-header"):
+                self.press(*spot)
+                return
+            self.settings()
+            self.press(*self.reveal("ptt"))
+            self.settings(False)
+            return
+        if label in WORDS or label in ("stop","cancel","sharing"):
+            # The call's icon-only controls, through the control map.
+            try:name=wait_for(label,lambda:resolve(self.layout,label),12)
+            except RuntimeError:
+                print(f"Desktop {self.i+1}",self.layout.missing(),flush=True)
+                raise
+            self.close_popups(name)
+            self.press(*self.layout.find(name))
+            return
+        x,y=wait_for(label,lambda:next(((x,y) for word,x,y in self.words() if word==label),None),12)
         self.press(x,y)
 
     def open_stage(self):
@@ -266,6 +274,34 @@ class Desktop:
         windows=list(self.windows)
         return len(windows)==12 and all(all(a>500 if f in expected else a<200 for a,f in zip(amps,TONES))
                                         for amps in windows)
+
+
+def evidence(desks,name):
+    """Save each client's window as <name>-<n>.png under RTC_QA_SCREENSHOTS, if set."""
+    if not (dest:=os.getenv("RTC_QA_SCREENSHOTS")):return
+    path=Path(dest);path.mkdir(parents=True,exist_ok=True)
+    time.sleep(.5)
+    for i,d in enumerate(desks):
+        try:d.shot().save(path/f"{name}-{i+1}.png")
+        except Exception as e:print(f"Screenshot {name}-{i+1} failed: {e!r}",flush=True)
+
+
+def muted_from_start(secret,user,seconds=3):
+    """Poll the SFU from the join click: `user`'s microphone must be muted
+    in every sample from the first one that shows it, for `seconds` after."""
+    seen=[];until=None
+    deadline=time.monotonic()+40
+    while time.monotonic()<deadline and (until is None or time.monotonic()<until):
+        for p in sfu_participants(secret,allow_empty=True):
+            if p["identity"].rsplit(":",1)[0]!=user:continue
+            audio=[t for t in p.get("tracks",[]) if t.get("type","AUDIO")=="AUDIO"]
+            if audio:
+                seen.append(audio[0].get("muted",False))
+                until=until or time.monotonic()+seconds
+        time.sleep(.05)
+    assert seen,f"{user}'s microphone never appeared at the SFU"
+    assert all(seen),f"{user}'s microphone was unmuted at the SFU: {seen}"
+    return len(seen)
 
 
 def highlights(peer,names):
@@ -308,6 +344,34 @@ def check_speaking(desks,names):
     verify({2})
     print("Mute cleared Clara on all 3 rosters with her input still active; unmute restored her label.",flush=True)
     stage(set())
+
+
+def check_theater(desks):
+    """Alice opens the stage from her Voice Connected panel's room link and
+    turns on Theater: the panel and her Mute and Deafen stay in the corner
+    over the stage, and work there."""
+    alice=desks[0]
+    for i,d in enumerate(desks):d.tone=i  # check_speaking left everyone silent
+    alice.press(*alice.layout.wait("call-room"))
+    wait_for("call stage",lambda:"theater" in {w for w,_,_ in alice.words()},20)
+    alice.click("theater")
+    def cornered():
+        # The sidebar is gone; the panel and Mute sit in the bottom-left.
+        mute,panel=alice.layout.get("mute"),alice.layout.get("call-status")
+        words={w for w,x,_ in alice.words() if x<300}
+        return mute and panel and mute["x"]<240 and "mentions" not in words and "exit" in {w for w,_,_ in alice.words()}
+    wait_for("Theater with the call panel in its corner",cornered,15)
+    evidence(desks,"voice-room-theater")
+    alice.click("mute")
+    wait_for("Alice muted from Theater",lambda:desks[1].hears({1030}) and desks[2].hears({670}),12)
+    alice.click("unmute")
+    wait_for("Alice unmuted from Theater",lambda:desks[1].hears({410,1030}) and desks[2].hears({410,670}),12)
+    alice.click("exit")
+    wait_for("Theater closed",lambda:"theater" in {w for w,_,_ in alice.words()},12)
+    alice.click("chat")
+    wait_for("back to the docked call",lambda:alice.layout.find("call-room") and "theater" not in {w for w,_,_ in alice.words()},12)
+    print("Theater: the call-room link opened the stage; in Theater the Voice Connected panel and Mute stayed in the "
+          "corner, and Mute/Unmute from there silenced and restored Alice at both peers.",flush=True)
 
 
 def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=False,ptt=False,layout=False,reconnect=False,processing=False,jwt=None):
@@ -427,14 +491,31 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
                     print("KDE's Global Shortcuts Requested dialog named Untethered and offered Push to talk (Pause), "
                           f"Toggle mute and Toggle deafen; accepted ({len(offered)} words read).",flush=True)
                 for d in desks[1:]:d.audit=[]
+            # Plain --voice-room: Clara mutes in her user panel before she
+            # joins (calls plan U1), and unmutes once all three are in.
+            join_muted=not (share or camera or ptt or layout or reconnect or processing)
             for i,d in enumerate(desks):
+                if i==2 and join_muted:
+                    d.click("mute")
+                    wait_for("Clara muted before joining",lambda:d.layout.state("mute")=="on",8)
                 d.click("join")
+                if i==2 and join_muted:samples=muted_from_start(secret,users[2])
                 wait_for("silent join membership",lambda:members()==sorted(users[:i+1]))
                 if i==1:
                     wait_for("pair audio before third joins",lambda:desks[0].hears({670}) and desks[1].hears(set() if ptt else {410}),20)
                     original=wait_for("original pair",lambda:publications(2))
                     assert audio_counts()==[(int(not ptt),1),(1,1),(0,0)]
+                    # The same moment before and after the call controls change.
+                    evidence(desks,"voice-room-pair")
             tracks=wait_for("three encrypted microphone publications",lambda:publications(3))
+            evidence(desks,"voice-room-joined")
+            if join_muted:
+                wait_for("Alice and Bruno hear only each other",lambda:desks[0].hears({670}) and desks[1].hears({410})
+                         and desks[2].hears({410,670}),20)
+                assert audio_counts()==[(1,1),(1,1),(0,1)]
+                print(f"Clara joined muted: the SFU reported her microphone muted in all {samples} samples from its "
+                      "first appearance; Alice and Bruno heard no 1030 Hz; her client opened no capture stream.",flush=True)
+                desks[2].click("unmute")
             expected=[set(TONES[:3])-{hz} for hz in TONES[:3]]
             if ptt:
                 for tones in expected:tones.discard(410)
@@ -468,6 +549,8 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
                 assert publications(3)==tracks and audio_counts()==[(1,1)]*3
                 check_speaking(desks,names)
                 assert publications(3)==tracks
+                check_theater(desks)
+                assert publications(3)==tracks
             if share:
                 from qa_window_share import window_share
                 window_share(stack,desks,secret,tracks,publications)
@@ -493,6 +576,8 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
                 from qa_room_ptt import check_restart
                 check_restart(desks[0],keys,lambda:members()==users[:1],lambda:not members())
         except Exception:
-            for d in desks:print("Desktop",d.i+1,"labels:",[w for w,_,_ in d.words()],"PCM amplitudes:",[int(n) for n in d.windows[-1]] if d.windows else [])
+            for d in desks:
+                print("Desktop",d.i+1,"labels:",[w for w,_,_ in d.words()],"PCM amplitudes:",[int(n) for n in d.windows[-1]] if d.windows else [])
+                print("Desktop",d.i+1,d.layout.missing(),"· call status:",d.layout.text("call-status"),"· notes:",d.layout.text("call-notes"),flush=True)
             print("Voice roster size:",len(members()),flush=True)
             raise

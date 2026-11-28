@@ -2,28 +2,24 @@
 from statistics import median
 
 from qa_native_paste import wait_for
-from qa_ui import CHAT_X
-
-# The mixer is in the call dock at the bottom of the sidebar. Each peer has a
-# line with its name, gain and Reset button, and its slider on the line below:
-# the slider's centre is this far below the name. Arrow keys move a slider
-# only while the pointer is over it.
-SLIDER_BELOW = 24
 
 
 def check_volume(desks):
     alice,_,_=desks
+    # Each participant's User Volume is in Voice Settings, opened from the
+    # Voice Connected panel: a row with the name, gain and Reset, and the
+    # slider under it (qa_layout.py). Arrow keys move a slider only while
+    # the pointer is over it.
     alice.click("mixer")
+    layout=alice.layout
 
     def row(name):
-        words=[(w,x,y) for w,x,y in alice.words() if x<CHAT_X]
-        for w,_,y in words:
-            if w!=name:continue
-            line={v:x for v,x,yy in words if abs(yy-y)<=5}
-            if "reset" in line:
-                for value,x in line.items():
-                    if value.isdecimal():
-                        return int(value),(x,y+SLIDER_BELOW),(line["reset"],y)
+        for key,c in layout.items("volume-"):
+            words=c["text"].lower().split()
+            if words and words[0]==name:
+                percent=next((w[:-1] for w in words if w.endswith("%")),"")
+                if percent.isdecimal():
+                    return int(percent),alice.reveal(f"volume-slider-{key[7:]}"),layout.find(f"volume-reset-{key[7:]}")
         return None
 
     def at(name,percent):

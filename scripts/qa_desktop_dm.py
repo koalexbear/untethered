@@ -17,15 +17,14 @@ from urllib.parse import urlsplit
 
 from PIL import Image
 import requests
+from qa_layout import WORDS, Layout, resolve
 from qa_native_paste import child, isolated_env, start_display, wait_for
-from qa_room_volume import SLIDER_BELOW
-from qa_ui import CHAT_X, PICK_BELOW, RAIL, SIDEBAR, Ui, clean, icon_buttons, read
+from qa_ui import CHAT_X, RAIL, Ui, clean, read
 
-# Since 76d6e43 a call's controls, status and Devices panel are in a dock at the
-# foot of the sidebar. These controls are icons, named only by their tooltips:
-DOCK_ICONS=("mute","unmute","hang")
-# and these words are dock text:
-DOCK_TEXT=("deafen","undeafen","devices","mixer","refresh","reconnecting","connected")
+# The call's controls are icons (calls plan U1): Mute and Deafen in the user
+# panel, the call's status, Camera, Screen and Disconnect in the Voice
+# Connected panel above it. The fixtures find them through the debug
+# client's QA control map (qa_layout.py).
 
 
 def sfu_participants(secret,*,allow_empty=False):
@@ -130,6 +129,7 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
         from qa_rtc_link import desktop_network
         prefix,outage=desktop_network(stack,network_ports)
     native_log=tmp/"native-rtc.log"
+    layout=Layout(env["UNTETHERED_QA_LAYOUT"])
     logs={}
     if relay_links:
         prefix=relay_links["desktop"].prefix
@@ -152,31 +152,48 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
         return [(s[11],(int(s[6])+int(s[8])//2)//2,(int(s[7])+int(s[9])//2)//2) for line in data.splitlines()
                 if len(s:=line.split("\t"))==12 and s[0]=="5" and s[11].strip()]
     def dock_words():
-        # The sidebar column, whose foot holds the call dock. Its grey labels
-        # need the shared reader's sidebar pass.
+        # The sidebar column, whose foot holds the Voice Connected panel. Its
+        # grey labels need the shared reader's sidebar pass.
         im=shot()
         return [(clean(w),x,y) for w,x,y in read(im.crop((0,0,CHAT_X,im.height)),dialogs=False,sidebar=True) if x>RAIL]
     def sidebar_room(name):
-        # A channel or DM row: the topmost match, since the call dock below the
-        # room list names the call's room too. The DM row sits below 190 px.
+        # A channel or DM row: the topmost match, since the call panel below
+        # the room list names the call's room too. The DM row sits below 190 px.
         return min(((x,y) for t,x,y in dock_words() if name in t),key=lambda p:p[1],default=None)
     def find(label):
         if label=="Voice":return call_ready()
         key=label.lower()
-        if key in DOCK_ICONS:
-            buttons=icon_buttons(shot())  # microphone first, hang up last
-            return dock.pick(buttons[::-1] if key=="hang" else buttons,label,"above")
-        if key in DOCK_TEXT:return next(((x,y) for t,x,y in dock_words() if t==key),None)
+        if key=="reconnecting":
+            return layout.find("call-status") if "reconnecting" in layout.text("call-status").lower() else None
+        if key=="connected":return layout.find("call-status","connected")
+        if name:=resolve(layout,key):return layout.find(name)
+        # A call control, but not in the state this label means yet.
+        if key in WORDS:return None
         return next(((x,y) for t,x,y in words() if clean(t)==key),None)
+    def evidence(name):
+        # Screenshots of the call's controls for the docs (calls plan U1).
+        if dest:=os.environ.get("RTC_QA_SCREENSHOTS"):
+            Path(dest).mkdir(parents=True,exist_ok=True)
+            time.sleep(.5);shot().save(Path(dest)/f"{name}.png")
     def hover(pos):cmd("xdotool","mousemove","--window",win,*map(str,pos),check=True)
+    def press(pos):cmd("xdotool","mousemove","--window",win,*map(str,pos),"click","1",check=True)
     ui=Ui(words,hover,width=1180,height=760)
-    dock=Ui(dock_words,hover,width=1180,height=760)
     def call_ready():
         # The DM header's phone icon (tooltip "Start Voice Call") starts a call.
         return ui.header("start voice call")
     def click(label):
+        if label=="Refresh":
+            # Mute's menu lists the inputs again; close it after.
+            press(layout.wait("mute-menu","off"))
+            # Opening the menu read the devices already; this reads them again.
+            press(layout.wait("input-refresh"))
+            time.sleep(.4)
+            wait_for("refreshed input list",lambda:"refresh devices" in layout.text("input-refresh").lower(),8)
+            press(layout.wait("mute-menu","on"))
+            wait_for("Mute's menu closed",lambda:not layout.get("input-menu"),5)
+            return
         x,y=wait_for("desktop "+label+" control",lambda:find(label),20)
-        cmd("xdotool","mousemove","--window",win,str(x),str(y),"click","1",check=True)
+        press((x,y))
     def roster():
         return page.evaluate("""room=>{const c=window.mxMatrixClientPeg.get();
           return c.matrixRTC.getRoomSession(c.getRoom(room)).memberships.map(m=>m.userId)}""",room)
@@ -229,6 +246,7 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
         assert len(tracks)==2 and all(v==["GCM"] for v in tracks.values()) and {p.rsplit(":",1)[0] for p in tracks}=={alice,bob}, tracks
         print("Element accepted; Element measured 480 Hz on received WebRTC audio, desktop speaker monitor measured 960 Hz for 600 ms.",flush=True)
         print("LiveKit independently reports GCM on both microphone publications.",flush=True)
+        evidence("dm-call")
         if relay_links:
             check_relay(widget)
         elif network_ports:
@@ -238,20 +256,15 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
                 live=rejoin_call(page,widget,room,lambda:speakers[0],new_tone,outage,find,streams,alice,bob,outage_seconds)
         elif devices:
             def select(port,option):
-                # Click the actual pick list on the line below the label (the
-                # lowest match: a device error above the pickers can also say
-                # "Microphone"). Its overlay opens upwards from the dock at the
-                # foot of the window, so click a matching item above the list,
-                # not a word in the other, closed pick list below it.
-                _,y=wait_for(port+" picker",lambda:max(((x,y) for t,x,y in dock_words() if t==port.lower()),
-                                                       key=lambda p:p[1],default=None))
-                y+=PICK_BELOW
-                cmd("xdotool","mousemove","--window",win,str(RAIL+SIDEBAR//2),str(y),"click","1",check=True)
-                def item():
-                    return next(((px,py) for t,px,py in dock_words() if t==option.lower() and y-200<py<y-10),None)
-                px,py=wait_for(option+" in "+port+" menu",item,8)
-                cmd("xdotool","mousemove","--window",win,str(px),str(py),"click","1",check=True)
-            click("Devices")
+                # The chevron beside Mute (inputs) or Deafen (outputs) opens
+                # its device menu; choosing a device closes it.
+                chevron,kind={"Microphone":("mute-menu","input"),"Speaker":("deafen-menu","output")}[port]
+                press(layout.wait(chevron,"off"))
+                name=wait_for(option+" in "+port+" menu",lambda:layout.item(kind+"-device-",option),8)
+                if not shots:shots.append(evidence(f"dm-{kind}-menu"))
+                press(layout.find(name))
+                wait_for(port+" menu closed",lambda:not layout.get(kind+"-menu"),5)
+            shots=[]
             device_switch(widget,select,click,speakers,streams,cmd,secret,sockets,alice,bob,spare)
         elif controls:
             def change_room():
@@ -260,15 +273,14 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
                 wait_for("browsing another room",lambda:"Sidechat" in cmd("xdotool","getwindowname",win,text=True).stdout)
                 assert set(roster())=={alice,bob}
                 print("Switched the desktop to Sidechat during mute; DM call bar remained active.",flush=True)
-            audio_controls(widget,click,lambda:speakers[0],streams,secret,sockets,alice,bob,change_room)
+            audio_controls(widget,click,lambda:speakers[0],streams,secret,sockets,alice,bob,change_room,evidence)
             def peer_volume(old,new,reset=False):
-                # The DM's one Mixer row: the peer's name, its gain and Reset,
-                # with the slider under them. Arrow keys need the pointer on it.
+                # The DM's one User Volume row in Voice Settings: the peer's
+                # name, gain and Reset, its slider under them. Arrow keys
+                # need the pointer on it.
                 def at(percent):
-                    words=dock_words()
-                    for w,x,y in words:
-                        if w=="reset" and any(v==str(percent) and abs(vy-y)<=5 for v,_,vy in words):
-                            return (RAIL+SIDEBAR//2,y+SLIDER_BELOW),(x,y)
+                    if f"{percent}%" in layout.text("volume-0").split():
+                        return layout.find("volume-slider-0"),layout.find("volume-reset-0")
                     return None
                 slider,button=wait_for(f"Element's local volume at {old}%",lambda:at(old),8)
                 x,y=button if reset else slider
@@ -276,7 +288,7 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
                 if reset:cmd("xdotool","click","1",check=True)
                 else:cmd("xdotool","key","--repeat",str(abs(new-old)//5),"--delay","65","Down" if new<old else "Up",check=True)
                 wait_for(f"Element's local volume at {new}%",lambda:at(new),8)
-            dm_volume(click,peer_volume,levels[0],streams)
+            dm_volume(click,peer_volume,levels[0],streams,evidence)
             # Return to the DM so the final assertion checks its Voice call button.
             x,y=wait_for("original DM sidebar entry",lambda:sidebar_room("media-proof"))
             cmd("xdotool","mousemove","--window",win,str(x),str(y),"click","1",check=True)
@@ -312,7 +324,8 @@ def desktop_call(stack,tmp,page,room,root,backend,alice,bob,secret,*,incoming=Fa
                     print("Element Call RTP:",f.evaluate("window.qaRtpAudio?.() ?? null"),flush=True)
         except Exception as e:print("SFU state unavailable:",e,flush=True)
         print("Desktop visible labels:", " ".join(t for t,_,_ in words()),flush=True)
-        print("Desktop sidebar and call dock:", " ".join(t for t,_,_ in dock_words()),flush=True)
+        print("Desktop sidebar and call panel:", " ".join(t for t,_,_ in dock_words()),flush=True)
+        print("Desktop",layout.missing(),"· call status:",layout.text("call-status"),"· notes:",layout.text("call-notes"),flush=True)
         print("Element roster:",roster(),"incoming toast:",page.locator(".mx_IncomingCallToast_content").all_text_contents(),flush=True)
         print("Membership timeline:",page.evaluate("""room=>window.mxMatrixClientPeg.get().getRoom(room)
             .getLiveTimeline().getEvents().filter(e=>e.getType()==="org.matrix.msc3401.call.member")
@@ -516,7 +529,7 @@ def device_switch(widget,select,click,speakers,streams,cmd,secret,sockets,alice,
     print("Device switches kept both GCM track SIDs, participant SIDs, browser receiver, SSRC and SFU signaling sockets.",flush=True)
 
 
-def audio_controls(widget,click,speaker,streams,secret,sockets,alice,bob,change_room):
+def audio_controls(widget,click,speaker,streams,secret,sockets,alice,bob,change_room,evidence=lambda name:None):
     """Use fresh PCM after every click; an old 'tone seen' latch can't pass."""
     stats,check_tracks=continuity(widget,secret,sockets,alice,bob)
     def phase(button,mic_on,output_on):
@@ -534,6 +547,7 @@ def audio_controls(widget,click,speaker,streams,secret,sockets,alice,bob,change_
     phase("Mute",False,True)
     change_room()
     phase("Deafen",False,False)
+    evidence("dm-deafened-elsewhere")
     phase("Undeafen",False,True)  # explicit mute survives
     phase("Unmute",True,True)
     phase("Deafen",False,False)   # open mic is automatically muted
@@ -635,7 +649,7 @@ def muted_caller(find,speaker,received,capture_starts,page,user,secret):
           "Element had one, and stayed connected (same microphone stream) through a mid-call mute.",flush=True)
 
 
-def dm_volume(click,peer_volume,levels,streams):
+def dm_volume(click,peer_volume,levels,streams,evidence=lambda name:None):
     """Element at 25 % in the DM's Mixer: its 960 Hz at the desktop speaker drops to a quarter."""
     # Chromium's audio processing moves Element's tone level now and then, so
     # the reference is a steady stretch taken just before the change.
@@ -651,6 +665,7 @@ def dm_volume(click,peer_volume,levels,streams):
             return None
         return wait_for(f"desktop 960 Hz at {expected:.0%} of its level",steady,15)
     click("Mixer")
+    evidence("dm-voice-settings")
     reference=level()
     peer_volume(100,25)
     low=level(.25,reference)

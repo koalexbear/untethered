@@ -155,6 +155,44 @@ impl AudioMode {
         true
     }
 }
+/// Mute, deafen and the chosen microphone and speaker. They outlive calls,
+/// as on Discord: set before joining, they start the next call; set during
+/// one, they stay for the next (calls plan U1). Not saved yet (U2).
+#[derive(Default)]
+pub struct LocalAudio {
+    pub muted: bool,
+    pub deafened: bool,
+    /// PulseAudio device names; None follows the system default.
+    pub mic: Option<String>,
+    pub speaker: Option<String>,
+    /// The devices the menus list, read when one opens.
+    pub devices: Catalog,
+    pub loading: bool,
+    pub list_error: Option<&'static str>,
+}
+impl LocalAudio {
+    pub fn route(&self, port: Port) -> Route {
+        Route {
+            name: match port {
+                Port::Mic => self.mic.clone(),
+                Port::Speaker => self.speaker.clone(),
+            },
+            revision: 0,
+        }
+    }
+}
+/// The popups of the user panel and the Voice Connected panel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VoiceMenu {
+    /// Mute's chevron: input devices.
+    Input,
+    /// Deafen's chevron: output devices.
+    Output,
+    /// Voice settings until the Voice & Video page (U2): push-to-talk,
+    /// input sensitivity, voice processing, camera, shared audio and each
+    /// participant's volume.
+    Settings,
+}
 pub struct ActiveCall {
     pub room: String,
     pub label: String,
@@ -165,14 +203,9 @@ pub struct ActiveCall {
     pub cancel: Sender<()>,
     pub audio: watch::Sender<AudioMode>,
     pub id: uuid::Uuid,
-    pub devices: Catalog,
     pub cameras: Vec<CameraChoice>,
     pub camera_listing: bool,
     pub camera_note: Option<&'static str>,
-    pub picker: bool,
-    pub mixer: bool,
-    pub loading: bool,
-    pub list_error: Option<&'static str>,
     pub mic_error: bool,
     pub speaker_error: bool,
     pub video_status: [room_video::Status; 2],
@@ -332,6 +365,18 @@ impl crate::App {
             ],
             talk: TalkGate::from_ptt(group && self.room_ptt),
             voice: self.voice.voice,
+            // Muted, deafened or on another device before joining: the
+            // call starts that way.
+            muted: self.local_audio.muted,
+            deafened: self.local_audio.deafened,
+            mic: Route {
+                name: self.local_audio.mic.clone(),
+                revision: 0,
+            },
+            speaker: Route {
+                name: self.local_audio.speaker.clone(),
+                revision: 0,
+            },
             ..AudioMode::default()
         });
         let previews = Previews::default();
@@ -365,14 +410,9 @@ impl crate::App {
                 cancel,
                 audio,
                 id: uuid::Uuid::new_v4(),
-                devices: Catalog::default(),
                 cameras: vec![],
                 camera_listing: false,
                 camera_note: None,
-                picker: false,
-                mixer: false,
-                loading: false,
-                list_error: None,
                 mic_error: false,
                 speaker_error: false,
                 video_status: Default::default(),
@@ -387,6 +427,111 @@ impl crate::App {
             });
         } else {
             self.status = "Could not queue the voice call.".into();
+        }
+    }
+}
+impl crate::App {
+    /// The call still running, if any: one that's ending takes no changes.
+    fn live_call(&self) -> Option<&ActiveCall> {
+        self.call.as_ref().filter(|c| !c.cancel.is_closed())
+    }
+    /// Mute or unmute, in a call or before one. The mic stays muted while
+    /// deafened.
+    pub(super) fn toggle_mute(&mut self) {
+        let local = &mut self.local_audio;
+        if local.deafened {
+            return;
+        }
+        local.muted = !local.muted;
+        let sound = if local.muted {
+            crate::sounds::Sound::Mute
+        } else {
+            crate::sounds::Sound::Unmute
+        };
+        self.apply_mute(sound);
+    }
+    pub(super) fn toggle_deafen(&mut self) {
+        let local = &mut self.local_audio;
+        local.deafened = !local.deafened;
+        let sound = if local.deafened {
+            crate::sounds::Sound::Deafen
+        } else {
+            crate::sounds::Sound::Undeafen
+        };
+        self.apply_mute(sound);
+    }
+    fn apply_mute(&mut self, sound: crate::sounds::Sound) {
+        let (muted, deafened) = (self.local_audio.muted, self.local_audio.deafened);
+        match self.live_call() {
+            Some(call) => {
+                call.audio.send_if_modified(|s| {
+                    if (s.muted, s.deafened) == (muted, deafened) {
+                        return false;
+                    }
+                    s.muted = muted;
+                    s.deafened = deafened;
+                    // A manual mute or deafen closes push-to-talk until a
+                    // fresh press.
+                    s.hold(false);
+                    true
+                });
+            }
+            // Outside a call the sound plays here; in one, the call's own
+            // change does (sounds.rs).
+            None => self.local_sound(sound),
+        }
+    }
+    /// Open or close a voice popup. The device menus read the devices
+    /// again each time they open.
+    pub(super) fn voice_menu(&mut self, menu: Option<VoiceMenu>) -> iced::Task<crate::Msg> {
+        self.voice_popup = menu;
+        if matches!(menu, Some(VoiceMenu::Input | VoiceMenu::Output)) {
+            return self.refresh_devices();
+        }
+        iced::Task::none()
+    }
+    pub(super) fn refresh_devices(&mut self) -> iced::Task<crate::Msg> {
+        if self.local_audio.loading {
+            return iced::Task::none();
+        }
+        self.local_audio.loading = true;
+        iced::Task::perform(list_devices(), crate::Msg::DevicesListed)
+    }
+    pub(super) fn devices_listed(&mut self, result: Result<Catalog>) {
+        let local = &mut self.local_audio;
+        local.loading = false;
+        match result {
+            Ok(devices) => {
+                local.devices = devices;
+                local.list_error = None;
+            }
+            Err(e) => local.list_error = Some(e),
+        }
+    }
+    /// Use `device` from now on: in the call at once, and in the next one.
+    pub(super) fn select_device(&mut self, port: Port, device: crate::call_devices::Choice) {
+        if !self.local_audio.devices.list(port).contains(&device) {
+            return;
+        }
+        match port {
+            Port::Mic => self.local_audio.mic = device.name.clone(),
+            Port::Speaker => self.local_audio.speaker = device.name.clone(),
+        }
+        self.voice_popup = None;
+        if let Some(call) = self.call.as_mut().filter(|c| !c.cancel.is_closed()) {
+            call.audio.send_modify(|s| {
+                let route = match port {
+                    Port::Mic => &mut s.mic,
+                    Port::Speaker => &mut s.speaker,
+                };
+                route.name = device.name;
+                // Choosing the same device again retries it after a failure.
+                route.revision += 1;
+            });
+            match port {
+                Port::Mic => call.mic_error = false,
+                Port::Speaker => call.speaker_error = false,
+            }
         }
     }
 }
@@ -1018,8 +1163,9 @@ async fn talk<S: CallSignal>(
             Err(_) => return unready("The other device did not provide an encrypted audio key."),
         }
     }
+    let muted = dm.mode.borrow().mic_off();
     let (lk, mut rtc, src, publication) =
-        match publish_mic(s, &keys.provider, &mut media.live, true).await {
+        match publish_mic(s, &keys.provider, &mut media.live, true, muted).await {
             Ok(link) => link,
             Err(why) => return unready(why),
         };
@@ -1408,6 +1554,7 @@ async fn publish_mic<'a>(
     provider: &KeyProvider,
     media: &'a mut Option<Room>,
     auto_subscribe: bool,
+    muted: bool,
 ) -> Result<(
     &'a Room,
     tokio::sync::mpsc::UnboundedReceiver<RoomEvent>,
@@ -1435,6 +1582,11 @@ async fn publish_mic<'a>(
     let src = NativeAudioSource::new(AudioSourceOptions::default(), 48000, 1, 50);
     let mic =
         LocalAudioTrack::create_audio_track("Microphone", RtcAudioSource::Native(src.clone()));
+    // Muted before joining: the SFU learns of the microphone as muted, and
+    // nobody gets a frame of it until it's unmuted.
+    if muted {
+        mic.mute();
+    }
     let publication = time::timeout(
         SECOND * 10,
         lk.local_participant().publish_track(
@@ -1588,6 +1740,51 @@ async fn capture(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mute_and_deafen_before_joining_start_the_call_that_way() {
+        let (commands, _backend) = async_channel::bounded(8);
+        let mut app = crate::App::new(commands);
+        let _ = app.update(crate::Msg::ToggleMic);
+        let _ = app.update(crate::Msg::ToggleDeafen);
+        // The mic stays muted while deafened, as in a call.
+        let _ = app.update(crate::Msg::ToggleMic);
+        assert!(app.local_audio.muted && app.local_audio.deafened);
+        app.local_audio.mic = Some("QAMicB.monitor".into());
+        app.start_voice("!room".into(), Target::Channel);
+        let mode = app.call.as_ref().unwrap().audio.borrow().clone();
+        assert!(mode.muted && mode.deafened && mode.mic_off());
+        assert_eq!(mode.mic.name.as_deref(), Some("QAMicB.monitor"));
+
+        // In the call: undeafening keeps the manual mute, and both stay
+        // set after it ends.
+        let _ = app.update(crate::Msg::ToggleDeafen);
+        let mode = app.call.as_ref().unwrap().audio.borrow().clone();
+        assert!(mode.muted && !mode.deafened);
+        let _ = app.update(crate::Msg::EndCall);
+        app.call = None;
+        assert!(app.local_audio.muted && !app.local_audio.deafened);
+        app.start_voice("!room".into(), Target::Channel);
+        assert!(app.call.as_ref().unwrap().audio.borrow().muted);
+    }
+
+    #[test]
+    fn a_chosen_device_applies_now_and_to_the_next_call() {
+        let (commands, _backend) = async_channel::bounded(8);
+        let mut app = crate::App::new(commands);
+        let cobalt = crate::call_devices::Choice::for_test("QASpeakerB", "Grove");
+        app.local_audio.devices.speakers.push(cobalt.clone());
+        app.start_voice("!room".into(), Target::Channel);
+        let _ = app.update(crate::Msg::SelectDevice(Port::Speaker, cobalt));
+        let speaker = app.call.as_ref().unwrap().audio.borrow().speaker.clone();
+        assert_eq!(speaker.name.as_deref(), Some("QASpeakerB"));
+        assert_eq!(speaker.revision, 1);
+        assert_eq!(app.local_audio.speaker.as_deref(), Some("QASpeakerB"));
+        // A device no list offers is refused.
+        let gone = crate::call_devices::Choice::for_test("Gone", "Gone");
+        let _ = app.update(crate::Msg::SelectDevice(Port::Speaker, gone));
+        assert_eq!(app.local_audio.speaker.as_deref(), Some("QASpeakerB"));
+    }
 
     #[test]
     fn call_stage_opens_from_preview_and_collapses_when_browsing() {

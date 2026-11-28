@@ -18,7 +18,7 @@ incoming-call toast and ringtone, then accepts. It checks the 480 Hz desktop
 mic at Element and the 960 Hz Element mic at the desktop speaker monitor,
 checks both GCM publications at the SFU, waits past the first 60-second
 membership expiry, confirms renewed membership and continuing audio, then
-clicks the desktop **Hang up**.
+clicks the desktop **Disconnect**.
 It requires an empty remote call roster and no remaining desktop audio
 streams. Neither test client needs physical audio hardware.
 
@@ -42,10 +42,10 @@ reads on. The fixture then switches it off and on and says so.
 `sh experiments/rtc-audio/run_element.sh --muted-peer` runs the same flow, but
 Element's second call starts without a microphone (the fixture hides its audio
 inputs), so Element joins without an audio track. After **Accept** the desktop's
-dock must read **Voice connected**, not **Connecting**, with a silent speaker
+Voice Connected panel must read **Voice Connected**, not **Connecting**, with a silent speaker
 while Element still decodes the desktop's 480 Hz. Once Element gets a
 microphone and switches it on, the desktop must play its 960 Hz; muting and
-unmuting Element mid-call must neither leave **Voice connected** nor reopen the
+unmuting Element mid-call must neither leave **Voice Connected** nor reopen the
 desktop's microphone stream.
 
 ### Verify answering on another device
@@ -215,8 +215,11 @@ must contain the other two frequencies and exclude its own for twelve
 consecutive 100 ms windows. The test checks one mixed playback stream per
 client, three GCM microphone publications, the names under the channel, and
 the room history (no non-state timeline messages, including encrypted rings).
-With all three mics still active, the test opens Alice’s **Mixer** and drives
-the rendered sliders. It measures each sender’s frequency at every receiver’s
+Clara mutes in her user panel before she joins: the SFU must report her
+microphone muted in every sample from the first one that shows it, Alice and
+Bruno must hear only each other, and her client must open no capture stream
+until she unmutes. With all three mics active, the test opens Alice’s **Voice
+Settings → User volume** and drives the rendered sliders. It measures each sender’s frequency at every receiver’s
 speaker monitor for twelve fresh 100 ms windows per setting. At 25%, only
 Bruno’s tone at Alice should drop to one quarter of baseline. Boosting Clara
 to 150% on Alice must leave Bruno there at 25% and both other listeners
@@ -248,7 +251,7 @@ the automatic gate learns any steady sound as noise.
 
 Run `sh experiments/rtc-audio/run_element.sh --voice-processing`. It runs the
 three-client voice room above, then switches Alice's processing on one switch
-at a time in her call's **Devices** panel, checks that her `voice.json`
+at a time in her **Voice Settings** popup, checks that her `voice.json`
 follows each click, and measures the result at the other clients' speakers
 with speech-like signals (tone syllables, voiced ones with harmonics):
 
@@ -288,7 +291,7 @@ receivers within 800 ms (includes 100 ms speaker-analysis windows).
 
 Plain `--room-ptt` covers the in-window fallback: Alice runs with
 `UNTETHERED_GLOBAL_SHORTCUTS=0`. The test moves focus to another window
-(an `xmessage` below the client, clear of the call dock's tooltips) mid-hold,
+(an `xmessage` below the client, clear of the call panel's tooltips) mid-hold,
 returns focus with the key still held, and separately delivers key-up to the
 other window. Neither case may reopen capture. Manual mute and deafen
 override the key and require a new press afterwards. Every consecutive
@@ -323,7 +326,7 @@ main README tells users when they choose one. After the final leave,
 KWin's `kglobalshortcutsrc` must hold an `[io.github.koalexbear.Untethered]`
 group with `push-to-talk=Pause`. Alice's client then restarts on the same
 profile, arms push-to-talk and rejoins: no second dialog may appear, the
-call bar must show *Hold Pause to talk.*, and a Pause hold in the decoy must
+Voice Connected panel must show *Hold Pause to talk.*, and a Pause hold in the decoy must
 show *Pause held* until release.
 
 Measured on 2026-11-26 with the host at a load of about 100 on 32 cores,
@@ -434,18 +437,35 @@ Her capture link and reader must disappear; Alice must return to the grid,
 see a new pattern from Bruno on his original video track, and hear his new
 mic tone while Clara's speaker stays silent.
 
+### Finding the call controls
+
+The call's controls are icons, as on Discord. Debug builds started with
+`UNTETHERED_QA_LAYOUT=<file>` write a map of them there whenever it changes
+(`rust-client/src/qa_layout.rs`): each control's name, bounds, state, tooltip
+and text. `scripts/qa_layout.py` lists the names; `qa_events.use_profile`
+turns the map on for every fixture client. The fixtures click through it
+instead of hovering icons and reading their tooltips.
+
+The call controls [before](evidence/u1-before-voice-room.png) and
+[after](evidence/u1-after-voice-room.png) step U1, at the same moment of
+`--voice-room`; also [Mute's device menu](evidence/u1-device-menu.png),
+[Voice Settings](evidence/u1-voice-settings.png), [muted and deafened in
+another room](evidence/u1-deafened.png) and [Theater](evidence/u1-theater.png).
+With `RTC_QA_SCREENSHOTS` set, `--voice-room`, `--call-controls` and
+`--call-devices` save these screenshots there.
+
 ### Verify mute and deafen
 
 Use `sh experiments/rtc-audio/run_element.sh --call-controls` with the same
-setup. The test clicks **Mute**, switches to another room, and uses the active
-DM's call bar there. It tests deafen/undeafen both with and without a prior
+setup. The test clicks **Mute** in the user panel, switches to another room,
+and keeps using Mute and Deafen there. It tests deafen/undeafen both with and without a prior
 manual mute. Each transition requires 12 fresh 100 ms samples at **both**
 ends: a through-tone or silence (Element FFT peak below −65 dB; desktop peak
 below 32 in signed 16-bit PCM). It also checks the actual capture-stream
 count and the SFU mute flags. Throughout the test the browser receiver, track,
 SSRC and signaling sockets stay the same, and both participants keep their
-original GCM publications on the SFU. Last, it opens the dock's **Mixer** and
-sets Element to 25%: Element's 960 Hz at the desktop speaker must drop to a
+original GCM publications on the SFU. Last, it opens **Voice Settings → User
+volume** and sets Element to 25%: Element's 960 Hz at the desktop speaker must drop to a
 quarter of a steady reference for 12 fresh 100 ms windows, still in one
 playback stream, and **Reset** must restore it.
 
@@ -454,7 +474,8 @@ playback stream, and **Reset** must restore it.
 Run `sh experiments/rtc-audio/run_element.sh --call-devices` with the same
 setup. Two virtual microphones continuously supply **480 Hz** and **730 Hz**,
 and both virtual speaker outputs are monitored for Element's **960 Hz**.
-The test clicks the Iced **Devices** selectors. After each switch it requires
+The test chooses each device in the menus beside **Mute** (microphones) and
+**Deafen** (speakers). After each switch it requires
 12 fresh 100 ms windows at Element and at each speaker: the chosen mic tone,
 the return tone at the chosen output, and silence at the other. It checks
 PulseAudio stream routes, unchanged server defaults, the original two GCM
