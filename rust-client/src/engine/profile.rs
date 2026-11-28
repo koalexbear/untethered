@@ -108,6 +108,26 @@ pub(super) async fn save(client: &Client, edit: Edit) -> Result<Saved, Failure> 
     }
 }
 
+/// Upload a picture as it is, for a server picture or a banner: its mxc URI.
+pub(super) async fn upload(client: &Client, bytes: Vec<u8>) -> Result<String, Failure> {
+    if bytes.len() as u64 > AVATAR_LIMIT {
+        return Err(Failure::Failed);
+    }
+    let mime = image_mime(&bytes).ok_or(Failure::Failed)?;
+    let response = client
+        .media()
+        .upload(&mime, bytes, None)
+        .await
+        .map_err(|e| {
+            if e.client_api_error_kind().is_some() {
+                Failure::Failed
+            } else {
+                Failure::Unreachable
+            }
+        })?;
+    Ok(response.content_uri.to_string())
+}
+
 fn image_mime(bytes: &[u8]) -> Option<mime::Mime> {
     match image::guess_format(bytes).ok()? {
         image::ImageFormat::Png => Some(mime::IMAGE_PNG),
@@ -137,6 +157,8 @@ impl App {
     pub(crate) fn profile_action(&mut self, action: Action) -> Task<Msg> {
         match action {
             Action::Open { room, user } if self.verified && self.live.list.contains_key(&room) => {
+                // Their banner, About Me and accent colour (profile_fields.rs).
+                self.load_profile_fields(user.clone());
                 let ui = &mut self.sdk_ui.profile;
                 ui.card = Some((room, user));
                 ui.card_error = None;
@@ -331,7 +353,9 @@ pub(crate) fn msg(action: Action) -> Msg {
     Msg::Sdk(super::account_ui::Action::Profile(action))
 }
 
-async fn avatar_bytes(file: LocalFile) -> Result<Vec<u8>, &'static str> {
+/// A picked picture's bytes, when it's a PNG, JPEG, GIF or WebP within the
+/// limits: for the profile picture, a server picture or a banner.
+pub(crate) async fn avatar_bytes(file: LocalFile) -> Result<Vec<u8>, &'static str> {
     const READ: &str = "Could not read the selected image.";
     if file.size > AVATAR_LIMIT {
         return Err("Choose an image smaller than 8 MiB.");
@@ -457,6 +481,12 @@ mod tests {
             user: "@other:example.org".into(),
         };
         let _ = app.profile_action(open_card.clone());
+        // Opening the card loads their banner and About Me (M15).
+        assert!(matches!(
+            rx.try_recv(),
+            Ok(Command::ProfileFields { request: crate::engine::profile_fields::Request::Load(user), .. })
+                if user == "@other:example.org"
+        ));
         let _ = app.profile_action(Action::Message);
         let Command::DirectProfile { id, user } = rx.try_recv().unwrap() else {
             panic!("expected a direct message request");
@@ -488,6 +518,7 @@ mod tests {
         while rx.try_recv().is_ok() {}
 
         let _ = app.profile_action(open_card);
+        while rx.try_recv().is_ok() {}
         let _ = app.profile_action(Action::Message);
         assert_eq!(app.selected, dm.id);
         assert!(rx.try_recv().is_err());

@@ -73,6 +73,17 @@ impl Avatars {
     }
 }
 
+/// A picked picture as a profile picture shows it, before it's uploaded: a
+/// small round still (Edit Server Profile).
+pub fn preview(bytes: &[u8]) -> Option<Handle> {
+    let image = image::load_from_memory(bytes)
+        .ok()?
+        .thumbnail(160, 160)
+        .to_rgba8();
+    let (width, height) = image.dimensions();
+    Some(round(Handle::from_rgba(width, height, image.into_raw())))
+}
+
 /// The picture cut to a circle (antialiased) in its pixels, so it is round
 /// on every renderer.
 fn round(image: Handle) -> Handle {
@@ -111,6 +122,16 @@ impl App {
         if let Some(own) = &self.own_avatar {
             wanted.insert(own.as_str());
         }
+        // Edit Server Profile shows the server picture (names.rs).
+        if let Some(form) = &self.names.form {
+            wanted.extend(self.server_picture(&form.space));
+        }
+        // The open card's person (profile.rs).
+        if let Some((room, user)) = &self.sdk_ui.profile.card
+            && let Some(r) = self.live.list.get(room)
+        {
+            wanted.extend(self.member_avatar(r, user));
+        }
         let rooms = &self.live.list;
         for r in rooms.values() {
             if let Some(a) = &r.avatar {
@@ -137,16 +158,14 @@ impl App {
         }
         if let Some(r) = rooms.get(&self.selected) {
             let range = self.timeline_range(r);
+            // This account's picture here: a server picture (names.rs).
+            wanted.extend(self.own_picture(r));
             for p in r.posts().skip(range.start).take(range.end - range.start) {
-                if let Some(a) = r.avatars.get(&p.sender) {
-                    wanted.insert(a.as_str());
-                }
+                wanted.extend(self.member_avatar(r, &p.sender));
             }
             #[cfg(target_os = "linux")]
             for user in r.voice_users() {
-                if let Some(a) = r.avatars.get(user) {
-                    wanted.insert(a.as_str());
-                }
+                wanted.extend(self.member_avatar(r, user));
             }
             if self.people {
                 wanted.extend(r.avatars.values().map(String::as_str));
@@ -166,9 +185,7 @@ impl App {
             let mut users = r.voice_users();
             users.extend(r.dm_peer.as_deref());
             for user in users {
-                if let Some(a) = r.avatars.get(user) {
-                    wanted.insert(a.as_str());
-                }
+                wanted.extend(self.member_avatar(r, user));
             }
         }
         wanted

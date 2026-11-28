@@ -64,6 +64,7 @@ mod player;
 mod polls;
 mod presence;
 mod preview;
+mod profile_fields;
 #[cfg(target_os = "linux")]
 mod qa_layout;
 mod rail_order;
@@ -288,6 +289,8 @@ enum Msg {
     Rail(rail_order::Input),
     /// Edit Server Profile (names.rs).
     Names(names::Input),
+    /// A banner, About Me and accent colour (profile_fields.rs).
+    ProfileFields(profile_fields::Input),
     /// Server Settings for a space (server_settings.rs).
     ServerSettings(server_settings::Input),
     /// The composer's + menu: Upload a File, Create Poll.
@@ -534,7 +537,7 @@ enum Request {
     Arrange,
     /// Reordering the server rail or changing its folders (rail_order.rs).
     ArrangeRail,
-    /// Setting a server nickname (names.rs).
+    /// Setting a server nickname or picture (names.rs).
     Nickname(names::Write),
     /// Reading or changing a space's settings (server_settings.rs).
     ServerSettings(server_settings::Op),
@@ -615,6 +618,9 @@ struct App {
     /// Edit Server Profile, and rooms that took their server's nickname
     /// (names.rs).
     names: names::State,
+    /// Banners, About Me and accent colours on profile cards
+    /// (profile_fields.rs).
+    profile_fields: profile_fields::State,
     /// The open Server Settings page (server_settings.rs).
     server_settings: server_settings::State,
     /// Explore, and what spaces contain (explore.rs).
@@ -791,6 +797,7 @@ impl App {
             new_message: None,
             forwarding: None,
             names: Default::default(),
+            profile_fields: Default::default(),
             server_settings: Default::default(),
             explore: Default::default(),
             polling: None,
@@ -1666,6 +1673,10 @@ impl App {
                 {
                     return self.server_settings_picked(picker, files.into_iter().next());
                 }
+                // A banner or a server picture (profile_fields.rs).
+                if let Some((banner, picker)) = profile_fields::picker(&room) {
+                    return self.picture_picked(banner, picker, files.into_iter().next());
+                }
                 #[cfg(target_arch = "wasm32")]
                 if let Some(id) = room
                     .strip_prefix(engine::profile::AVATAR_PICKER)
@@ -1839,6 +1850,7 @@ impl App {
             Msg::Order(input) => return self.arrange_input(input),
             Msg::Rail(input) => return self.rail_input(input),
             Msg::Names(input) => return self.names(input),
+            Msg::ProfileFields(input) => return self.profile_fields_input(input),
             Msg::ServerSettings(input) => {
                 let task = self.server_settings(input);
                 return Task::batch([task, self.schedule_settings_pictures()]);
@@ -2294,12 +2306,14 @@ impl App {
         let task = Task::batch([task, self.copy_fetched()]);
         self.fill_history();
         self.sync_presence();
+        self.sync_profile_fields();
         self.schedule_link_previews();
         let task = Task::batch([
             task,
             self.schedule_avatars(),
             self.schedule_emotes(),
             self.schedule_settings_pictures(),
+            self.schedule_banners(),
         ]);
         #[cfg(target_os = "linux")]
         let task = Task::batch([task, self.start_ringtone(), self.play_sounds()]);

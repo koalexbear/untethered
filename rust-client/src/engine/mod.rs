@@ -35,6 +35,7 @@ pub mod polls;
 mod presence;
 mod previews;
 pub mod profile;
+pub mod profile_fields;
 #[cfg(debug_assertions)]
 pub mod qa;
 pub mod rail;
@@ -261,20 +262,27 @@ pub enum Command {
         orders: Vec<(String, String)>,
         folders: Option<Vec<rail::Folder>>,
     },
-    /// Show `name` as this account's name in each of `rooms` (ROADMAP M12:
-    /// a server nickname is one per room of the space); None puts the
-    /// global name back.
-    SetNickname {
+    /// Change this account's name or picture in each of `rooms` (ROADMAP
+    /// M12, M15: a server profile is one member event per room of the
+    /// space); a field set to None puts the global one back.
+    SetServerProfile {
         id: i64,
         rooms: Vec<String>,
-        name: Option<String>,
+        change: names::Change,
     },
-    /// Give `room`, joined after its server's nickname was set, that
-    /// nickname, unless a name was set there since joining.
-    FollowNickname {
+    /// Give `room`, joined after its server's nickname or picture was set,
+    /// that profile, unless one was set there since joining.
+    FollowServerProfile {
         id: i64,
         room: String,
-        name: String,
+        name: Option<String>,
+        avatar: Option<String>,
+    },
+    /// Profile fields only Untethered shows (ROADMAP M15): load someone's,
+    /// or save one of this account's. Answered by [`Event::ProfileFields`].
+    ProfileFields {
+        id: i64,
+        request: profile_fields::Request,
     },
     Report {
         id: i64,
@@ -524,6 +532,10 @@ pub enum Event {
     ProfileDirect {
         id: i64,
         result: Result<String, Failure>,
+    },
+    ProfileFields {
+        id: i64,
+        result: Result<profile_fields::Reply, Failure>,
     },
     Rooms(RoomList),
     Timeline(TimelineSnapshot),
@@ -1653,16 +1665,36 @@ impl Engine {
                 })
                 .await
             }
-            Command::SetNickname { id, rooms, name } => {
+            Command::SetServerProfile { id, rooms, change } => {
                 self.job(id, move |client, _, _| async move {
-                    names::set(&client, &rooms, name).await
+                    names::set(&client, &rooms, change).await
                 })
                 .await
             }
-            Command::FollowNickname { id, room, name } => {
+            Command::FollowServerProfile {
+                id,
+                room,
+                name,
+                avatar,
+            } => {
                 self.job(id, move |client, _, _| async move {
-                    names::follow(&client, &room, name).await
+                    names::follow(&client, &room, name, avatar).await
                 })
+                .await
+            }
+            Command::ProfileFields { id, request } => {
+                self.answer(
+                    Event::ProfileFields {
+                        id,
+                        result: Err(Failure::Unavailable),
+                    },
+                    move |client| async move {
+                        Event::ProfileFields {
+                            id,
+                            result: profile_fields::handle(&client, request).await,
+                        }
+                    },
+                )
                 .await
             }
             Command::Report {

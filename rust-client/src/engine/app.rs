@@ -338,6 +338,7 @@ impl App {
             Event::Discussion { id, result } => self.discussion_response(id, result),
             Event::ProfileSaved { id, result } => self.profile_saved(id, result),
             Event::ProfileDirect { id, result } => self.profile_direct(id, result),
+            Event::ProfileFields { id, result } => self.profile_fields_reply(id, result),
             Event::Packs(packs) => self.set_packs(packs),
             Event::Folders(folders) => self.folders_synced(folders),
             Event::Rooms(list) => {
@@ -359,7 +360,7 @@ impl App {
                 #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
                 self.sync_space_rules();
                 // A channel joined since its server's nickname was set takes it.
-                self.follow_nicknames();
+                self.follow_server_profiles();
                 // Channel names saved in Server Settings, once synced.
                 self.settings_synced();
                 self.rail_synced();

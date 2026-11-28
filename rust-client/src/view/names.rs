@@ -1,5 +1,5 @@
-//! Role colours and badges next to names, and Edit Server Profile
-//! (names.rs).
+//! Role colours and badges next to names, and Edit Server Profile: a
+//! nickname and a picture per server (names.rs).
 use super::{
     App, BODY, BOLD, CHANNEL, CHAT, El, MUTED, Msg, SIDE, TEXT, input_style, plain, primary,
     surface,
@@ -60,7 +60,7 @@ pub(super) fn dialog(app: &App) -> Option<El<'_>> {
     let close = Msg::Names(Input::Close);
     let save = Msg::Names(Input::Save);
     let current = app.nickname(&form.space);
-    let changed = form.input.trim() != current.unwrap_or_default();
+    let changed = form.input.trim() != current.unwrap_or_default() || form.picture.is_some();
     let global = if app.profile.is_empty() {
         app.matrix_id.as_str()
     } else {
@@ -97,25 +97,71 @@ pub(super) fn dialog(app: &App) -> Option<El<'_>> {
     field = field.push(under);
     if saving {
         field = field.push(
-            text("Changing your name in each channel…")
+            text("Changing your profile in each channel…")
                 .size(13)
                 .color(MUTED),
         );
     } else if let Some(problem) = form.problem {
         field = field.push(text(problem).size(13).color(super::RED));
     }
+    // The server picture (ROADMAP M15): one picked to save, the one set, or
+    // the global one.
+    let set = app.server_picture(&form.space);
+    let shown: El = match form.picture.as_ref().and_then(|p| p.preview.as_ref()) {
+        Some(preview) => super::face(global, Some(preview), 64.),
+        None => super::profile_fields::picture(app, global, set.or(app.own_avatar.as_deref()), 64.),
+    };
+    let picking = form.picking.is_some();
+    let mut buttons = row![
+        button(text("Change Picture").size(13))
+            .padding([7, 12])
+            .style(primary)
+            .on_press_maybe((ready && !picking).then_some(Msg::Names(Input::PickPicture))),
+    ]
+    .spacing(12)
+    .align_y(Center);
+    // As with the nickname, only a picture that's set can be reset.
+    if set.is_some() {
+        buttons = buttons.push(
+            button(text("Reset Picture").size(12))
+                .padding(0)
+                .style(plain(super::LINK, color!(0x5fc5ff)))
+                .on_press_maybe(ready.then_some(Msg::Names(Input::ResetPicture))),
+        );
+    }
+    let picture = column![
+        text("SERVER PICTURE").size(12).font(BOLD).color(CHANNEL),
+        row![
+            shown,
+            column![
+                buttons,
+                text(if form.picture.is_some() {
+                    "Save to show this picture here."
+                } else {
+                    "PNG, JPEG, GIF or WebP, up to 8 MiB."
+                })
+                .size(12)
+                .color(CHANNEL),
+            ]
+            .spacing(8),
+        ]
+        .spacing(16)
+        .align_y(Center),
+    ]
+    .spacing(8);
     let body = column![
         text("Edit Server Profile").size(20).font(BOLD).color(TEXT),
         text(format!(
-            "Your nickname shows instead of {global} in {} and its channels only, \
-             also in other Matrix apps such as Element.",
+            "Your nickname and picture show instead of your profile's in {} and its \
+             channels only, also in other Matrix apps such as Element.",
             server.name
         ))
         .size(13)
         .color(MUTED),
+        picture,
         field,
     ]
-    .spacing(12);
+    .spacing(16);
     let footer = container(
         row![
             Space::new().width(Fill),

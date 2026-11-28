@@ -1,6 +1,6 @@
 //! Member cards and account profile editing.
 use super::{
-    ACTIVE, App, BODY, BOLD, El, FLOAT, MUTED, Msg, TRAY, face, input_style, nav, surface,
+    ACTIVE, App, BODY, BOLD, El, FLOAT, MUTED, Msg, TRAY, input_style, nav, profile_fields, surface,
 };
 use crate::{
     context_menu::Event as Menu,
@@ -43,13 +43,17 @@ pub(super) fn card(app: &App) -> Option<El<'_>> {
             .filter(|n| !n.is_empty())
             .unwrap_or_else(|| r.display(user))
     };
-    let picture = app.avatars.get(if user == &app.matrix_id {
-        app.own_avatar.as_deref()
+    // Their picture in this room: a server picture where they set one.
+    let picture = if user == &app.matrix_id {
+        app.own_picture(r)
     } else {
         member
             .and_then(|m| m.avatar.as_deref())
             .or_else(|| r.avatars.get(user).map(String::as_str))
-    });
+    };
+    // Their banner, About Me and accent colour (profile_fields.rs).
+    let fields = app.profile_fields.of(user, &app.matrix_id);
+    let tint = fields.and_then(|f| f.accent).map(profile_fields::accent);
     let role = r.role(user);
     let power = match (r.posting.actor(user), role) {
         (None, _) => "Room power level unavailable".into(),
@@ -75,7 +79,7 @@ pub(super) fn card(app: &App) -> Option<El<'_>> {
     let mut details = column![
         row![
             super::presence::with_dot(
-                face(name, picture, 64.),
+                profile_fields::picture(app, name, picture, 64.),
                 64.,
                 presence.as_ref().map(|p| p.status),
                 FLOAT
@@ -87,6 +91,7 @@ pub(super) fn card(app: &App) -> Option<El<'_>> {
         ]
         .spacing(12)
         .align_y(Center),
+        profile_fields::about(fields),
         text(power).size(13).color(BODY),
     ]
     .spacing(14);
@@ -137,11 +142,21 @@ pub(super) fn card(app: &App) -> Option<El<'_>> {
             .on_press(close),
         );
     let panel = opaque(
-        container(details)
-            .padding(20)
-            .width(Fill)
-            .max_width(392)
-            .style(|_| surface(FLOAT, 12.)),
+        container(column![
+            profile_fields::banner(app, fields, 120.),
+            container(details).padding(20)
+        ])
+        .width(Fill)
+        .max_width(392)
+        .clip(true)
+        .style(move |_| container::Style {
+            border: iced::Border {
+                color: tint.unwrap_or(Color::TRANSPARENT),
+                width: if tint.is_some() { 2. } else { 0. },
+                radius: 12.0.into(),
+            },
+            ..surface(FLOAT, 12.)
+        }),
     );
     Some(stack![backdrop, container(panel).padding(16).center(Fill)].into())
 }
@@ -183,7 +198,7 @@ pub(super) fn settings(app: &App) -> El<'_> {
     } else if let Some(note) = ui.note {
         form = form.push(text(note).size(13).color(BODY));
     }
-    container(form)
+    let form = container(form)
         .padding(16)
         .width(Fill)
         .style(|_| container::Style {
@@ -193,6 +208,10 @@ pub(super) fn settings(app: &App) -> El<'_> {
                 ..Default::default()
             },
             ..surface(TRAY, 8.)
-        })
+        });
+    // The banner, accent colour and About Me in their own slot after the
+    // form, which grows and shrinks (profile_fields.rs).
+    column![form, profile_fields::settings(app)]
+        .spacing(16)
         .into()
 }
