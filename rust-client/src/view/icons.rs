@@ -33,6 +33,8 @@ pub(super) enum Icon {
     Poll,
     /// A tick: a picked answer in a multiple-choice poll.
     Check,
+    /// A sticker with a peeled corner: the composer's sticker picker.
+    Sticker,
     Smile,
     Pencil,
     Flag,
@@ -41,6 +43,9 @@ pub(super) enum Icon {
     ChevronRight,
     ChevronLeft,
     Close,
+    Refresh,
+    Pin,
+    Threads,
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     Play,
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
@@ -198,6 +203,20 @@ fn outline(icon: Icon) -> Path {
             b.line_to(p(20., 12.));
         }
         Icon::Check => poly(b, &[(5., 12.5), (10., 17.5), (19., 7.)]),
+        Icon::Sticker => {
+            b.move_to(p(14., 21.));
+            b.line_to(p(6., 21.));
+            b.quadratic_curve_to(p(3., 21.), p(3., 18.));
+            b.line_to(p(3., 6.));
+            b.quadratic_curve_to(p(3., 3.), p(6., 3.));
+            b.line_to(p(18., 3.));
+            b.quadratic_curve_to(p(21., 3.), p(21., 6.));
+            b.line_to(p(21., 14.));
+            b.close();
+            poly(b, &[(21., 14.), (14., 14.), (14., 21.)]);
+            b.move_to(p(8., 13.));
+            b.quadratic_curve_to(p(10., 15.5), p(12.5, 14.5));
+        }
         Icon::Poll => {
             poly(b, &[(5., 6.), (14., 6.)]);
             poly(b, &[(5., 12.), (19., 12.)]);
@@ -269,6 +288,53 @@ fn outline(icon: Icon) -> Path {
             b.close();
             poly(b, &[(22., 9.), (16., 15.)]);
             poly(b, &[(16., 9.), (22., 15.)]);
+        }
+        Icon::Pin => {
+            poly(
+                b,
+                &[
+                    (7., 12.),
+                    (12., 7.),
+                    (12., 4.),
+                    (14., 2.),
+                    (22., 10.),
+                    (20., 12.),
+                    (17., 12.),
+                    (12., 17.),
+                    (12., 19.),
+                    (5., 12.),
+                    (7., 12.),
+                ],
+            );
+            poly(b, &[(8.5, 15.5), (3., 21.)]);
+        }
+        Icon::Threads => {
+            poly(
+                b,
+                &[
+                    (3., 3.),
+                    (17., 3.),
+                    (17., 6.),
+                    (14.5, 6.),
+                    (14.5, 18.),
+                    (17., 18.),
+                    (17., 21.),
+                    (3., 21.),
+                    (3., 18.),
+                    (5.5, 18.),
+                    (5.5, 6.),
+                    (3., 6.),
+                    (3., 3.),
+                ],
+            );
+            poly(b, &[(5.5, 11.), (14.5, 7.)]);
+            poly(b, &[(5.5, 16.), (14.5, 12.)]);
+            b.move_to(p(14.5, 12.));
+            b.bezier_curve_to(p(19.5, 10.), p(18., 17.), p(22., 17.));
+        }
+        Icon::Refresh => {
+            arc(b, 12., 12., 8., 35., 326.);
+            poly(b, &[(19., 3.), (19., 8.), (14., 8.)]);
         }
         Icon::Close => {
             poly(b, &[(18., 6.), (6., 18.)]);

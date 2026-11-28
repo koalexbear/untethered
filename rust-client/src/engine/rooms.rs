@@ -1,7 +1,7 @@
 //! Joined rooms and space edges from the SDK's store, re-read whenever a sync
 //! response or room-info update arrives. Simplified Sliding Sync's default
 //! `required_state` includes `m.space.child`, so space edges are local reads.
-use super::{Event, Failure, RoomList, RoomSummary, messaging};
+use super::{ChildEdge, Event, Failure, RoomList, RoomSummary, messaging};
 use crate::permissions::StateDoc;
 use async_channel::Sender;
 use matrix_sdk::{
@@ -16,7 +16,7 @@ use serde_json::Value;
 
 /// `notifications::spaces::PREF`; that module is Linux and web only.
 const SPACE_ALERTS: &str = "com.untethered.space_alerts.v1";
-use std::{collections::BTreeSet, time::Duration};
+use std::time::Duration;
 use tokio::sync::broadcast::error::RecvError;
 
 pub async fn updates(client: Client, events: Sender<Event>) {
@@ -74,10 +74,17 @@ async fn snapshot(client: &Client) -> RoomList {
     let mut list = RoomList::default();
     list.invites = super::invites::list(client).await;
     for room in client.joined_rooms() {
-        let summary = summary(&room).await;
+        let mut summary = summary(&room).await;
         if summary.space {
-            list.children
-                .insert(summary.id.clone(), children(&room).await);
+            summary.child_order = children(&room).await;
+            list.children.insert(
+                summary.id.clone(),
+                summary
+                    .child_order
+                    .iter()
+                    .map(|e| e.child.clone())
+                    .collect(),
+            );
         }
         list.rooms.push(summary);
     }
@@ -171,6 +178,9 @@ async fn summary(room: &Room) -> RoomSummary {
             .map(|e| e["content"].clone()),
         successor: room.successor_room().map(|s| s.room_id.to_string()),
         predecessor: room.predecessor_room().map(|p| p.room_id.to_string()),
+        // Filled in for spaces by `snapshot`.
+        child_order: Vec::new(),
+        me: super::names::own(room).await,
         id,
     }
 }
@@ -206,24 +216,32 @@ async fn call_members(room: &Room) -> Vec<Value> {
         .collect()
 }
 
-/// Children with a non-empty `via`; an empty or redacted edge is a removal.
-async fn children(space: &Room) -> BTreeSet<String> {
+/// Children with a non-empty `via`, with what orders them among their
+/// siblings (channel_order.rs); an empty or redacted edge is a removal.
+async fn children(space: &Room) -> Vec<ChildEdge> {
     let Ok(edges) = space
         .get_state_events_static::<SpaceChildEventContent>()
         .await
     else {
-        return BTreeSet::new();
+        return Vec::new();
     };
     edges
         .into_iter()
         .filter_map(|raw| match raw.deserialize().ok()? {
             SyncOrStrippedState::Sync(SyncStateEvent::Original(e)) if !e.content.via.is_empty() => {
-                Some(e.state_key.to_string())
+                Some(ChildEdge {
+                    child: e.state_key.to_string(),
+                    order: e.content.order.map(|o| o.to_string()),
+                    ts: i64::from(e.origin_server_ts.0),
+                })
             }
             SyncOrStrippedState::Stripped(e)
                 if e.content.via.as_ref().is_some_and(|v| !v.is_empty()) =>
             {
-                Some(e.state_key.to_string())
+                Some(ChildEdge {
+                    child: e.state_key.to_string(),
+                    ..ChildEdge::default()
+                })
             }
             _ => None,
         })

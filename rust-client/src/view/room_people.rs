@@ -67,6 +67,8 @@ impl App {
 
 pub(super) fn view(app: &App) -> El<'_> {
     let d = &app.directory;
+    // Badges come from the open room's power levels (names.rs).
+    let role = |user: &str| app.live.list.get(&app.selected)?.role(user);
     let busy = app.membership_busy();
     let mut panel = column![
         row![
@@ -96,7 +98,7 @@ pub(super) fn view(app: &App) -> El<'_> {
         };
         let presence = app.presence_of(id);
         let mut who = column![
-            text(name).size(16).font(BOLD).color(TEXT),
+            super::names::author(name, role(id), 16.),
             text(id).size(12).color(MUTED),
         ]
         .spacing(2)
@@ -246,6 +248,21 @@ pub(super) fn view(app: &App) -> El<'_> {
                 .as_ref()
                 .and_then(|p| p.message.clone())
                 .unwrap_or_else(|| id.clone());
+            let mut label = text(name).size(15).wrapping(text::Wrapping::None);
+            let title: El = match role(id) {
+                Some(role) => {
+                    let tint = super::names::color(Some(role), TEXT);
+                    label = label.color(Color {
+                        a: if dim { 0.55 } else { 1. },
+                        ..tint
+                    });
+                    row![label, super::names::tag(role)]
+                        .spacing(6)
+                        .align_y(Center)
+                        .into()
+                }
+                None => label.into(),
+            };
             let entry = button(
                 row![
                     with_dot(
@@ -255,7 +272,7 @@ pub(super) fn view(app: &App) -> El<'_> {
                         if selected { ACTIVE } else { SIDE }
                     ),
                     column![
-                        text(name).size(15).wrapping(text::Wrapping::None),
+                        title,
                         text(second)
                             .size(12)
                             .color(CHANNEL)

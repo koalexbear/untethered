@@ -13,6 +13,7 @@ mod account;
 pub mod account_ui;
 mod alerts;
 pub mod app;
+pub mod arrange;
 pub mod browser;
 #[cfg(target_os = "linux")]
 mod calls;
@@ -27,6 +28,9 @@ mod keyring;
 mod live_test;
 mod media;
 mod messaging;
+pub mod names;
+pub mod packs;
+pub mod pins;
 pub mod polls;
 mod presence;
 mod previews;
@@ -38,6 +42,7 @@ pub mod rt;
 mod search;
 pub use search::{Has, Reach, RoomsFound, SearchQuery};
 mod session;
+pub mod threads;
 // The desktop's own settings live beside the profile (tray.rs).
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) use session::profile_root;
@@ -78,6 +83,11 @@ const UPGRADE: &str = "Untethered now uses a new Matrix engine. Sign in once mor
 /// `id` is answered by exactly one [`Event::Done`].
 #[derive(serde::Serialize, serde::Deserialize)]
 pub enum Command {
+    Discussion {
+        id: i64,
+        room: String,
+        action: threads::Request,
+    },
     Login {
         id: i64,
         homeserver: String,
@@ -209,6 +219,47 @@ pub enum Command {
         id: i64,
         room: String,
         event: String,
+    },
+    /// Use a room's image pack in every room, or stop (ROADMAP M11).
+    UsePack {
+        id: i64,
+        room: String,
+        key: String,
+        on: bool,
+    },
+    SendSticker {
+        id: i64,
+        room: String,
+        image: packs::Image,
+    },
+    /// React with a custom emoji, or take that reaction back.
+    ReactEmote {
+        id: i64,
+        room: String,
+        event: String,
+        url: String,
+        shortcode: String,
+    },
+    /// Reorder or move a space's channels and categories (ROADMAP N5):
+    /// `m.space.child` edges, rewritten in turn.
+    Arrange {
+        id: i64,
+        changes: Vec<arrange::Change>,
+    },
+    /// Show `name` as this account's name in each of `rooms` (ROADMAP M12:
+    /// a server nickname is one per room of the space); None puts the
+    /// global name back.
+    SetNickname {
+        id: i64,
+        rooms: Vec<String>,
+        name: Option<String>,
+    },
+    /// Give `room`, joined after its server's nickname was set, that
+    /// nickname, unless a name was set there since joining.
+    FollowNickname {
+        id: i64,
+        room: String,
+        name: String,
     },
     Report {
         id: i64,
@@ -446,6 +497,10 @@ pub enum BrowserMethod {
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub enum Event {
+    Discussion {
+        id: i64,
+        result: Result<threads::Response, Failure>,
+    },
     Account(Account),
     ProfileSaved {
         id: i64,
@@ -487,6 +542,8 @@ pub enum Event {
     TypingSharing(bool),
     /// People's presence (N4), when it changed.
     Presence(Vec<(String, crate::presence::Presence)>),
+    /// Every image pack this account can use (ROADMAP M11).
+    Packs(packs::Packs),
     /// Whether the homeserver shares presence (N4): Unknown when the
     /// engine starts asking.
     PresenceSupport(crate::presence::Support),
@@ -813,6 +870,23 @@ pub struct RoomSummary {
     /// This account shows link previews in the room (previews.rs).
     #[serde(default)]
     pub link_previews: bool,
+    /// A space's `m.space.child` edges with what orders them (ROADMAP N5).
+    #[serde(default)]
+    pub child_order: Vec<ChildEdge>,
+    /// This account's name in the room and when it was set (names.rs).
+    #[serde(default)]
+    pub me: Option<names::Own>,
+}
+
+/// A space's current edge to a child, with the fields the spec orders
+/// siblings by (channel_order.rs).
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ChildEdge {
+    pub child: String,
+    /// A valid `order`; the SDK drops an invalid one.
+    pub order: Option<String>,
+    /// The edge event's `origin_server_ts`.
+    pub ts: i64,
 }
 
 /// A link's preview as the homeserver gives it (previews.rs).
@@ -1092,6 +1166,9 @@ struct Live {
     typing: Sender<(String, bool)>,
     /// Our status and the people shown, for `presence::run`.
     presence: Sender<presence::Request>,
+    /// Rooms whose history was asked for, whose image packs `packs::run`
+    /// reads.
+    packs: Sender<String>,
     profile: tokio::sync::watch::Sender<profile::Changes>,
     tasks: Tasks,
 }
@@ -1166,6 +1243,8 @@ impl Engine {
         tasks.spawn(typing::notices(client.clone(), notices));
         let (presence, requests) = async_channel::unbounded();
         tasks.spawn(presence::run(client.clone(), self.events.clone(), requests));
+        let (packs, opened) = async_channel::unbounded();
+        tasks.spawn(packs::run(client.clone(), self.events.clone(), opened));
         #[cfg(target_os = "linux")]
         calls::watch(&client, self.events.clone());
         alerts::register(&client, self.events.clone()).await;
@@ -1185,6 +1264,7 @@ impl Engine {
             verifier,
             typing,
             presence,
+            packs,
             profile,
             tasks,
         });
@@ -1276,6 +1356,8 @@ impl Engine {
                 let Some(live) = &self.live else {
                     return self.done(id, Err(Failure::Unavailable)).await;
                 };
+                // An opened room's own unstable image pack isn't synced.
+                let _ = live.packs.try_send(room.clone());
                 let (timelines, events) = (live.timelines.clone(), self.events.clone());
                 rt::spawn(async move {
                     let result = timelines.paginate(&room).await;
@@ -1406,6 +1488,22 @@ impl Engine {
                     self.done(id, Err(Failure::Cancelled)).await;
                 }
             }
+            Command::Discussion { id, room, action } => {
+                let sources = self.sources.clone();
+                self.answer(
+                    Event::Discussion {
+                        id,
+                        result: Err(Failure::Unavailable),
+                    },
+                    move |client| async move {
+                        Event::Discussion {
+                            id,
+                            result: threads::request(&client, &room, action, &sources).await,
+                        }
+                    },
+                )
+                .await;
+            }
             Command::React {
                 id,
                 room,
@@ -1467,6 +1565,48 @@ impl Engine {
             Command::EndPoll { id, room, event } => {
                 self.job(id, move |_, timelines, _| async move {
                     timelines.end_poll(&room, &event).await
+                })
+                .await
+            }
+            Command::UsePack { id, room, key, on } => {
+                self.job(id, move |client, _, _| async move {
+                    packs::use_everywhere(&client, &room, &key, on).await
+                })
+                .await
+            }
+            Command::SendSticker { id, room, image } => {
+                self.job(id, move |_, timelines, _| async move {
+                    timelines.send_sticker(&room, &image).await
+                })
+                .await
+            }
+            Command::ReactEmote {
+                id,
+                room,
+                event,
+                url,
+                shortcode,
+            } => {
+                self.job(id, move |_, timelines, _| async move {
+                    timelines.react_emote(&room, &event, &url, &shortcode).await
+                })
+                .await
+            }
+            Command::Arrange { id, changes } => {
+                self.job(id, move |client, _, _| async move {
+                    arrange::arrange(&client, changes).await
+                })
+                .await
+            }
+            Command::SetNickname { id, rooms, name } => {
+                self.job(id, move |client, _, _| async move {
+                    names::set(&client, &rooms, name).await
+                })
+                .await
+            }
+            Command::FollowNickname { id, room, name } => {
+                self.job(id, move |client, _, _| async move {
+                    names::follow(&client, &room, name).await
                 })
                 .await
             }

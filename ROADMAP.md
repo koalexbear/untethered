@@ -2,14 +2,13 @@
 
 **2026-11-27 · `main`**
 
-**Next: pins and threads (N3), then sign-in everywhere (J5).**
+**Next: sign-in everywhere (J5).**
 Messages feel like Discord, and people can get in: invites show with
 Accept and Decline, Matrix links open in the app, Explore finds the
 homeserver's public spaces, and New message starts DMs and group DMs.
 Ctrl+K switches rooms, every room and server opens where you left it, and
-search covers a whole space with Discord's filters. What a community misses
-next is pinned messages and threads. Sign-in everywhere (J5) finishes
-Phase 2 after that, and the rest of Phase 1 (M8 onwards) fills in around
+search covers a whole space with Discord's filters. Rooms have pinned messages
+and Matrix threads. Sign-in everywhere (J5) finishes Phase 2, and the rest of Phase 1 (M8 onwards) fills in around
 them. Calls continue in their own plan
 ([calls-parity-plan.md](rust-client/docs/calls-parity-plan.md)).
 
@@ -47,7 +46,8 @@ them. Calls continue in their own plan
 - **People:** profile pictures in messages, DMs, the member list, calls and
   the user panel; online, idle and Do Not Disturb dots with custom statuses
   where the homeserver shares presence, and your own status from the user
-  panel.
+  panel; a nickname per server (Edit Server Profile), and Owner, Admin and
+  Moderator badges from each room's power levels.
 - **Files and media:** drop, paste and pick files with progress, cancel and
   retry; every image previews inline, keeping its space while it loads;
   animated GIFs, WebPs, stickers and profile pictures, paused off screen;
@@ -112,8 +112,8 @@ doesn't:
 | **M8. Forward** · done | Spec (content sent again) | Forward a message, attachments included, to another room or DM from its toolbar and right-click menu. Encrypted attachments are sent again with the same file and key, not uploaded again. | A message and an image forwarded from an encrypted room show in Element's DM as ordinary messages from you, and no new upload happens. |
 | **M9. Polls** · done | Accepted MSC3381 (sent and read under its unstable `org.matrix.msc3381.poll.*` names, as Element does) | Show, vote in and end polls (MSC3381, as Element does), with live results; create one from the composer's **+**. | A poll started in Element shows here; a vote here moves Element's count; ending it shows the same final tally in both. |
 | **M10. Voice messages** | Unstable MSC3245, as Element sends it | Record and send a voice message (MSC3245) from the composer, with a waveform; playing received ones is P2. | A voice message recorded here plays in Element with its waveform and length. |
-| **M11. Custom emoji and stickers** | Spec v1.19 (MSC2545 image packs) | Image packs (MSC2545) for a space and for your account, in the emoji picker, autocomplete and reactions, with a sticker picker. Packs work anywhere, as Discord sells with Nitro: your own packs, and packs from rooms you choose to use everywhere (`m.image_pack.rooms`). Animated ones play (P1). Cinny, FluffyChat, Nheko and SchildiChat show them; check Element before relying on it, and send the `:shortcode:` as fallback text. | An emoji pack added to a space appears in its rooms' picker, and in every room once you choose to use it everywhere; a custom emoji sent here renders in Cinny, and a client without image packs shows its `:shortcode:`. |
-| **M12. Names** | Spec (per-room names); badges and colours client-side | Per-server nicknames (Matrix's per-room display names) and an Admin or Moderator badge, or a name colour, from the sender's power level, standing in for Discord's role colours. | A nickname set in one space shows only there, also in Element; a moderator's badge shows wherever their name does. |
+| **M11. Custom emoji and stickers** · done (using packs; making them is open) | Spec v1.19 (MSC2545 image packs) | Image packs (MSC2545) for a space and for your account, in the emoji picker, autocomplete and reactions, with a sticker picker. Packs work anywhere, as Discord sells with Nitro: your own packs, and packs from rooms you choose to use everywhere (`m.image_pack.rooms`). Animated ones play (P1). Cinny, FluffyChat, Nheko and SchildiChat show them; check Element before relying on it, and send the `:shortcode:` as fallback text. | An emoji pack added to a space appears in its rooms' picker, and in every room once you choose to use it everywhere; a custom emoji sent here renders in Cinny, and a client without image packs shows its `:shortcode:`. |
+| **M12. Names** · done | Spec (per-room names); badges and colours client-side | Per-server nicknames (Matrix's per-room display names) and an Admin or Moderator badge, or a name colour, from the sender's power level, standing in for Discord's role colours. | A nickname set in one space shows only there, also in Element; a moderator's badge shows wherever their name does. |
 | **M13. Composer details** | Spec (`m.emote`); the rest client-side | Up arrow in an empty composer edits your last message; Escape marks the channel read; a message of only emoji shows larger; code blocks get syntax highlighting; `/me`, `/shrug` and `/spoiler`; spell check if Iced's editor allows it. | Each works as on Discord, and `/me` arrives in Element as an emote. |
 | **M14. Selection across messages** | Client | Drag a selection from one message into the next, and copy their text in order. Today a selection stays within one paragraph. | Dragging across three messages and pressing Ctrl+C pastes their three texts. |
 | **M15. Profile customization** | Spec (per-room names and pictures; profile fields since v1.16); the extra fields only Untethered shows | A profile picture per server (Matrix's per-room member avatar, alongside M12's nicknames), and a banner, bio and accent colour on your profile card as extended profile fields under our own names. Animated pictures play (P1). | A per-server picture set here shows only in that space, also in Element; a banner and bio set here show on your card in another Untethered. |
@@ -134,9 +134,9 @@ doesn't:
 |---|---|---|---|
 | **N1. Quick switcher** · done | Client | Ctrl+K: fuzzy search over rooms, DMs and spaces, unread first. | Ctrl+K, three letters and Enter opens a room without the mouse. |
 | **N2. Remember where you were** · done | Client | Last room per space and scroll position per room, restored on switch and restart. | Leave a room mid-history, visit two others, come back to the same message. |
-| **N3. Pins and threads** | Spec (pinned events; threads since v1.4) | Pinned messages panel (`m.room.pinned_events`); Matrix threads in a side panel with a thread list per channel. | A thread started in Element shows its replies in the panel; pinning here shows in Element. |
+| **N3. Pins and threads** · done | Spec (pinned events; threads since v1.4) | Pinned messages panel (`m.room.pinned_events`); Matrix threads in a side panel with a thread list per channel. | A thread started in Element shows its replies in the panel; pinning here shows in Element. |
 | **N4. Presence** · done | Spec, often off on large servers | Online/idle/offline dots and custom status where the homeserver enables presence; hide them cleanly where it doesn't. | Going idle in Element turns the dot amber here within a minute. |
-| **N5. Channel order** | Spec (`m.space.child` `order`) | Drag to reorder channels and categories, writing `m.space.child` `order`. | The order made here appears in Element's space view. |
+| **N5. Channel order** · done | Spec (`m.space.child` `order`) | Drag to reorder channels and categories, writing `m.space.child` `order`. Categories are the spaces a space lists; dropping a channel in another moves its edge there. | The order made here appears in Element's space view. |
 | **N6. System tray** · done | Client | A tray icon (StatusNotifierItem on KDE and GNOME, for example with `ksni`; the notification area on Windows) with an unread and mention badge. Closing the window keeps Untethered running in the tray, as Discord does (a setting, on by default), so messages, notifications, ringing and calls carry on. The tray menu offers Open, Mute, Deafen, Do Not Disturb and Quit; optionally start at login (XDG autostart, the Windows Run key) minimised to the tray. Not applicable on the web. | Close the window during a call: audio continues, the tray shows the call and a mention badge, Mute in the tray menu mutes, an incoming DM call still rings, and Quit leaves the call and exits cleanly. |
 | **N7. Search across a space** · done | Spec (`/search`, unencrypted rooms); a local index for encrypted | Search a space or all rooms with Discord's filters (`from:`, `in:`, `has:file`/`image`/`link`, `before:`, `after:`): the homeserver's search for unencrypted rooms, so it finds history this device never loaded, and a local full-text index for encrypted ones. Results say which rooms were searched and how far back. | A week-old file found with `from:` and `has:file` in an unencrypted channel never opened on this device, and in an encrypted one once indexed. |
 | **N8. Server rail order and folders** | Order: unstable MSC3230, as Element; folders: own account data | Drag servers to reorder them, saved as Element does (`org.matrix.msc3230.space_order` in each space's account data) so both clients agree, and group them into folders, which only Untethered shows (its own account data). | The order and a folder made here are the same after a restart and on a second device. |
@@ -196,6 +196,12 @@ source's resolution, with no tier to pay for.
 - Profile pictures of members who never posted come from their membership
   event, so they appear once the member list has loaded.
 - A text selection stays within one paragraph (M14).
+- Image packs (M11) can be used but not made or edited here: uploading an
+  emoji to a space's pack belongs in C1's server settings, and your own
+  pack exists only under Cinny's unstable `im.ponies.user_emotes` (the spec
+  dropped personal packs). Custom emoji show their first frame, not their
+  animation, and a room's own pack under the unstable name is read when
+  its history is first opened.
 - Polls under MSC3381's stable `m.poll.*` names don't show: matrix-sdk's
   timeline reads only the unstable `org.matrix.msc3381.poll.*` events
   Element sends, which is also what Untethered sends. Editing a poll before

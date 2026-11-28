@@ -14,6 +14,7 @@ mod browser_verification;
 mod call_devices;
 #[cfg(target_os = "linux")]
 mod call_settings;
+mod channel_order;
 mod community;
 mod context_menu;
 #[cfg(not(target_arch = "wasm32"))]
@@ -24,6 +25,7 @@ mod dms;
 mod drafts;
 mod edits;
 mod emoji;
+mod emotes;
 mod engine;
 mod explore;
 #[cfg(not(target_arch = "wasm32"))]
@@ -44,6 +46,7 @@ mod link_previews;
 mod media;
 mod mentions;
 mod moderation;
+mod names;
 #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
 mod notifications;
 mod paging;
@@ -108,6 +111,7 @@ enum Field {
 }
 #[derive(Clone)]
 enum Msg {
+    Discussion(view::discussions::Action),
     #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
     NotificationPanel,
     #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
@@ -144,6 +148,7 @@ enum Msg {
     Files(String, Vec<media::LocalFile>),
     Thumbnail(String, u64, Option<iced::widget::image::Handle>),
     PickFiles,
+    PickThreadImage,
     RemoveFile(u64),
     DismissSkipped(String),
     CancelUpload(String, u64, i64),
@@ -262,8 +267,15 @@ enum Msg {
     Dm(dms::Input),
     /// Forwarding a message (forward.rs).
     Forward(forward::Input),
+    /// Custom emoji and stickers (emotes.rs), and a picture of one fetched.
+    Emote(emotes::Input),
+    EmoteReady(String, Option<preview::Picture>),
     /// Voting, ending and creating polls (polls.rs).
     Poll(polls::Input),
+    /// Dragging channels and categories in a space's sidebar (channel_order.rs).
+    Order(channel_order::Input),
+    /// Edit Server Profile (names.rs).
+    Names(names::Input),
     /// The composer's + menu: Upload a File, Create Poll.
     ComposerMenu(bool),
     /// The quick switcher (switcher.rs).
@@ -499,6 +511,12 @@ enum Request {
     Explore(engine::explore::DirectoryQuery),
     /// Starting, voting in or ending a poll (polls.rs).
     Poll(polls::Op),
+    /// Sending a sticker or using a pack everywhere (emotes.rs).
+    Pack(emotes::Op),
+    /// Reordering or moving channels and categories (channel_order.rs).
+    Arrange,
+    /// Setting a server nickname (names.rs).
+    Nickname(names::Write),
 }
 struct App {
     setup: Option<community::Form>,
@@ -547,6 +565,7 @@ struct App {
     commands: Sender<backend::Command>,
     /// Set when UNTETHERED_ENGINE=matrix-sdk replaces gomuks.
     sdk: Option<Sender<engine::Command>>,
+    discussions: view::discussions::State,
     sdk_ui: engine::account_ui::AccountUi,
     outbox: media::Outbox,
     inline: inline::InlineImages,
@@ -566,10 +585,17 @@ struct App {
     new_message: Option<dms::NewMessage>,
     /// Forward To, for a message (forward.rs).
     forwarding: Option<forward::Form>,
+    /// Edit Server Profile, and rooms that took their server's nickname
+    /// (names.rs).
+    names: names::State,
     /// Explore, and what spaces contain (explore.rs).
     explore: explore::State,
     /// Create a Poll, and the composer's + menu that opens it (polls.rs).
     polling: Option<polls::Form>,
+    /// Image packs, their pictures and the sticker picker (emotes.rs).
+    emotes: emotes::Emotes,
+    /// A channel or category being dragged in the sidebar (channel_order.rs).
+    order: channel_order::Drag,
     composer_menu: bool,
     started_dm: Option<String>,
     /// Ctrl+K's quick switcher (switcher.rs).
@@ -715,6 +741,7 @@ impl App {
             pasting: false,
             commands,
             sdk: None,
+            discussions: Default::default(),
             sdk_ui: Default::default(),
             outbox: Default::default(),
             inline: Default::default(),
@@ -726,8 +753,11 @@ impl App {
             join_address: String::new(),
             new_message: None,
             forwarding: None,
+            names: Default::default(),
             explore: Default::default(),
             polling: None,
+            emotes: Default::default(),
+            order: Default::default(),
             composer_menu: false,
             started_dm: None,
             switcher: None,
@@ -886,6 +916,7 @@ impl App {
         self.close_viewer();
         self.scrolled_away = false;
         self.scrolled_far = false;
+        self.discussions = Default::default();
         self.reset_directory();
         self.leave_permission_panel();
         #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
@@ -900,6 +931,7 @@ impl App {
             text_editor::Content::with_text(self.drafts.get(&id).map(String::as_str).unwrap_or(""));
         let left = std::mem::replace(&mut self.selected, id.clone());
         self.release_timeline(left);
+        self.emotes.stickers = false;
         #[cfg(target_os = "linux")]
         self.stop_inline();
         self.snap_to_newest = true;
@@ -1082,6 +1114,14 @@ impl App {
             self.server_menu = false;
         }
         match msg {
+            Msg::Discussion(action) => {
+                let focus = matches!(action, view::discussions::Action::Emoji(_));
+                self.discussion(action);
+                if focus {
+                    return operation::focus("thread-composer");
+                }
+            }
+            Msg::PickThreadImage => return self.pick_thread_image(),
             #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
             Msg::NotificationPanel => self.alerts.panel = !self.alerts.panel,
             #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
@@ -1651,6 +1691,13 @@ impl App {
                 }
             }
             Msg::Files(mut room, files) => {
+                if let Some(picker) = room
+                    .strip_prefix("thread-image:")
+                    .and_then(|id| id.parse().ok())
+                {
+                    self.thread_image_picked(picker, files.into_iter().next());
+                    return operation::focus("thread-composer");
+                }
                 #[cfg(target_arch = "wasm32")]
                 if let Some(id) = room
                     .strip_prefix(engine::profile::AVATAR_PICKER)
@@ -1819,6 +1866,10 @@ impl App {
             Msg::Dm(input) => return self.new_message(input),
             Msg::Forward(input) => return self.forward(input),
             Msg::Poll(input) => return self.poll(input),
+            Msg::Emote(input) => self.emote(input),
+            Msg::EmoteReady(url, picture) => self.emotes.complete(url, picture),
+            Msg::Order(input) => return self.arrange_input(input),
+            Msg::Names(input) => return self.names(input),
             Msg::ComposerMenu(open) => self.composer_menu = open && self.can_stage(),
             Msg::Switcher(input) => return self.switcher(input),
             Msg::Escape if self.shortcuts.open => self.shortcuts.open = false,
@@ -1877,6 +1928,7 @@ impl App {
             }
             Msg::ServerMenu(open) => self.server_menu = open,
             Msg::Escape if self.context_menu.is_open() => self.context_menu.dismiss(),
+            Msg::Escape if self.order.held.is_some() => self.order = Default::default(),
             Msg::Escape if self.sdk_ui.profile.card.is_some() => {
                 return self.profile_action(engine::profile::Action::Close);
             }
@@ -1892,8 +1944,12 @@ impl App {
                     return self.forward(forward::Input::Close);
                 } else if self.polling.is_some() {
                     return self.poll(polls::Input::Close);
+                } else if self.names.form.is_some() {
+                    return self.names(names::Input::Close);
                 } else if self.composer_menu {
                     self.composer_menu = false;
+                } else if self.emotes.stickers {
+                    self.emotes.stickers = false;
                 } else if self.presence.dialog.is_some() || self.presence.menu {
                     self.presence.dialog = None;
                     self.presence.menu = false;
@@ -1972,7 +2028,8 @@ impl App {
                 if emoji {
                     self.composer_changed();
                 }
-                return task;
+                // An opened picker or popup shows custom emoji (emotes.rs).
+                return Task::batch([task, self.schedule_emotes()]);
             }
             Msg::Typing(input) => self.typing_input(input),
             Msg::Presence(input) => return self.presence_input(input),
@@ -1997,8 +2054,14 @@ impl App {
             Msg::SearchHit(room, id) => return self.open_hit(room, id),
             Msg::SearchResults => self.close_original(),
             Msg::ReturnToReading => return self.return_to_reading(),
-            Msg::ReactionPicker(id) => return self.toggle_reaction_picker(id, false),
-            Msg::ReactionPickerChips(id) => return self.toggle_reaction_picker(id, true),
+            Msg::ReactionPicker(id) => {
+                let task = self.toggle_reaction_picker(id, false);
+                return Task::batch([task, self.schedule_emotes()]);
+            }
+            Msg::ReactionPickerChips(id) => {
+                let task = self.toggle_reaction_picker(id, true);
+                return Task::batch([task, self.schedule_emotes()]);
+            }
             Msg::ReactionInput(s) => {
                 if let Some(p) = &mut self.reaction_picker {
                     p.custom = s;
@@ -2251,7 +2314,7 @@ impl App {
         self.fill_history();
         self.sync_presence();
         self.schedule_link_previews();
-        let task = Task::batch([task, self.schedule_avatars()]);
+        let task = Task::batch([task, self.schedule_avatars(), self.schedule_emotes()]);
         #[cfg(target_os = "linux")]
         let task = Task::batch([task, self.start_ringtone(), self.play_sounds()]);
         #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
@@ -2413,6 +2476,7 @@ fn main() -> iced::Result {
                 } else { iced::Subscription::none() },
                 app.typing_subscription(),
                 app.presence_subscription(),
+                app.order_subscription(),
                 // A moment after the timeline stops moving, note the place.
                 if app.place_unnoted {
                     iced::time::every(std::time::Duration::from_millis(400)).map(|_| Msg::NotePlace)

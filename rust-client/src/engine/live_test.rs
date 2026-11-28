@@ -485,6 +485,144 @@ async fn stop(app: App, engine: tokio::task::JoinHandle<Result<(), String>>) {
 
 /// The seeded device in UNTETHERED_PROFILE (opened with UNTETHERED_KEYRING=off)
 /// sends a 16 MiB file through the fixture's throttling gateway, cancels it
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "run UNTETHERED_QA_ONLY=discussions scripts/qa_matrix_sdk.py with disposable Synapse"]
+async fn matrix_sdk_pins_and_threads() {
+    use crate::view::discussions::{Action, Panel};
+
+    async fn run(app: &mut App, events: &Receiver<Event>, action: Action) {
+        let _ = app.update(Msg::Discussion(action));
+        assert!(
+            app.discussions.loading(),
+            "discussion request was not queued"
+        );
+        wait(app, events, "discussion request", |app| {
+            !app.discussions.loading()
+        })
+        .await;
+        assert_eq!(app.discussions.error, None);
+    }
+
+    let fixture: Value =
+        serde_json::from_slice(&std::fs::read(env::var("UNTETHERED_QA_FIXTURE").unwrap()).unwrap())
+            .unwrap();
+    let base = PathBuf::from(env::var_os("UNTETHERED_QA_PROFILES").unwrap());
+    let server = fixture["server"].as_str().unwrap();
+    let room = fixture["unread_room"].as_str().unwrap();
+    let root = fixture["thread_root"].as_str().unwrap();
+    let (mut owner, owner_events, owner_engine) = sign_in(
+        &base.join("pins-owner"),
+        server,
+        fixture["username"].as_str().unwrap(),
+        fixture["password"].as_str().unwrap(),
+    )
+    .await;
+    let (mut peer, peer_events, peer_engine) = sign_in(
+        &base.join("pins-peer"),
+        server,
+        fixture["peer"].as_str().unwrap(),
+        fixture["peer_password"].as_str().unwrap(),
+    )
+    .await;
+    owner.recovery = rooms::string(&fixture["key"]);
+    peer.recovery = rooms::string(&fixture["peer_key"]);
+    let _ = owner.update(Msg::Verify);
+    let _ = peer.update(Msg::Verify);
+    wait2(
+        &mut owner,
+        &owner_events,
+        &mut peer,
+        &peer_events,
+        "shared room",
+        |a, b| {
+            a.verified
+                && b.verified
+                && a.live.list.contains_key(room)
+                && b.live.list.contains_key(room)
+        },
+    )
+    .await;
+    owner.open(room.into());
+    peer.open(room.into());
+    run(&mut owner, &owner_events, Action::Pin(root.into(), true)).await;
+    assert!(owner.discussions.pinned(room, root));
+    run(&mut peer, &peer_events, Action::Open(Panel::Pins)).await;
+    assert!(peer.discussions.pinned(room, root));
+
+    run(
+        &mut peer,
+        &peer_events,
+        Action::Open(Panel::Replies(root.into())),
+    )
+    .await;
+    let reply = "Reply from the other device";
+    let _ = peer.update(Msg::Discussion(Action::Draft(text_editor::Action::Edit(
+        text_editor::Edit::Paste(Arc::new(reply.into())),
+    ))));
+    run(&mut peer, &peer_events, Action::Send).await;
+
+    let photos = tempfile::tempdir_in(&base).unwrap();
+    let path = photos.path().join("thread-photo.png");
+    image::RgbImage::from_pixel(16, 16, image::Rgb([30, 200, 180]))
+        .save(&path)
+        .unwrap();
+    // Feed the file dialog's result directly into the app's attachment handler.
+    let _ = peer.update(Msg::PickThreadImage);
+    let _ = peer.update(Msg::Files(
+        format!("thread-image:{}", peer.seq),
+        vec![crate::media::LocalFile::from_path(path).unwrap()],
+    ));
+    let _ = peer.update(Msg::Discussion(Action::ToggleEmoji));
+    let _ = peer.update(Msg::Discussion(Action::Emoji("🧶".into())));
+    run(&mut peer, &peer_events, Action::Send).await;
+
+    run(&mut owner, &owner_events, Action::Open(Panel::Threads)).await;
+    assert!(
+        owner
+            .discussions
+            .messages
+            .iter()
+            .any(|event| event.event_id.as_deref() == Some(root))
+    );
+    run(
+        &mut owner,
+        &owner_events,
+        Action::Open(Panel::Replies(root.into())),
+    )
+    .await;
+    assert_eq!(
+        owner
+            .discussions
+            .root
+            .as_ref()
+            .and_then(|event| event.event_id.as_deref()),
+        Some(root),
+    );
+    assert!(
+        owner
+            .discussions
+            .messages
+            .iter()
+            .any(|event| event.body == reply)
+    );
+
+    assert!(owner.discussions.messages.iter().any(|event| {
+        event.body == "🧶"
+            && event
+                .media
+                .as_ref()
+                .and_then(crate::media::Media::parse)
+                .is_some_and(|photo| photo.name == "thread-photo.png" && photo.preview.is_some())
+    }));
+
+    run(&mut owner, &owner_events, Action::Pin(root.into(), false)).await;
+    assert!(!owner.discussions.pinned(room, root));
+    run(&mut peer, &peer_events, Action::Open(Panel::Pins)).await;
+    assert!(!peer.discussions.pinned(room, root));
+    stop(owner, owner_engine).await;
+    stop(peer, peer_engine).await;
+}
+
 /// mid-upload, then retries. `scripts/qa_upload_cancel.py` checks the
 /// transport, Synapse's media and events, and the decrypted event (from the
 /// QA event log); files in UNTETHERED_UPLOAD_QA pace both sides

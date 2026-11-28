@@ -5,10 +5,12 @@ mod autocomplete;
 mod call_controls;
 #[cfg(target_os = "linux")]
 mod call_stage;
+mod channel_order;
 mod community;
 mod context_menu;
 mod dms;
 mod emoji_picker;
+mod emotes;
 mod explore;
 mod forward;
 mod gallery;
@@ -23,7 +25,9 @@ mod polls;
 mod switcher;
 mod zoom;
 pub(crate) use link_preview::image_source as link_preview_image;
+pub(crate) mod discussions;
 mod mentions;
+mod names;
 mod popover;
 mod presence;
 mod profile;
@@ -271,6 +275,39 @@ fn field_style(_: &Theme, status: text_editor::Status) -> text_editor::Style {
         selection: color!(0x5865f2, 0.45),
     }
 }
+fn composer_editor<'a>(
+    content: &'a text_editor::Content,
+    id: &'static str,
+    hint: String,
+    on_action: Option<fn(text_editor::Action) -> Msg>,
+    key_binding: impl Fn(text_editor::KeyPress) -> Option<text_editor::Binding<Msg>> + 'a,
+) -> El<'a> {
+    let editor = text_editor(content)
+        .id(id)
+        .placeholder(hint)
+        .key_binding(key_binding)
+        .padding([11, 0])
+        .size(16)
+        .height(Length::Shrink)
+        .min_height(22)
+        .max_height(220)
+        .style(|theme, status| text_editor::Style {
+            background: Color::TRANSPARENT.into(),
+            border: Border::default(),
+            ..field_style(theme, status)
+        });
+    match on_action {
+        Some(action) => editor.on_action(action).into(),
+        None => editor.into(),
+    }
+}
+
+fn composer_send_key(press: &text_editor::KeyPress) -> bool {
+    press.key == keyboard::Key::Named(keyboard::key::Named::Enter)
+        && press.modifiers.is_empty()
+        && matches!(press.status, text_editor::Status::Focused { .. })
+}
+
 fn input_style(_: &Theme, status: text_input::Status) -> text_input::Style {
     text_input::Style {
         background: RAIL.into(),
@@ -655,7 +692,7 @@ impl App {
                         text(format!("@{who}"))
                             .size(14)
                             .font(BOLD)
-                            .color(BODY)
+                            .color(names::color(r.role(&q.sender), BODY))
                             .wrapping(text::Wrapping::None),
                     )
                     .push(
@@ -1305,6 +1342,7 @@ impl App {
             .or_else(|| self.block_dialog())
             .or_else(|| self.new_message_dialog())
             .or_else(|| self.forward_dialog())
+            .or_else(|| names::dialog(self))
             .or_else(|| self.poll_dialog())
             .or_else(|| self.end_poll_dialog())
             .or_else(|| self.shortcuts_view())
@@ -1387,10 +1425,6 @@ impl App {
                 ..Default::default()
             })
         };
-        #[cfg_attr(
-            not(any(target_os = "linux", target_arch = "wasm32")),
-            allow(unused_mut)
-        )]
         let mut menu = column![
             item(
                 Icon::UserPlus,
@@ -1406,6 +1440,15 @@ impl App {
             ),
         ]
         .spacing(2);
+        // Your nickname in this space (names.rs).
+        if self.may_edit_server_profile() {
+            menu = menu.push(item(
+                Icon::Pencil,
+                "Edit Server Profile",
+                MUTED,
+                ready.then(|| Msg::Names(crate::names::Input::Open(space.clone()))),
+            ));
+        }
         #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
         {
             menu = menu
@@ -1611,7 +1654,7 @@ impl App {
     fn category<'a>(
         &self,
         key: &str,
-        title: &'a str,
+        title: impl text::IntoFragment<'a>,
         create: Option<(Msg, &'static str)>,
     ) -> El<'a> {
         let open = !self.collapsed.contains(key);
@@ -1686,6 +1729,10 @@ impl App {
             ..Padding::ZERO
         });
         list = list.extend(self.invite_rows(&self.section));
+        // A space's channels by category, to drag where allowed (N5).
+        if let Some((_, groups)) = self.open_groups() {
+            return self.space_channel_list(list, groups, create);
+        }
         let groups = [
             (
                 "text",
@@ -2382,6 +2429,33 @@ impl App {
                 tooltip::Position::Bottom,
             ));
         }
+        if full {
+            use discussions::{Action, Panel};
+
+            for (glyph, label, panel) in [
+                (Icon::Pin, "Pinned Messages", Panel::Pins),
+                (Icon::Threads, "Threads", Panel::Threads),
+            ] {
+                let active = !self.people
+                    && (self.discussions.panel.as_ref() == Some(&panel)
+                        || matches!(
+                            (&panel, &self.discussions.panel),
+                            (Panel::Threads, Some(Panel::Replies(_)))
+                        ));
+                let action = if active {
+                    Action::Close
+                } else {
+                    Action::Open(panel)
+                };
+                tools = tools.push(icon_button(
+                    glyph,
+                    label,
+                    active,
+                    (active || self.connected).then_some(Msg::Discussion(action)),
+                    tooltip::Position::Bottom,
+                ));
+            }
+        }
         tools = tools
             .push(icon_button(
                 Icon::Members,
@@ -2679,7 +2753,9 @@ impl App {
                 .into()
         };
         let mut middle = Row::new().push(body).height(Fill);
-        if self.people && self.logged_in && room.is_some() {
+        if let Some(panel) = discussions::view(self).filter(|_| room.is_some() && !self.people) {
+            middle = middle.push(panel);
+        } else if self.people && self.logged_in && room.is_some() {
             middle = middle.push(room_people::view(self));
         } else if self.people
             && let Some(r) = room
@@ -3058,15 +3134,7 @@ impl App {
                     self.user_area(
                         &p.sender,
                         format!("name {place}"),
-                        profile::link(
-                            self,
-                            &p.sender,
-                            text(name)
-                                .size(16)
-                                .font(BOLD)
-                                .color(TEXT)
-                                .wrapping(text::Wrapping::None),
-                        )
+                        profile::link(self, &p.sender, names::author(name, r.role(&p.sender), 16.))
                     ),
                     text(stamp(p)).size(12).color(CHANNEL)
                 ]
@@ -3321,50 +3389,30 @@ impl App {
             };
             format!("Message {sign}{}", r.name)
         };
-        let editor = text_editor(&self.editor)
-            .id("composer")
-            .placeholder(hint)
-            .on_action(Msg::Draft)
-            .key_binding(|press| {
-                if let Some(popup) =
-                    self.completion_key(crate::autocomplete::Field::Composer, &press)
-                {
-                    return Some(popup);
+        let editor = composer_editor(&self.editor, "composer", hint, Some(Msg::Draft), |press| {
+            if let Some(popup) = self.completion_key(crate::autocomplete::Field::Composer, &press) {
+                return Some(popup);
+            }
+            #[cfg(target_arch = "wasm32")]
+            if press.modifiers.command()
+                && press.key.as_ref() == keyboard::Key::Character("v")
+                && matches!(press.status, text_editor::Status::Focused { .. })
+            {
+                return Some(text_editor::Binding::Custom(Msg::WebPaste(
+                    super::Field::Composer(self.selected.clone()),
+                )));
+            }
+            if composer_send_key(&press) {
+                Some(text_editor::Binding::Custom(Msg::Send))
+            } else {
+                let binding = text_editor::Binding::from_key_press(press);
+                #[cfg(not(target_arch = "wasm32"))]
+                if matches!(binding, Some(text_editor::Binding::Paste)) {
+                    return Some(text_editor::Binding::Custom(Msg::PasteComposer));
                 }
-                #[cfg(target_arch = "wasm32")]
-                if press.modifiers.command()
-                    && press.key.as_ref() == keyboard::Key::Character("v")
-                    && matches!(press.status, text_editor::Status::Focused { .. })
-                {
-                    return Some(text_editor::Binding::Custom(Msg::WebPaste(
-                        super::Field::Composer(self.selected.clone()),
-                    )));
-                }
-                if press.key == keyboard::Key::Named(keyboard::key::Named::Enter)
-                    && press.modifiers.is_empty()
-                    && matches!(press.status, text_editor::Status::Focused { .. })
-                {
-                    Some(text_editor::Binding::Custom(Msg::Send))
-                } else {
-                    let binding = text_editor::Binding::from_key_press(press);
-                    #[cfg(not(target_arch = "wasm32"))]
-                    if matches!(binding, Some(text_editor::Binding::Paste)) {
-                        return Some(text_editor::Binding::Custom(Msg::PasteComposer));
-                    }
-                    binding
-                }
-            })
-            .padding([11, 0])
-            .size(16)
-            .height(Length::Shrink)
-            // Content height; the 11 px padding above and below makes a 44 px bar.
-            .min_height(22)
-            .max_height(220)
-            .style(|theme, status| text_editor::Style {
-                background: Color::TRANSPARENT.into(),
-                border: Border::default(),
-                ..field_style(theme, status)
-            });
+                binding
+            }
+        });
         let sending = self
             .pending
             .values()
@@ -3617,7 +3665,7 @@ impl App {
             None => Space::new().into(),
         };
         let field = column![staged].push(
-            row![attach, editor, emoji, send]
+            row![attach, editor, emoji, self.sticker_button(restricted), send]
                 .spacing(14)
                 .align_y(Center)
                 .padding(Padding {

@@ -173,14 +173,16 @@ impl Posting {
     }
 
     pub fn can_link_channel(&self, me: &str) -> bool {
+        self.can_send_state(me, "m.space.child")
+    }
+
+    pub(crate) fn can_pin_message(&self, me: &str) -> bool {
+        self.can_send_state(me, "m.room.pinned_events")
+    }
+
+    fn can_send_state(&self, me: &str, event_type: &str) -> bool {
         self.content()
-            .and_then(|c| {
-                level(
-                    &c["events"],
-                    "m.space.child",
-                    level(c, "state_default", 50)?,
-                )
-            })
+            .and_then(|c| level(&c["events"], event_type, level(c, "state_default", 50)?))
             .zip(self.actor(me))
             .is_some_and(|(needed, actor)| actor >= needed)
     }

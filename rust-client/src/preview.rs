@@ -121,7 +121,7 @@ const MAX_FRAMES: usize = 300;
 fn frame_budget(fit: crate::media::Fit) -> usize {
     use crate::media::Fit;
     match fit {
-        Fit::Avatar => 4 << 20,
+        Fit::Avatar | Fit::Emote => 4 << 20,
         Fit::Inline => 16 << 20,
         Fit::Full | Fit::Zoom => 64 << 20,
     }

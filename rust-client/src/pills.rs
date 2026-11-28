@@ -22,6 +22,9 @@ pub enum Target {
     User { id: String, name: String },
     /// A room, by ID, and servers that can route a visitor to it.
     Room { id: String, via: Vec<String> },
+    /// A custom emoji from an image pack (emotes.rs), by its mxc URI; the
+    /// label is its `:shortcode:`.
+    Emote { url: String },
 }
 
 impl Target {
@@ -38,6 +41,7 @@ impl Target {
                 }
                 link
             }
+            Self::Emote { url } => url.clone(),
         }
     }
 }
@@ -94,8 +98,19 @@ fn word_edge(text: &str, start: usize, end: usize) -> bool {
 fn link_text(pill: &Pill) -> &str {
     match &pill.target {
         Target::User { name, .. } => name,
-        Target::Room { .. } => &pill.label,
+        Target::Room { .. } | Target::Emote { .. } => &pill.label,
     }
+}
+
+/// A custom emoji as Matrix sends one (`data-mx-emoticon`), as Cinny and
+/// FluffyChat do: its shortcode as the description.
+fn emote_html(url: &str, label: &str) -> String {
+    format!(
+        "<img data-mx-emoticon src=\"{}\" alt=\"{}\" title=\"{}\" height=\"32\">",
+        escape(url),
+        escape(label),
+        escape(label)
+    )
 }
 
 /// The plain `body`: people by name as Element writes them, rooms as their
@@ -108,6 +123,7 @@ pub fn plain(parts: &[Part]) -> String {
             Part::Pill(pill) => match &pill.target {
                 Target::User { name, .. } => name.clone(),
                 Target::Room { .. } => pill.target.href(),
+                Target::Emote { .. } => pill.label.clone(),
             },
         })
         .collect()
@@ -120,6 +136,10 @@ pub fn markdown(parts: &[Part]) -> String {
     for p in parts {
         match p {
             Part::Text(t) => out.push_str(t),
+            Part::Pill(Pill {
+                label,
+                target: Target::Emote { url },
+            }) => out.push_str(&emote_html(url, label)),
             Part::Pill(pill) => {
                 out.push('[');
                 for c in link_text(pill).chars() {
@@ -144,6 +164,10 @@ pub fn html(parts: &[Part]) -> String {
     for p in parts {
         match p {
             Part::Text(t) => out.push_str(&escape(t).replace('\n', "<br>")),
+            Part::Pill(Pill {
+                label,
+                target: Target::Emote { url },
+            }) => out.push_str(&emote_html(url, label)),
             Part::Pill(pill) => {
                 out.push_str("<a href=\"");
                 out.push_str(&escape(&pill.target.href()));
@@ -306,5 +330,22 @@ mod tests {
             html(&parts),
             "hi <a href=\"https://matrix.to/#/@x:y\">*&lt;b&gt;</a> &amp; co<br>bye"
         );
+    }
+
+    #[test]
+    fn a_custom_emoji_goes_out_as_its_picture_with_its_shortcode() {
+        let blob = Pill {
+            label: ":blob:".into(),
+            target: Target::Emote {
+                url: "mxc://h/blob".into(),
+            },
+        };
+        let pills = [blob];
+        let parts = split("hi :blob: there", &pills);
+        assert_eq!(plain(&parts), "hi :blob: there");
+        let img = "<img data-mx-emoticon src=\"mxc://h/blob\" alt=\":blob:\" title=\":blob:\" height=\"32\">";
+        assert_eq!(html(&parts), format!("hi {img} there"));
+        assert_eq!(markdown(&parts), format!("hi {img} there"));
+        assert!(user_ids(&parts).is_empty());
     }
 }

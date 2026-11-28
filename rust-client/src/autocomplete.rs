@@ -164,6 +164,12 @@ pub enum Candidate {
         voice: bool,
     },
     Emoji(Found),
+    /// A custom emoji from an image pack (emotes.rs).
+    Emote {
+        shortcode: String,
+        url: String,
+        pack: String,
+    },
 }
 
 /// An open popup: its token, matches and selected row.
@@ -294,10 +300,26 @@ impl App {
         match token.trigger {
             Trigger::Person => self.people(&token.query),
             Trigger::Room => self.channels(&token.query),
-            Trigger::Emoji => emoji::search(&token.query, ROWS)
-                .into_iter()
-                .map(Candidate::Emoji)
-                .collect(),
+            // The room's custom emoji first, as on Discord, then Unicode's.
+            Trigger::Emoji => {
+                let mut out: Vec<Candidate> = self
+                    .emote_search(&self.selected, &token.query, ROWS)
+                    .into_iter()
+                    .map(|(pack, image)| Candidate::Emote {
+                        shortcode: image.shortcode.clone(),
+                        url: image.url.clone(),
+                        pack: pack.name.clone(),
+                    })
+                    .collect();
+                let left = ROWS.saturating_sub(out.len()).max(ROWS / 2);
+                out.extend(
+                    emoji::search(&token.query, left)
+                        .into_iter()
+                        .map(Candidate::Emoji),
+                );
+                out.truncate(ROWS);
+                out
+            }
         }
     }
 
@@ -529,6 +551,16 @@ impl App {
                 )
             }
             Candidate::Emoji(f) => (f.emoji.to_owned(), None),
+            Candidate::Emote { shortcode, url, .. } => {
+                let label = format!(":{shortcode}:");
+                (
+                    label.clone(),
+                    Some(Pill {
+                        label,
+                        target: Target::Emote { url },
+                    }),
+                )
+            }
         };
         let Some(content) = self.completion_editor_mut(p.field) else {
             return Task::none();

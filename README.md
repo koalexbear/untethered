@@ -76,12 +76,24 @@ anyone without one shows their initials.
 **Reply**, **Edit** (your own text messages) and **Report Message** (other
 people’s). Header icons open notification settings, posting permissions, the
 member list and room search; hover any icon for its name. Click the space name
-at the top of the channel list for **Invite People**, **Create Channel** and
-**Notification Settings**, or use **+** beside a channel category. **+** at
+at the top of the channel list for **Invite People**, **Create Channel**,
+**Edit Server Profile** and **Notification Settings**, or use **+** beside a
+channel category. **+** at
 the bottom of the server rail creates a space. Click the gear at the bottom
 left for **User Settings**, or your name for your status (see Presence).
 Escape closes menus, dialogs and settings. Category headers collapse; a collapsed category still lists unread
 and selected channels.
+
+**Channel order:** a space's channel list shows its own channels under **Text
+Channels** and **Voice Channels**, then a category for each space it lists,
+each sorted the way Element's space view sorts them: by each `m.space.child`
+edge's `order`, then by when it was added. Where you may manage the space's
+channels (send `m.space.child` at its power levels, as Discord's Manage
+Channels), drag a channel to reorder it, onto another category to move it
+there, or a category by its heading; a line shows where it lands and Escape
+cancels. Only the moved channel gets a new `order` where its neighbours leave
+room, so Element and other clients show the same order
+([live test](scripts/qa_channel_order.py)).
 
 **Quick switcher:** **Ctrl+K**, also while typing a message, opens a search of
 your rooms, DMs and spaces: type a few letters, move with the arrow keys and
@@ -173,6 +185,34 @@ end. Its creator ends it from the card or its right-click menu (**End Poll
 Now…**), and then everyone sees the final results. Polls are Element's
 (MSC3381, sent under its `org.matrix.msc3381.poll.*` names), so polls and
 votes go both ways between Untethered and Element.
+
+**Custom emoji and stickers:** A space's image packs serve all its
+channels, as a Discord server's emoji do; a room's own packs and your own
+pack work there too. They show in the emoji picker (by pack), in `:`
+autocomplete (before Unicode's), in the reaction picker, and as pictures in
+messages and reaction chips. A custom emoji you send goes out as Cinny and
+FluffyChat send one: its picture in the message's HTML, its `:shortcode:`
+in the plain text, so a client without image packs shows the shortcode.
+The sticker button beside the emoji button sends a pack's stickers. Tick
+**Use everywhere** on a pack's header to use a room's pack in every room.
+Packs are read under the spec's names (`m.room.image_pack`,
+`m.image_pack.rooms`) and the unstable ones Cinny writes (`im.ponies.*`);
+"Use everywhere" is saved under both. Making or editing packs isn't here
+yet: use Cinny or FluffyChat for that.
+
+**Names:** as on Discord, you can have a nickname in each server: click the
+space name and **Edit Server Profile**, or right-click your own name in one
+of its channels, or open your profile card there. Matrix has no per-space
+names, so Untethered sets the nickname as your name in each room of the space
+(your `m.room.member` event in the space, its subspaces and channels). Element
+and other clients then show it in those rooms only, and your global name
+everywhere else. A channel you join later takes the nickname while it still
+shows your global name; **Reset Nickname** puts the global name back in every
+room of the space. In place of Discord's role colours, names carry a small
+**OWNER**, **ADMIN** or **MOD** badge and colour from the room's power levels:
+the creators of a version 12 room, 100 and 50, as Element names them, and
+only above what every member has. They show in the timeline, reply quotes,
+the member list and profile cards ([live test](scripts/qa_names.py)).
 
 **Replies:** Hover a message, click **Reply**, type your response, and send.
 The bar above the composer shows who you’re replying to; its **×** (Cancel

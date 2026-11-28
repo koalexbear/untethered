@@ -24,10 +24,18 @@ const DESCRIPTION: usize = 350;
 
 /// The previews of `post`'s links that the homeserver had, if any.
 pub(super) fn view<'a>(app: &'a App, post: &'a Post) -> Option<El<'a>> {
-    let cards: Vec<El<'a>> = crate::link_previews::links(post)
-        .into_iter()
-        .filter_map(|url| app.link_previews.get(&url))
-        .map(|preview| card(app, preview))
+    let urls = crate::link_previews::links(post);
+    view_links(app, urls.iter().map(String::as_str), WIDTH)
+}
+
+pub(super) fn view_links<'a, 'url>(
+    app: &'a App,
+    urls: impl Iterator<Item = &'url str>,
+    width: f32,
+) -> Option<El<'a>> {
+    let cards: Vec<El<'a>> = urls
+        .filter_map(|url| app.link_previews.get(url))
+        .map(|preview| card(app, preview, width))
         .collect();
     (!cards.is_empty()).then(|| Column::with_children(cards).spacing(6).into())
 }
@@ -70,12 +78,13 @@ fn picture<'a>(app: &'a App, preview: &LinkPreview, size: (f32, f32)) -> El<'a> 
     }
 }
 
-fn card<'a>(app: &'a App, p: &LinkPreview) -> El<'a> {
+fn card<'a>(app: &'a App, p: &LinkPreview, width: f32) -> El<'a> {
+    let image_bounds = (width - 32., IMAGE.1);
     let open = Msg::OpenLink(p.url.clone());
     let size = p.image_size.unwrap_or((400, 225));
     // A link to an image: the picture, opening the link.
     if p.title.is_none() && p.description.is_none() && p.image.is_some() {
-        return mouse_area(picture(app, p, fit(size, IMAGE)))
+        return mouse_area(picture(app, p, fit(size, image_bounds)))
             .on_press(open)
             .interaction(iced::mouse::Interaction::Pointer)
             .into();
@@ -105,7 +114,7 @@ fn card<'a>(app: &'a App, p: &LinkPreview) -> El<'a> {
             .spacing(16)
             .into()
     } else if p.image.is_some() {
-        column![words, picture(app, p, fit(size, IMAGE))]
+        column![words, picture(app, p, fit(size, image_bounds))]
             .spacing(12)
             .into()
     } else {
@@ -124,7 +133,7 @@ fn card<'a>(app: &'a App, p: &LinkPreview) -> El<'a> {
         }),
     ])
     .height(Length::Shrink)
-    .max_width(WIDTH)
+    .max_width(width)
     .style(|_| container::Style {
         background: Some(color!(0x2b2d31).into()),
         border: Border {

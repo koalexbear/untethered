@@ -100,6 +100,20 @@ fn paragraph<'a>(
     edited: bool,
 ) -> El<'a> {
     let mut spans: Vec<Span<'a, Msg, Font>> = runs.iter().map(|r| styled(c, r, heading)).collect();
+    // Custom emoji (ROADMAP M11): their span is an invisible em dash a bit
+    // larger than the text, and the picture is drawn over it once it's here.
+    let mut images = Vec::new();
+    for (i, r) in runs.iter().enumerate() {
+        if let Some(url) = &r.style.emote {
+            spans[i] = std::mem::replace(&mut spans[i], span(""))
+                .size(size * 1.375)
+                .color(Color::TRANSPARENT);
+            let hidden = r.style.spoiler.is_some_and(|id| !c.revealed(id));
+            if !hidden && let Some(picture) = c.app.emotes.get(url) {
+                images.push((i, picture.clone()));
+            }
+        }
+    }
     if edited {
         spans.push(span(" (edited)").size(11).color(CHANNEL));
     }
@@ -107,6 +121,7 @@ fn paragraph<'a>(
         .size(size)
         .line_height(1.375)
         .on_link_click(|m: Msg| m)
+        .images(images)
         .into()
 }
 

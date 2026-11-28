@@ -150,9 +150,14 @@ pub enum Entry {
     CopyImage,
     MarkUnread,
     CopyMessageLink,
+    ReplyInThread,
+    PinMessage,
+    UnpinMessage,
     Delete,
     Report,
     Profile,
+    /// Your nickname in the room's space (names.rs).
+    EditServerProfile,
     Mention,
     Message,
     Kick,
@@ -182,9 +187,13 @@ impl Entry {
             Self::CopyImage => "Copy Image",
             Self::MarkUnread => "Mark Unread",
             Self::CopyMessageLink => "Copy Message Link",
+            Self::ReplyInThread => "Reply in Thread",
+            Self::PinMessage => "Pin Message",
+            Self::UnpinMessage => "Unpin Message",
             Self::Report => "Report Message",
             Self::Delete => "Delete Message…",
             Self::Profile => "Profile",
+            Self::EditServerProfile => "Edit Server Profile",
             Self::Mention => "Mention",
             Self::Message => "Message",
             // Both open the member card, where a reason goes with the action.
@@ -217,7 +226,12 @@ impl Entry {
     /// Entries of one group sit together, with a rule between groups.
     pub fn group(self) -> u8 {
         match self {
-            Self::AddReaction | Self::Profile | Self::Mention | Self::Message | Self::MarkRead => 0,
+            Self::AddReaction
+            | Self::Profile
+            | Self::EditServerProfile
+            | Self::Mention
+            | Self::Message
+            | Self::MarkRead => 0,
             Self::Reply
             | Self::Forward
             | Self::Edit
@@ -226,6 +240,9 @@ impl Entry {
             | Self::CopyImage
             | Self::MarkUnread
             | Self::CopyMessageLink
+            | Self::ReplyInThread
+            | Self::PinMessage
+            | Self::UnpinMessage
             | Self::Kick
             | Self::Ban => 1,
             #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
@@ -356,6 +373,24 @@ impl App {
                 }),
             ));
         }
+        if p.from.is_none() && p.reactable && self.verified {
+            use crate::view::discussions::{Action, Panel};
+            items.push(item(
+                Entry::ReplyInThread,
+                ready.then(|| Msg::Discussion(Action::Open(Panel::Replies(id.clone())))),
+            ));
+            if r.posting.can_pin_message(&self.matrix_id) {
+                let pinned = self.discussions.pinned(room, id);
+                items.push(item(
+                    if pinned {
+                        Entry::UnpinMessage
+                    } else {
+                        Entry::PinMessage
+                    },
+                    ready.then(|| Msg::Discussion(Action::Pin(id.clone(), !pinned))),
+                ));
+            }
+        }
         if p.may_edit(&self.matrix_id) && r.has_metadata && r.encrypted == p.encrypted {
             items.push(item(
                 Entry::Edit,
@@ -460,6 +495,17 @@ impl App {
             })
         };
         items.push(item(Entry::Profile, ready.then(profile)));
+        // Right-clicking your own name, as on Discord (names.rs).
+        if me
+            && self.may_edit_server_profile()
+            && let Some(space) = self.server_of(room)
+        {
+            items.push(item(
+                Entry::EditServerProfile,
+                self.connected
+                    .then(|| Msg::Names(crate::names::Input::Open(space))),
+            ));
+        }
         items.push(item(
             Entry::Mention,
             (room == self.selected && self.can_stage()).then(|| {
@@ -955,6 +1001,7 @@ mod tests {
                 AddReaction,
                 Reply,
                 Forward,
+                ReplyInThread,
                 Edit,
                 CopyText,
                 MarkUnread,
@@ -968,6 +1015,7 @@ mod tests {
                 AddReaction,
                 Reply,
                 Forward,
+                ReplyInThread,
                 CopyText,
                 MarkUnread,
                 CopyMessageLink,
@@ -975,6 +1023,7 @@ mod tests {
             ]
         );
         assert!(post(&app(50), "$m1").contains(&Delete));
+        assert!(post(&app(50), "$m1").contains(&PinMessage));
     }
 
     #[test]
