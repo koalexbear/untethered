@@ -18,6 +18,11 @@
      "at": "2026-11-28T13:24:10Z",
      "by": "claude/u2-voice-settings-44a6d7",
      "text": "From U2 (u2-voice-settings), sharing big files: main.rs \u2014 Msg::SettingsPage + App.settings_page, Msg::CamerasListed/SelectCamera lost their call id, App.room_ptt removed (now App::push_to_talk(), saved), the Right Ctrl arms left the listen_with subscription (hotkeys::window replaces them), the VoiceMeter subscription became app.voice_subscription(). view.rs \u2014 mod user_settings, the user-panel gear tagged user-settings, ptt_control reads push_to_talk(), settings_view's frame moved to user_settings.rs. README: calls section only; ROADMAP: the U1/U2 lines of Phase 5."
+    },
+    {
+     "at": "2026-11-28T13:33:16Z",
+     "by": "c2-roles",
+     "text": "[C2] Ready for review on claude/c2-roles-d127db (c24ca5d feature, 661b9c6 fixture+README+ROADMAP, 1c4b4e5 import tidy), on main 4532e28. Roles tab in Server Settings: Roles / Members / Permissions views. Checks: fmt, clippy (clean), 373 tests, wasm32 and windows-gnu. scripts/qa_roles.py PASSED 3 runs in a row on the release build (custom role in io.github.koalexbear.untethered.roles; announcement channel + server default enforced on a second account: 403s and a moderator's 200s; roles written to space + channels, skipped where you can't; HELPER badge in orange; tab and composer read-only once demoted). Merges cleanly with M15, M10 and U2 tips (git merge-tree). Hand-over: side-session notes c2-roles.md. Follow-up (not C2's files): Add Reaction is still offered where the room's m.reaction level is above yours."
     }
    ],
    "owner": "c2-roles",
@@ -40,7 +45,7 @@
    ],
    "status": "review",
    "title": "Roles and channel permissions",
-   "updated": "2026-11-28T13:33:13Z",
+   "updated": "2026-11-28T13:33:16Z",
    "worktree": ".claude/worktrees/c2-roles-d127db"
   },
   "J5": {
