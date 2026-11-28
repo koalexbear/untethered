@@ -229,9 +229,9 @@
     "scripts/qa_voice_room.py",
     "scripts/test-media-interop.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Voice Connected panel and user-panel Mute/Deafen",
-   "updated": "2026-11-28T09:53:33Z",
+   "updated": "2026-11-28T10:07:10Z",
    "worktree": ".claude/worktrees/u1-voice-panel-678cab"
   }
  },
