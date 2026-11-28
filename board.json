@@ -129,9 +129,9 @@
     "rust-client/src/engine/rooms.rs",
     "scripts/qa_left_rooms.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Rooms left elsewhere while closed stay listed",
-   "updated": "2026-11-28T00:03:09Z",
+   "updated": "2026-11-28T00:04:52Z",
    "worktree": ".claude/worktrees/great-lamport-46e7ea"
   },
   "fix-room-ptt": {
