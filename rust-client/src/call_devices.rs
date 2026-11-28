@@ -34,6 +34,13 @@ impl Choice {
             label: "System default".into(),
         }
     }
+    #[cfg(test)]
+    pub fn for_test(name: &str, label: &str) -> Self {
+        Self {
+            name: Some(name.into()),
+            label: label.into(),
+        }
+    }
 }
 
 #[derive(Clone)]

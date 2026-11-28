@@ -198,7 +198,7 @@ modifies `main.rs`. **Phase 2** starts after the restyle is committed to `main`.
 | 1 | **A2** Voice processing and input sensitivity | AEC/NS/AGC on by default. VAD gate | 2 |
 | 1 | **V2** Simulcast, per-tile quality, pause hidden video | Camera simulcast. Thumbnails use the low layer | 8 |
 | 1 | **K1** Global push-to-talk backend | Portal/X11 global key with a release delay | 6 |
-| 2 | **U1** Voice Connected panel and user-panel Mute/Deafen | Discord sidebar layout | 4 |
+| 2 | **U1** Voice Connected panel and user-panel Mute/Deafen · done | Discord sidebar layout | 4 |
 | 2 | **U2** Voice & Video settings page (persisted) | Devices, volume, VAD/PTT, keybind, processing toggles, mic test, camera preview | 4, 6 |
 | 2 | **U3** Participant rows and right-click user menu | Avatars, speaking ring, state icons, LIVE, User Volume | 7 |
 | 2 | **U4** Go Live sheet and Watch Stream | Source/quality/fps/audio sheet, opt-in viewing, restore token | 5 |
@@ -243,6 +243,12 @@ KDE `selenium-webdriver-at-spi-inputsynth` from `.dev/portal-qa/prefix/bin/`.
   Icon-only Discord controls have no text. Add a debug-only `UNTETHERED_QA_LAYOUT`
   dump of control id → bounds, or have the fixtures hover and OCR the tooltip.
   Decide before U1. Otherwise every call fixture breaks at once.
+  **Decided and built with U1:** the dump. `qa_layout::tag` wraps a control in
+  a container with an id (always, so the widget tree is the same either way);
+  in debug builds with `UNTETHERED_QA_LAYOUT=<file>`, a widget operation walks
+  the tree every 300 ms, overlays and scrolled content included, and writes
+  each tagged control's bounds, state, tooltip and inner text as JSON when it
+  changes. `scripts/qa_layout.py` reads it and lists the names.
 
 ### V1 — Video quality and full-screen sharing (Phase 1, S→M)
 
@@ -528,6 +534,40 @@ focus change never reopens capture.
   types into the decoy window, and document that in the README.
 
 ### U1 — Voice Connected panel and user-panel Mute/Deafen (Phase 2, M)
+
+> **Shipped** on branch `claude/u1-voice-panel-678cab` (2026-11-28):
+> `view/voice_panel.rs` replaces `call_bar`, `call_dock` and
+> `view/call_controls.rs`. The panel has the status with a `Signal` glyph, the
+> room / space link to the stage, a gear for Voice Settings, `PhoneOff`
+> Disconnect, and Camera and Screen (grey, lighter while starting, green while
+> live); status lines (push-to-talk, camera and share errors, device failures,
+> app audio, **Play shared audio** while someone shares) sit under it. Theater
+> keeps the panel and the user panel in its corner. Mute and Deafen live in the
+> user panel with chevron menus of inputs and outputs (`FLOAT`, ticked choice,
+> Refresh devices, Voice Settings); mute, deafen and the chosen devices are
+> app state (`desktop_call::LocalAudio`), so they work before joining, start
+> the call that way and carry to the next call. Joining muted publishes the
+> microphone muted (`AddTrackRequest.muted`), so the SFU never sees it open.
+> **Changed from the plan:** Devices, Mixer and the push-to-talk checkbox
+> could not wait for U2/U3, so a **Voice Settings** popup (from the panel's gear
+> or either device menu, beside the sidebar so the roster stays in sight)
+> keeps push-to-talk, A2's sensitivity and processing, the camera list, shared
+> audio and per-user volume reachable; U2's page takes it over. The fixtures
+> click through the QA control map (§5).
+>
+> Verified 2026-11-28 with debug builds: `--call-controls` (Mute and Deafen
+> at both ends, from Sidechat too; DM User volume at 25 %), `--call-devices`
+> (every switch through the chevron menus, the removed spare mic not falling
+> back), `--room-ptt` and `--room-ptt --global` (push-to-talk armed beside
+> Join voice, disarmed in Voice Settings), `--voice-processing` (every switch
+> in Voice Settings; echo 27.1 dB down, noise 13.4 dB) and `--voice-room`,
+> which now has Clara mute before joining: the SFU reported her microphone
+> muted in all 58 samples from its first appearance, nobody heard her and her
+> client opened no capture stream until she unmuted. It also opens the stage
+> from the panel's room link and mutes and unmutes Alice from Theater's
+> corner. Not run: the KWin fixtures (`--window-share`, `--room-camera`,
+> `--room-layout`, `--switch-camera`, `--dm-window`); `qa_switch_camera.py`
+> and `qa_app_sound.py` still read the old Devices panel by OCR.
 
 **Files:** `view.rs` (`call_bar`, `call_dock`, the restyle's `user_panel`),
 `view/icons.rs` (new glyphs: `Mic`, `MicOff`, `Headphones`, `HeadphonesOff`,

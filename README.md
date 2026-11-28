@@ -518,7 +518,7 @@ downloads in both directions using the two clients’ visible controls.
 **Linux DM calls (experimental):** Open an encrypted direct message with one
 other joined user and click the phone icon (**Start Voice Call**). Element rings; when the recipient
 accepts, Untethered uses the default microphone and output through `pacat`
-(PulseAudio or PipeWire-Pulse). **Hang up** releases both streams. Calling
+(PulseAudio or PipeWire-Pulse). **Disconnect** releases both streams. Calling
 needs a verified Matrix device and a homeserver advertising a LiveKit
 `livekit_service_url` with OpenID authorization. Source builds need Clang for
 the LiveKit SDK. **User Settings → Check call server support** queries the homeserver's
@@ -533,18 +533,21 @@ Either participant can hang up.
 in an encrypted DM.
 The other person sees an incoming video invitation. Your camera is requested
 through the Camera portal after they accept; accepting leaves **their**
-camera off until they choose **Start camera**. The same camera control is
-available during a voice call. The call starts in the sidebar dock, above
-your profile. Click **Open call view** to expand it to the stage. Click
-a participant tile to focus it; the dock keeps the call controls together.
-**Stop camera** keeps the conversation going; **Hang up** releases capture.
+camera off until they choose the camera button. The same camera control is
+available during a voice call. As on Discord, a call shows in the **Voice
+Connected** panel above your profile: its status with a signal icon, the
+call's room (click it, or **Open call view**, to expand the call to the
+stage), **Voice Settings**, **Disconnect**, and the **Camera** and **Screen**
+buttons, green while live. Click a participant tile to focus it. Turning the
+camera off keeps the conversation going; **Disconnect** releases capture.
 [Two-way Linux video test](experiments/rtc-audio/README.md#verify-dm-video).
 
-**To watch your own share:** click **Share screen**, choose a screen or window
+**To watch your own share:** click **Screen** (**Share screen**), choose a screen or window
 in the desktop picker, then look for **Your screen · LIVE**. It opens on the stage.
 If you switch to someone’s camera, click **Your screen** in the strip to watch
 it again. Your choice of view doesn’t change what anyone else receives.
-**Theater** hides the sidebars; **Open chat** returns to the docked preview.
+**Theater** hides the sidebars and keeps the Voice Connected panel and your
+Mute and Deafen in its corner; **Open chat** returns to the docked preview.
 [Live screen-share test and screenshots](experiments/rtc-audio/README.md#verify-the-call-stage).
 
 When someone shares a browser tab **with audio**, the Linux client plays
@@ -553,9 +556,9 @@ just the conversation; this changes only your playback. **Deafen** silences
 both and restores your previous choice when turned off.
 
 **To send an app’s sound with your window:** start **Share screen**, play
-audio in the app, then click **Choose app audio → Send sound from** and
-select its playback stream. If it just started playing, click **Refresh
-devices**. Only the selected stream is shared, even if other apps are
+audio in the app, then open **Voice Settings → Screen share audio** and choose
+its playback stream under **Send sound from…**. If it just started playing,
+click **Refresh devices**. Only the selected stream is shared, even if other apps are
 using the same speakers. **Stop app audio** leaves the video and microphone
 running. Stopping the window share also stops the app recording. This
 works with PulseAudio and PipeWire-Pulse and uses `pactl` and `parec`.
@@ -572,26 +575,32 @@ Answer or decline on either one: the other stops ringing and shows what
 happened in the DM. Only the device that answers opens its microphone.
 [Two-device call test](experiments/rtc-audio/README.md#verify-answering-on-another-device).
 
-When you open another room during a Linux video call, the call bar shows
-a small live view of the other person. **Hide preview** gives you more room
+When you open another room during a Linux video call, the sidebar shows
+a small live view of the other person above the Voice Connected panel. **Hide preview** gives you more room
 to type without stopping your camera. **Open call view** opens the full
 view and keeps the draft in the room where you wrote it.
 
-**Mute**
+**Mute** and **Deafen** are beside your name in the user panel, as on
+Discord, in a call or before one. **Mute**
 releases your microphone and leaves the other person audible. **Deafen**
 silences playback and also mutes your microphone. **Undeafen** restores
-playback and your previous mute setting.
+playback and your previous mute setting. Mute or deafen before joining and the
+call starts that way: your microphone reaches the call server already muted,
+so nobody gets a frame of it until you unmute. Both stay set for your next
+call until you quit the app.
 
-Open **Devices** in the call bar to choose a **Microphone** and **Speaker**
-independently. Each starts on **System default**. Switching affects only this
-call, keeps its encrypted tracks connected, and preserves mute/deafen.
-**Refresh devices** updates the list after plugging in or removing a device.
+The arrow beside **Mute** lists your microphones, the one beside **Deafen**
+your speakers. Each starts on **System default**. Switching during a call
+keeps its encrypted tracks connected and preserves mute and deafen; the choice
+also applies to your next call. Each menu reads the devices again when it
+opens, and **Refresh devices** updates it after plugging in or removing one.
 
 As on Discord, your microphone goes through **echo cancellation**, **noise
 suppression** and **automatic gain control** (WebRTC's audio processing), and
 then a voice-activity gate: below it, the others receive silence, while your
 microphone stays unmuted and your own speaking ring follows the gate without
-waiting for the server. **Devices → Input sensitivity** follows the room's
+waiting for the server. **Voice Settings → Input sensitivity** (from the
+Voice Connected panel's gear or either device menu) follows the room's
 noise by default (**Automatically determine input sensitivity**). Turn that
 off to set the threshold with the slider over the live level meter, which
 turns green above it; at −100 dB everything is sent and your ring stays lit,
@@ -601,14 +610,14 @@ apply to the call at once and stay on this computer for later calls
 the gate.
 [Voice processing test](experiments/rtc-audio/README.md#verify-voice-processing).
 
-On Linux, choose **Devices → List cameras** to list sources allowed by your
+On Linux, choose **Voice Settings → List cameras** to list sources allowed by your
 desktop Camera portal. Pick a camera before starting video, or switch while
 it’s on. A live switch updates your preview and the other participant’s
 picture without redialing. If the selected camera disappears, your video
-stops; choose another camera and press **Start camera** to resume.
+stops; choose another camera and press the camera button to resume.
 [Camera switching test with Element](experiments/rtc-audio/README.md#verify-live-camera-switching).
 
-During a network interruption, the Linux call bar shows **Reconnecting**.
+During a network interruption, the Voice Connected panel shows **Reconnecting**.
 A DM call releases the audio devices; a voice room keeps your microphone and
 stops playback. When connectivity returns, encrypted audio resumes on the same
 call membership. After a longer outage (16 seconds or more), the homeserver has
@@ -641,19 +650,19 @@ People in voice appear under the room name. While you’re connected, each
 person talking, including you, gets a green ring around their avatar and a
 green speaker icon after their name. Both clear when their microphone goes
 quiet. Joining never rings the other
-members. **Leave voice** disconnects only your device; the others can keep
+members. **Disconnect** leaves with only your device; the others can keep
 talking. The [three-person test](experiments/rtc-audio/README.md#verify-three-person-voice-rooms)
 uses three Linux clients on the same MatrixRTC LiveKit service.
 Room permissions must allow publishing call membership and, for the first
 participant, opening the voice slot if it is not already open.
 
-Open **Mixer** in the call bar, in a voice room or a DM call, to change how
+Open **Voice Settings → User volume**, in a voice room or a DM call, to change how
 loud each person sounds to you for this call. Drag their slider from **0%** (silent for you)
 to **200%**, or click **Reset** to return to **100%**. Other listeners keep
 their own mixes.
 
-For **Push-to-talk**, check the box beside **Join voice** or in the call bar.
-Hold the key the call bar names to send your voice. Your microphone closes
+For **Push-to-talk**, check the box beside **Join voice** or in **Voice
+Settings**. Hold the key the Voice Connected panel names to send your voice. Your microphone closes
 100 ms after you let go, so the end of a word isn't cut off; you still hear
 the room. **Mute** and **Deafen** override the key, and after either you
 press it again to talk. The choice carries over to your next voice room
@@ -687,7 +696,7 @@ the desktop shortcut format writes it (`Pause`, `F9`, `CTRL+grave`). On X11
 it accepts modifier keys, Pause, Scroll_Lock, Insert, Menu, F1 to F35 and
 single characters.
 
-In the voice-room call bar, click **Share screen** and pick a screen or a
+In the Voice Connected panel, click **Screen** (**Share screen**) and pick a screen or a
 window in your desktop's chooser. Other participants see it live; **Open call
 view** puts it on the stage. Shares keep their source size up to 1920×1080 and
 send up to 30 fps (2.5 Mbps cap); the pointer is included when the portal
@@ -700,8 +709,8 @@ leaving voice. Capture requires a ScreenCast portal backend, PipeWire and
 GStreamer (`gst-launch-1.0`, `pipewiresrc`, and the base video plugins).
 The share carries screen pixels; microphones remain separate encrypted tracks.
 
-**Start camera** uses the Linux Camera portal and the camera selected under
-**Devices** (system default initially). Other participants see a **Camera** tile with your name.
+The **Camera** button (**Start camera**) uses the Linux Camera portal and the camera selected under
+**Voice Settings** (system default initially). Other participants see a **Camera** tile with your name.
 **Stop camera** releases capture and removes the tile while voice continues.
 Camera and window sharing have independent controls and encrypted tracks.
 
@@ -711,8 +720,8 @@ switch focus, or **Back to grid** to see everyone at equal size. Your choice
 only changes your view. If the focused feed ends, the grid returns automatically.
 
 Each tile receives the camera layer its size needs: the focused tile
-1280×720, a grid of up to six 640×360, thumbnails, larger grids and the call
-dock's preview 320×180. Video you can't see is paused at the SFU and costs no
+1280×720, a grid of up to six 640×360, thumbnails, larger grids and the
+sidebar's call preview 320×180. Video you can't see is paused at the SFU and costs no
 bandwidth: the stage collapsed with the preview hidden, tiles scrolled out of
 the thumbnail strip or grid, the media viewer open, or the window closed to the
 tray. It comes back within a second when shown again. Senders stop encoding

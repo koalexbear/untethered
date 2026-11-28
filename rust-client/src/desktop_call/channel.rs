@@ -328,7 +328,8 @@ pub(super) async fn joined<S: CallSignal>(
                 Step::Ready { fresh: false } => (),
             }
         }
-        let link = match publish_mic(s, &keys.provider, &mut media.live, false).await {
+        let muted = mode.borrow().mic_off();
+        let link = match publish_mic(s, &keys.provider, &mut media.live, false, muted).await {
             Ok(link) => link,
             Err(why) if rejoin.is_none() => return Err(why),
             Err(_) => {

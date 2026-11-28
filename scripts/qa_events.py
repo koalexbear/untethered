@@ -45,6 +45,8 @@ def use_profile(env, profile):
     fixtures' voice settings."""
     env["UNTETHERED_PROFILE"] = str(profile)
     env["UNTETHERED_QA_EVENTS"] = str(log(profile))
+    # Debug builds write their call controls' map here (qa_layout.py).
+    env["UNTETHERED_QA_LAYOUT"] = str(Path(profile) / "qa-layout.json")
     voice = json.loads(os.environ["QA_VOICE"]) if "QA_VOICE" in os.environ else RAW_VOICE
     Path(profile).mkdir(parents=True, exist_ok=True)
     (Path(profile)/"voice.json").write_text(json.dumps(voice))

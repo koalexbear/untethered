@@ -67,6 +67,24 @@ pub(super) enum Icon {
     Send,
     /// Explore (explore.rs).
     Compass,
+    // The call controls: the Voice Connected panel and the user panel's
+    // Mute and Deafen (view/voice_panel.rs).
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    Mic,
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    MicOff,
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    Headphones,
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    HeadphonesOff,
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    ScreenShare,
+    /// A handset laid down: leave the call.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    PhoneOff,
+    /// Rising bars: the call's connection.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    Signal,
 }
 
 /// Interactive icon color, matching channel and header controls.
@@ -414,6 +432,47 @@ fn outline(icon: Icon) -> Path {
                 &[(16.24, 7.76), (14.12, 14.12), (7.76, 16.24), (9.88, 9.88)],
             );
             b.close();
+        }
+        Icon::Mic | Icon::MicOff => {
+            b.rounded_rectangle(p(9., 2.), Size::new(6., 12.), 3.0.into());
+            poly(b, &[(19., 10.), (19., 12.)]);
+            arc(b, 12., 12., 7., 0., 180.);
+            b.line_to(p(5., 10.));
+            poly(b, &[(12., 19.), (12., 22.)]);
+            if icon == Icon::MicOff {
+                poly(b, &[(3., 3.), (21., 21.)]);
+            }
+        }
+        Icon::Headphones | Icon::HeadphonesOff => {
+            poly(b, &[(3., 19.), (3., 12.)]);
+            arc(b, 12., 12., 9., 180., 360.);
+            b.line_to(p(21., 19.));
+            b.rounded_rectangle(p(3., 14.), Size::new(5., 7.), 2.0.into());
+            b.rounded_rectangle(p(16., 14.), Size::new(5., 7.), 2.0.into());
+            if icon == Icon::HeadphonesOff {
+                poly(b, &[(3., 3.), (21., 21.)]);
+            }
+        }
+        Icon::ScreenShare => {
+            b.rounded_rectangle(p(2., 3.), Size::new(20., 14.), 2.0.into());
+            poly(b, &[(8., 21.), (16., 21.)]);
+            poly(b, &[(12., 17.), (12., 21.)]);
+            poly(b, &[(9., 10.), (12., 7.), (15., 10.)]);
+            poly(b, &[(12., 7.), (12., 13.)]);
+        }
+        Icon::PhoneOff => {
+            b.move_to(p(2.4, 15.));
+            b.bezier_curve_to(p(1.2, 6.6), p(22.8, 6.6), p(21.6, 15.));
+            b.line_to(p(16.8, 16.2));
+            b.line_to(p(15.6, 12.6));
+            b.line_to(p(8.4, 12.6));
+            b.line_to(p(7.2, 16.2));
+            b.close();
+        }
+        Icon::Signal => {
+            poly(b, &[(6., 20.), (6., 16.)]);
+            poly(b, &[(12., 20.), (12., 11.)]);
+            poly(b, &[(18., 20.), (18., 5.)]);
         }
     })
 }

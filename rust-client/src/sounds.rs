@@ -315,6 +315,8 @@ pub struct Sounds {
     pub saving: bool,
     pub note: Option<&'static str>,
     queued: Vec<Sound>,
+    /// Muted or deafened outside a call: its sound, played as it is.
+    local: Option<Sound>,
     call: Option<Seen>,
     last_message: Option<Instant>,
 }
@@ -339,6 +341,11 @@ impl App {
             self.sounds.queued.push(sound);
         }
     }
+    /// Muted, unmuted, deafened or undeafened outside a call: the call's
+    /// own change plays the sound in one.
+    pub(crate) fn local_sound(&mut self, sound: Sound) {
+        self.sounds.local = Some(sound);
+    }
     /// After every update: the call's changes, and what notifications queued.
     pub(crate) fn play_sounds(&mut self) -> Task<Msg> {
         let now = self
@@ -361,6 +368,7 @@ impl App {
             .and_then(|c| c.device.clone());
         let (seen, mut sounds) = call_step(self.sounds.call.take(), now);
         self.sounds.call = seen;
+        sounds.extend(self.sounds.local.take());
         let queued = std::mem::take(&mut self.sounds.queued);
         // One chime for a burst: a mention's if there is one.
         if let Some(chime) = queued

@@ -2,11 +2,13 @@
 //! A2), as on Discord's Voice & Video page: an automatic sensitivity switch,
 //! a live input meter with the manual threshold's slider over it, and the
 //! echo cancellation, noise suppression and gain control switches. It shows
-//! in the call's Devices panel until the Voice & Video page (U2) takes it.
+//! in the Voice Settings popup (voice_panel.rs) until the Voice & Video page
+//! (U2) takes it.
 use super::{BOLD, CHANNEL, El, GREEN, MUTED, Msg, label};
 use crate::{
     call_settings::{Change, Event, THRESHOLD_RANGE, Voice},
     desktop_call::InputLevel,
+    qa_layout::tag,
 };
 use iced::{
     Border, Color, Fill, Point, Rectangle, Renderer, Size, Theme, color, mouse,
@@ -90,17 +92,34 @@ pub(super) fn section(
     enabled: bool,
 ) -> El<'static> {
     let switch = |on: bool, name: &'static str, change: fn(bool) -> Change| -> El<'static> {
-        checkbox(on)
-            .label(name)
-            .size(16)
-            .text_size(13)
-            .on_toggle_maybe(enabled.then_some(move |on| Msg::Voice(Event::Set(change(on)))))
-            .into()
+        // Tagged for the QA control map by the setting it changes.
+        let id = match change(on) {
+            Change::AutoSensitivity(_) => "voice-auto",
+            Change::EchoCancellation(_) => "voice-echo",
+            Change::NoiseSuppression(_) => "voice-noise",
+            Change::GainControl(_) => "voice-gain",
+            Change::Threshold(_) => "voice-threshold",
+        };
+        tag(
+            id,
+            if on { "on" } else { "off" },
+            "",
+            checkbox(on)
+                .label(name)
+                .size(16)
+                .text_size(13)
+                .on_toggle_maybe(enabled.then_some(move |on| Msg::Voice(Event::Set(change(on))))),
+        )
     };
     let meter = |threshold| {
-        Canvas::new(Meter { level, threshold })
-            .width(Fill)
-            .height(8)
+        tag(
+            "voice-meter",
+            if level.voice { "voice" } else { "" },
+            "",
+            Canvas::new(Meter { level, threshold })
+                .width(Fill)
+                .height(8),
+        )
     };
     let mut sensitivity = column![
         label("INPUT SENSITIVITY"),
@@ -144,7 +163,7 @@ pub(super) fn section(
         });
         sensitivity = sensitivity.push(stack![
             container(meter(Some(voice.threshold))).center_y(18),
-            threshold,
+            tag("voice-slider", "", "", threshold),
         ]);
         sensitivity = sensitivity.push(
             row![

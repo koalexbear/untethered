@@ -76,8 +76,12 @@ impl App {
             Space::new().height(Fill)
         ];
         #[cfg(target_os = "linux")]
-        let sidebar = sidebar.extend(self.call_dock());
-        container(sidebar.push(self.user_panel()))
+        let sidebar = sidebar
+            .extend(self.call_preview())
+            .push(self.call_corner(self.user_panel()));
+        #[cfg(not(target_os = "linux"))]
+        let sidebar = sidebar.push(self.user_panel());
+        container(sidebar)
             .width(240)
             .height(Fill)
             .style(|_| surface(SIDE, 0.))

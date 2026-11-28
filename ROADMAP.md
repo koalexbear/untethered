@@ -159,10 +159,16 @@ is done: V2 has cameras send three simulcast layers, each tile receive the
 layer its size needs and video nobody can see pause, and A2 runs echo
 cancellation, noise suppression and gain control on the microphone, with
 Discord's input sensitivity (automatic, or a threshold over a live meter),
-saved on this computer. Next come U1–U6: the Voice Connected panel, a
-persisted Voice & Video settings page (which takes over A2's controls from
-the call's Devices panel), participant menus, Go Live and Watch Stream, the
-incoming call card, and stage polish. Stream quality is a choice, up to 60 fps at the
+saved on this computer. U1 is done: calls show in Discord's Voice Connected
+panel above the user panel (status, the call's room linking to its stage,
+Disconnect, Camera and Screen), and Mute and Deafen sit in the user panel with
+menus of microphones and speakers; muting or deafening before you join starts
+the call that way. A Voice Settings popup keeps push-to-talk, A2's controls,
+the camera, shared audio and each participant's volume reachable, and the call
+fixtures click icon-only controls through a debug-only control map
+(`UNTETHERED_QA_LAYOUT`). Next come U2–U6: a persisted Voice & Video settings
+page (which takes over the popup), participant menus, Go Live and Watch Stream,
+the incoming call card, and stage polish. Stream quality is a choice, up to 60 fps at the
 source's resolution, with no tier to pay for.
 
 ### Phase 6 — community management

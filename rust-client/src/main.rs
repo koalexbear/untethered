@@ -60,6 +60,8 @@ mod player;
 mod polls;
 mod presence;
 mod preview;
+#[cfg(target_os = "linux")]
+mod qa_layout;
 mod reactions;
 mod reading;
 mod replies;
@@ -208,8 +210,12 @@ enum Msg {
         String,
         Result<iced::advanced::image::Allocation, iced::advanced::image::Error>,
     ),
+    /// Open or close a device menu or the voice settings popup.
     #[cfg(target_os = "linux")]
-    AudioDevices,
+    VoiceMenu(Option<desktop_call::VoiceMenu>),
+    /// Write the QA control map (`None`: walk the window for it).
+    #[cfg(target_os = "linux")]
+    QaLayout(Option<Vec<qa_layout::Found>>),
     #[cfg(target_os = "linux")]
     ListCameras,
     #[cfg(target_os = "linux")]
@@ -220,13 +226,11 @@ enum Msg {
     #[cfg(target_os = "linux")]
     SelectCamera(uuid::Uuid, desktop_call::CameraChoice),
     #[cfg(target_os = "linux")]
-    ToggleMixer,
-    #[cfg(target_os = "linux")]
     PeerVolume(uuid::Uuid, String, u8),
     #[cfg(target_os = "linux")]
     RefreshDevices,
     #[cfg(target_os = "linux")]
-    DevicesListed(uuid::Uuid, Result<call_devices::Catalog, &'static str>),
+    DevicesListed(Result<call_devices::Catalog, &'static str>),
     #[cfg(target_os = "linux")]
     SelectDevice(call_devices::Port, call_devices::Choice),
     #[cfg(target_os = "linux")]
@@ -554,6 +558,12 @@ struct App {
     join_after: Option<String>,
     #[cfg(target_os = "linux")]
     room_ptt: bool,
+    /// Mute, deafen and the chosen devices, in and between calls.
+    #[cfg(target_os = "linux")]
+    local_audio: desktop_call::LocalAudio,
+    /// The open device menu or voice settings popup.
+    #[cfg(target_os = "linux")]
+    voice_popup: Option<desktop_call::VoiceMenu>,
     #[cfg(target_os = "linux")]
     hotkeys: hotkeys::State,
     #[cfg(target_os = "linux")]
@@ -729,6 +739,10 @@ impl App {
             join_after: None,
             #[cfg(target_os = "linux")]
             room_ptt: false,
+            #[cfg(target_os = "linux")]
+            local_audio: Default::default(),
+            #[cfg(target_os = "linux")]
+            voice_popup: None,
             #[cfg(target_os = "linux")]
             hotkeys: Default::default(),
             #[cfg(target_os = "linux")]
@@ -1349,20 +1363,7 @@ impl App {
                 }
             }
             #[cfg(target_os = "linux")]
-            Msg::ToggleMic => {
-                if let Some(call) = &self.call
-                    && !call.cancel.is_closed()
-                {
-                    call.audio.send_if_modified(|s| {
-                        if s.deafened {
-                            return false;
-                        }
-                        s.muted = !s.muted;
-                        s.hold(false);
-                        true
-                    });
-                }
-            }
+            Msg::ToggleMic => self.toggle_mute(),
             #[cfg(target_os = "linux")]
             Msg::SetShareSound(id, enabled) => {
                 if let Some(c) = &self.call
@@ -1373,16 +1374,7 @@ impl App {
                 }
             }
             #[cfg(target_os = "linux")]
-            Msg::ToggleDeafen => {
-                if let Some(call) = &self.call
-                    && !call.cancel.is_closed()
-                {
-                    call.audio.send_modify(|s| {
-                        s.deafened = !s.deafened;
-                        s.hold(false);
-                    });
-                }
-            }
+            Msg::ToggleDeafen => self.toggle_deafen(),
             #[cfg(target_os = "linux")]
             Msg::RoomPtt(enabled) => {
                 self.room_ptt = enabled;
@@ -1467,7 +1459,7 @@ impl App {
                     && c.audio.borrow().video[slot] == Some(window)
                     && choice
                         .as_ref()
-                        .is_none_or(|s| c.picker && c.devices.streams.contains(s))
+                        .is_none_or(|s| self.local_audio.devices.streams.contains(s))
                 {
                     c.app_note = if choice.is_some() {
                         "Starting application audio…".into()
@@ -1507,17 +1499,6 @@ impl App {
                 }
             }
             #[cfg(target_os = "linux")]
-            Msg::ToggleMixer => {
-                if let Some(call) = &mut self.call
-                    && !call.cancel.is_closed()
-                {
-                    call.mixer = !call.mixer;
-                    if call.mixer {
-                        call.picker = false;
-                    }
-                }
-            }
-            #[cfg(target_os = "linux")]
             Msg::PeerVolume(id, user, percent) => {
                 if let Some(call) = &self.call
                     && (call.group || call.peer.as_ref() == Some(&user))
@@ -1531,7 +1512,6 @@ impl App {
             #[cfg(target_os = "linux")]
             Msg::ListCameras => {
                 if let Some(c) = &mut self.call
-                    && c.picker
                     && !c.camera_listing
                     && !c.cancel.is_closed()
                 {
@@ -1570,7 +1550,6 @@ impl App {
             Msg::SelectCamera(id, choice) => {
                 if let Some(c) = &self.call
                     && c.id == id
-                    && c.picker
                     && !c.cancel.is_closed()
                     && c.cameras.contains(&choice)
                 {
@@ -1578,60 +1557,17 @@ impl App {
                 }
             }
             #[cfg(target_os = "linux")]
-            Msg::AudioDevices | Msg::RefreshDevices => {
-                if let Some(call) = &mut self.call
-                    && !call.cancel.is_closed()
-                {
-                    if matches!(msg, Msg::AudioDevices) {
-                        call.picker = !call.picker;
-                        if call.picker {
-                            call.mixer = false;
-                        }
-                    }
-                    if call.picker && !call.loading {
-                        call.loading = true;
-                        let id = call.id;
-                        return Task::perform(desktop_call::list_devices(), move |r| {
-                            Msg::DevicesListed(id, r)
-                        });
-                    }
-                }
-            }
+            Msg::VoiceMenu(menu) => return self.voice_menu(menu),
             #[cfg(target_os = "linux")]
-            Msg::DevicesListed(id, result) => {
-                if let Some(call) = &mut self.call
-                    && call.id == id
-                {
-                    call.loading = false;
-                    match result {
-                        Ok(devices) => {
-                            call.devices = devices;
-                            call.list_error = None;
-                        }
-                        Err(e) => call.list_error = Some(e),
-                    }
-                }
-            }
+            Msg::RefreshDevices => return self.refresh_devices(),
             #[cfg(target_os = "linux")]
-            Msg::SelectDevice(port, device) => {
-                if let Some(call) = &mut self.call
-                    && !call.cancel.is_closed()
-                    && call.devices.list(port).contains(&device)
-                {
-                    call.audio.send_modify(|s| {
-                        let route = match port {
-                            call_devices::Port::Mic => &mut s.mic,
-                            call_devices::Port::Speaker => &mut s.speaker,
-                        };
-                        route.name = device.name;
-                        route.revision += 1;
-                    });
-                    match port {
-                        call_devices::Port::Mic => call.mic_error = false,
-                        call_devices::Port::Speaker => call.speaker_error = false,
-                    }
-                }
-            }
+            Msg::DevicesListed(result) => self.devices_listed(result),
+            #[cfg(target_os = "linux")]
+            Msg::SelectDevice(port, device) => self.select_device(port, device),
+            #[cfg(target_os = "linux")]
+            Msg::QaLayout(None) => return qa_layout::collect().map(|f| Msg::QaLayout(Some(f))),
+            #[cfg(target_os = "linux")]
+            Msg::QaLayout(Some(found)) => qa_layout::write(&found),
             Msg::CheckCalls
                 if self.logged_in
                     && self.connected
@@ -1933,6 +1869,8 @@ impl App {
                 return self.profile_action(engine::profile::Action::Close);
             }
             Msg::ContextMenu(e) => return self.context_menu_event(e),
+            #[cfg(target_os = "linux")]
+            Msg::Escape if self.voice_popup.is_some() => self.voice_popup = None,
             Msg::Escape => {
                 if self.switcher.is_some() {
                     return self.switcher(switcher::Input::Close);
@@ -2579,10 +2517,17 @@ fn main() -> iced::Result {
                 if app.inline_running() {
                     iced::time::every(std::time::Duration::from_millis(250)).map(|_| Msg::InlineTick)
                 } else { iced::Subscription::none() },
-                // The input sensitivity meter moves while the Devices panel shows it.
+                // The input sensitivity meter moves while the voice
+                // settings show it during a call.
                 #[cfg(target_os = "linux")]
-                if app.call.as_ref().is_some_and(|c| c.picker && !c.cancel.is_closed()) {
+                if app.voice_popup == Some(desktop_call::VoiceMenu::Settings)
+                    && app.call.as_ref().is_some_and(|c| !c.cancel.is_closed()) {
                     iced::time::every(std::time::Duration::from_millis(50)).map(|_| Msg::VoiceMeter)
+                } else { iced::Subscription::none() },
+                // The QA control map, in debug builds that asked for it.
+                #[cfg(target_os = "linux")]
+                if qa_layout::enabled() {
+                    iced::time::every(std::time::Duration::from_millis(300)).map(|_| Msg::QaLayout(None))
                 } else { iced::Subscription::none() },
                 iced::keyboard::listen().filter_map(|event| match event {
                     iced::keyboard::Event::KeyPressed {
