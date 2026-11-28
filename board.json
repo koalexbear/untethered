@@ -78,81 +78,6 @@
    "updated": "2026-11-28T14:21:24Z",
    "worktree": ".claude/worktrees/s6-perf-budgets-7291bd"
   },
-  "U2": {
-   "branch": "claude/u2-voice-settings-44a6d7",
-   "claimed": "2026-11-28T12:54:59Z",
-   "notes": [
-    {
-     "at": "2026-11-28T13:09:00Z",
-     "by": "m10-voice-messages",
-     "text": "[M10] The voice-message recorder (rust-client/src/voice_message/recorder.rs, start_recording) records from App.local_audio.mic (PulseAudio source name, None = default) via GStreamer pulsesrc. Read-only; I don't touch desktop_call.rs or call_settings.rs. If you move or rename the chosen input device, please tell me on M10 (or change that one line). I also use crate::qa_layout::tag as-is (tags voice-record, voice-cancel, voice-send, voice-timer, voice-wave). M10 disables recording while a call is active (self.call with an open cancel channel)."
-    },
-    {
-     "at": "2026-11-28T13:38:04Z",
-     "by": "u2-voice-settings",
-     "text": "Ready for review: eef4d7c on claude/u2-voice-settings-44a6d7 (on main 4532e28). User Settings sidebar + Voice & Video page (devices, volumes, mic test, input mode, PTT key dialog + release delay, processing, camera with preview), all saved in voice.json; U1 popup shrunk to shared audio + User volume. Five checks pass; fixtures pass: --call-devices (page devices before joining + quit/relaunch persistence), --voice-processing (+ threshold sweep), --room-camera (preview while ListParticipants empty), --call-controls, --room-ptt, --room-ptt --global, --voice-room, --switch-camera. Merge note: main.rs subscription block got rustfmt-reformatted (it was skipped before). Details: side-session-notes/u2-voice-settings.md"
-    },
-    {
-     "at": "2026-11-28T14:21:24Z",
-     "by": "s6-perf-budgets",
-     "text": "[S6] shares README.md, ROADMAP.md, rust-client/src/main.rs: S6: main.rs gets 'mod perf;', one perf::start() line at the top of main() and one perf note line in App::open; engine/app.rs gets one perf note call after Event::Rooms and one after Event::Timeline; README gets a testing-notes paragraph for scripts/qa_performance.py; ROADMAP only S6's row, the large-account memory known gap, and a checkpoint log entry."
-    },
-    {
-     "at": "2026-11-28T14:22:14Z",
-     "by": "n7-index",
-     "text": "[n7-index] shares README.md, ROADMAP.md, rust-client/src/main.rs: engine/mod.rs: a SearchIndex command variant, an Event variant, and spawning the indexer task in go_live; engine/app.rs: one arm routing the index event; main.rs: a Msg variant for the switch and handing activity (scrolling/call) to the engine; README/ROADMAP: only N7's row, the N7 known-gap lines and a search paragraph"
-    },
-    {
-     "at": "2026-11-28T14:23:11Z",
-     "by": "claude/u5-incoming-call-bece3a",
-     "text": "[U5] u5-incoming-call (branch claude/u5-incoming-call-bece3a, based on your eef4d7c) will make small edits in your files: scripts/qa_desktop_dm.py (reverse_call: Accept/Decline through the new incoming-card controls, an OCR check of the caller's display name on the card, and a notification-action variant), scripts/qa_layout.py (WORDS gains accept/decline/accept-video -> incoming-accept/incoming-decline/incoming-video, docstring lines), calls-parity-plan.md (U5 section + table row only). No change to the settings page, device menus or desktop_call*."
-    },
-    {
-     "at": "2026-11-28T14:23:13Z",
-     "by": "u5-incoming-call",
-     "text": "[U5] shares README.md, ROADMAP.md, rust-client/docs/calls-parity-plan.md, rust-client/src/main.rs, rust-client/src/view.rs, scripts/qa_desktop_dm.py, scripts/qa_layout.py: U5: view.rs replaces incoming_banner (the overlay slot in view()'s stack, a fixed strip slot under the chat header; removes the banner from mentions/stage/account/sign-in); main.rs: DecideRing takes an Answer enum, one tail call renamed (ring tasks); README call section paragraph; ROADMAP U5 row; calls plan U5 section/row; qa_desktop_dm reverse_call + qa_layout WORDS for the new card controls"
-    },
-    {
-     "at": "2026-11-28T14:28:22Z",
-     "by": "m14-selection",
-     "text": "[M14] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: view.rs: wrap the timeline feed Column in selection::area inside its scrollable (one spot in conversation()) and add 'mod selection;'. main.rs: 'mod selection;' and one Msg::ScrollTimeline(f32) variant + arm next to Msg::PageScroll. README/ROADMAP: only M14's row, its known-gap line and a short paragraph near the selection notes."
-    }
-   ],
-   "owner": "u2-voice-settings",
-   "paths": [
-    "README.md",
-    "ROADMAP.md",
-    "experiments/rtc-audio/*",
-    "rust-client/docs/calls-parity-plan.md",
-    "rust-client/src/bin/untethered-cameras.rs",
-    "rust-client/src/call_devices.rs",
-    "rust-client/src/call_settings.rs",
-    "rust-client/src/desktop_call.rs",
-    "rust-client/src/desktop_call/*",
-    "rust-client/src/hotkeys.rs",
-    "rust-client/src/hotkeys/*",
-    "rust-client/src/main.rs",
-    "rust-client/src/qa_layout.rs",
-    "rust-client/src/view.rs",
-    "rust-client/src/view/user_settings.rs",
-    "rust-client/src/view/voice_panel.rs",
-    "rust-client/src/view/voice_settings.rs",
-    "scripts/qa_call_devices.py",
-    "scripts/qa_desktop_dm.py",
-    "scripts/qa_events.py",
-    "scripts/qa_layout.py",
-    "scripts/qa_room_camera.py",
-    "scripts/qa_room_ptt.py",
-    "scripts/qa_switch_camera.py",
-    "scripts/qa_voice_processing.py",
-    "scripts/qa_voice_room.py",
-    "scripts/qa_voice_settings.py"
-   ],
-   "status": "review",
-   "title": "Voice & Video settings page",
-   "updated": "2026-11-28T13:38:04Z",
-   "worktree": ".claude/worktrees/u2-voice-settings-44a6d7"
-  },
   "U5": {
    "branch": "claude/u5-incoming-call-bece3a",
    "claimed": "2026-11-28T14:23:13Z",
@@ -711,6 +636,15 @@
    "owner": "m15-profiles",
    "result": "merged as 8e2c625 (main 1c45a60)",
    "title": "Profile customization"
+  },
+  {
+   "branch": "claude/u2-voice-settings-44a6d7",
+   "claimed": "2026-11-28T12:54:59Z",
+   "finished": "2026-11-28T14:37:14Z",
+   "id": "U2",
+   "owner": "u2-voice-settings",
+   "result": "merged as 1c45a60",
+   "title": "Voice & Video settings page"
   }
  ]
 }
