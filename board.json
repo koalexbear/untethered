@@ -192,6 +192,7 @@
     "experiments/rtc-audio/README.md",
     "experiments/rtc-audio/evidence/*",
     "rust-client/docs/calls-parity-plan.md",
+    "rust-client/src/call_devices.rs",
     "rust-client/src/desktop_call.rs",
     "rust-client/src/desktop_call/channel.rs",
     "rust-client/src/main.rs",
@@ -215,7 +216,7 @@
    ],
    "status": "working",
    "title": "Voice Connected panel and user-panel Mute/Deafen",
-   "updated": "2026-11-28T09:52:23Z",
+   "updated": "2026-11-28T09:53:33Z",
    "worktree": ".claude/worktrees/u1-voice-panel-678cab"
   }
  },
