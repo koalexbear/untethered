@@ -13,6 +13,11 @@
      "at": "2026-11-28T09:30:02Z",
      "by": "u1-voice-panel",
      "text": "[U1] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: view.rs: call_bar/call_dock/user_panel/theater dock only; main.rs: call Msg variants and handlers, QA layout timer; icons.rs: new call glyphs appended; README call section, ROADMAP U1 row"
+    },
+    {
+     "at": "2026-11-28T09:47:01Z",
+     "by": "m13-composer",
+     "text": "M13 (m13-composer) touches engine/mod.rs: 'pub(crate) mod compose;' and a new #[serde(default)] emote: bool field at the end of engine::Message; engine/app.rs: 3 lines in engine_compose (commands::incomplete check before the reply lookup) and 'emote: false' in 3 test Message literals. main.rs: mod lines, Msg::FreeEscape next to Msg::Escape, a composer field after composer_menu, and the last else of the Escape chain. If you add a Message literal, it needs emote: false."
     }
    ],
    "owner": "c1-server-settings",
