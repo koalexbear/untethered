@@ -180,7 +180,9 @@ impl Posting {
         self.can_send_state(me, "m.room.pinned_events")
     }
 
-    fn can_send_state(&self, me: &str, event_type: &str) -> bool {
+    /// This account may send `event_type` state events here (server
+    /// settings, ROADMAP C1, asks this of each control).
+    pub(crate) fn can_send_state(&self, me: &str, event_type: &str) -> bool {
         self.content()
             .and_then(|c| level(&c["events"], event_type, level(c, "state_default", 50)?))
             .zip(self.actor(me))

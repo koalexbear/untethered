@@ -37,6 +37,7 @@ mod room_people;
 mod room_search;
 mod sdk_account;
 mod selectable;
+mod server_settings;
 mod shortcuts;
 #[cfg(target_os = "linux")]
 mod sounds;
@@ -1335,6 +1336,8 @@ impl App {
             }
             _ => none(),
         };
+        // Server Settings covers the screen, which keeps its state below.
+        let server_settings = self.server_settings_view().unwrap_or_else(none);
         let dialog = self
             .switcher_view()
             .or_else(|| self.delete_dialog())
@@ -1378,6 +1381,7 @@ impl App {
         stack![
             self.screen(),
             setup,
+            server_settings,
             dialog,
             viewer,
             menu,
@@ -1426,6 +1430,15 @@ impl App {
             })
         };
         let mut menu = column![
+            // Read-only for members who can't change anything (server_settings.rs).
+            item(
+                Icon::Gear,
+                "Server Settings",
+                MUTED,
+                (ready && self.may_open_server_settings()).then(|| Msg::ServerSettings(
+                    crate::server_settings::Input::Open(space.clone())
+                ))
+            ),
             item(
                 Icon::UserPlus,
                 "Invite People",
@@ -2087,6 +2100,8 @@ impl App {
             not(any(target_os = "linux", target_arch = "wasm32")),
             allow(unused_mut)
         )]
+        // A space's banner behind its name (server_settings.rs).
+        let head = self.banner_head(head);
         let mut sidebar = column![head, line_rule(color!(0x1f2023))];
         #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
         if self.logged_in

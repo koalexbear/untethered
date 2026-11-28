@@ -42,6 +42,7 @@ pub mod rt;
 mod search;
 pub use search::{Has, Reach, RoomsFound, SearchQuery};
 mod session;
+pub mod space_settings;
 pub mod threads;
 // The desktop's own settings live beside the profile (tray.rs).
 #[cfg(not(target_arch = "wasm32"))]
@@ -239,6 +240,12 @@ pub enum Command {
         event: String,
         url: String,
         shortcode: String,
+    },
+    /// Read or change a space's settings (ROADMAP C1), answered with
+    /// [`Event::SpaceSettings`].
+    SpaceSettings {
+        id: i64,
+        request: space_settings::Request,
     },
     /// Reorder or move a space's channels and categories (ROADMAP N5):
     /// `m.space.child` edges, rewritten in turn.
@@ -598,6 +605,11 @@ pub enum Event {
     RoomState {
         id: i64,
         result: Result<crate::room_state::RoomState, Failure>,
+    },
+    /// A server settings request's answer (ROADMAP C1).
+    SpaceSettings {
+        id: i64,
+        result: Result<space_settings::Reply, Failure>,
     },
     /// A request that made a room or an event, with its ID.
     Created {
@@ -1593,6 +1605,17 @@ impl Engine {
             } => {
                 self.job(id, move |_, timelines, _| async move {
                     timelines.react_emote(&room, &event, &url, &shortcode).await
+                })
+                .await
+            }
+            Command::SpaceSettings { id, request } => {
+                let unavailable = Event::SpaceSettings {
+                    id,
+                    result: Err(Failure::Unavailable),
+                };
+                self.answer(unavailable, move |client| async move {
+                    let result = space_settings::run(&client, request).await;
+                    Event::SpaceSettings { id, result }
                 })
                 .await
             }

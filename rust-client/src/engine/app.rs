@@ -354,6 +354,8 @@ impl App {
                 self.sync_space_rules();
                 // A channel joined since its server's nickname was set takes it.
                 self.follow_nicknames();
+                // Channel names saved in Server Settings, once synced.
+                self.settings_synced();
                 // A room community setup created opens once it's listed.
                 self.open_created();
                 self.open_profile_dm();
@@ -495,6 +497,7 @@ impl App {
             #[cfg(not(any(target_os = "linux", target_arch = "wasm32")))]
             Event::PushRules(_) | Event::Notification(_) => {}
             Event::Created { id, result } => self.engine_created(id, result),
+            Event::SpaceSettings { id, result } => self.space_settings_answer(id, result),
             Event::UploadLimit { id, result } => {
                 if matches!(self.pending.remove(&id), Some(Request::MediaConfig))
                     && let Ok(limit) = result
