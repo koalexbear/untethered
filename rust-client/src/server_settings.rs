@@ -96,8 +96,9 @@ pub struct Page {
     pub topic: Option<String>,
     /// Channels' edited (name, topic).
     pub channels: BTreeMap<String, (Option<String>, Option<String>)>,
-    /// Channel names and topics saved here, shown until sync brings them.
-    written: BTreeMap<(String, Field), String>,
+    /// Channel names and topics saved here, with what the room list had
+    /// then: shown until sync changes the room list's.
+    written: BTreeMap<(String, Field), (String, String)>,
     pub rename: Option<Rename>,
     picking: Option<(i64, Target)>,
     pub note: Option<Note>,
@@ -394,7 +395,11 @@ impl App {
                 Field::Name => name.as_ref(),
                 Field::Topic => topic.as_ref(),
             });
-        if let Some(v) = edited.or_else(|| page.written.get(&(room.to_owned(), field))) {
+        let written = page
+            .written
+            .get(&(room.to_owned(), field))
+            .map(|(new, _)| new);
+        if let Some(v) = edited.or(written) {
             return v.clone();
         }
         self.live
@@ -863,10 +868,13 @@ impl App {
             return;
         };
         match op {
+            // Asked once a session: a failure counts as no banner.
             Op::Banner(space) => {
-                if let Ok(Reply::Banner(banner)) = result {
-                    self.server_settings.banners.insert(space, banner);
-                }
+                let banner = match result {
+                    Ok(Reply::Banner(banner)) => banner,
+                    _ => None,
+                };
+                self.server_settings.banners.insert(space, banner);
             }
             Op::Load(space) => {
                 if let Ok(Reply::Loaded(snapshot)) = &result {
@@ -934,7 +942,15 @@ impl App {
                                         Field::Topic => edit.1 = None,
                                     }
                                 }
-                                page.written.insert((room.clone(), field), value.clone());
+                                let before =
+                                    self.live.list.get(room).map_or_else(String::new, |r| {
+                                        match field {
+                                            Field::Name => r.name.clone(),
+                                            Field::Topic => r.topic.clone(),
+                                        }
+                                    });
+                                page.written
+                                    .insert((room.clone(), field), (value.clone(), before));
                             }
                         }
                         _ => {}
@@ -946,19 +962,20 @@ impl App {
         }
     }
 
-    /// Forget channel values saved here once sync shows them.
+    /// Forget channel values saved here once sync changes them: to ours,
+    /// or to someone else's since.
     pub fn settings_synced(&mut self) {
         let Some(page) = &mut self.server_settings.page else {
             return;
         };
         let list = &self.live.list;
-        page.written.retain(|(room, field), value| {
+        page.written.retain(|(room, field), (_, before)| {
             list.get(room).is_some_and(|r| {
                 let synced = match field {
                     Field::Name => &r.name,
                     Field::Topic => &r.topic,
                 };
-                synced != value
+                synced == before
             })
         });
     }
@@ -1245,6 +1262,51 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn a_saved_channel_value_shows_until_sync_changes_it() {
+        let (mut app, rx) = app(100);
+        let _ = app.server_settings(Input::Open("!space:h".into()));
+        answer(&mut app, &rx, Ok(Reply::Loaded(loaded())));
+        let _ = app.server_settings(Input::ChannelTopic("!general:h".into(), "Chat".into()));
+        let _ = app.server_settings(Input::Save);
+        answer(&mut app, &rx, Ok(Reply::Written("$e".into())));
+        let topic = |app: &mut App, topic: &str| {
+            app.live.list.get_mut("!general:h").unwrap().topic = topic.into();
+            app.settings_synced();
+        };
+        // Sync hasn't brought it: what was saved shows.
+        topic(&mut app, "");
+        assert_eq!(app.channel_value("!general:h", Field::Topic), "Chat");
+        topic(&mut app, "Chat");
+        assert_eq!(app.channel_value("!general:h", Field::Topic), "Chat");
+        // Someone else's change after ours shows too.
+        topic(&mut app, "Other");
+        assert_eq!(app.channel_value("!general:h", Field::Topic), "Other");
+    }
+
+    #[test]
+    fn a_space_banner_is_asked_for_once() {
+        let (mut app, rx) = app(0);
+        app.section = crate::Section::Space("!space:h".into());
+        let _ = app.schedule_settings_pictures();
+        let Ok(Command::SpaceSettings { id, request }) = rx.try_recv() else {
+            panic!("no banner request");
+        };
+        assert_eq!(
+            request,
+            engine::Request::Banner {
+                space: "!space:h".into()
+            }
+        );
+        let _ = app.schedule_settings_pictures();
+        assert!(rx.try_recv().is_err(), "asked twice while waiting");
+        // A failure is no banner, not a reason to ask on every update.
+        app.space_settings_answer(id, Err(Failure::Unreachable));
+        let _ = app.schedule_settings_pictures();
+        assert!(rx.try_recv().is_err());
+        assert!(app.space_banner().is_none());
     }
 
     #[test]

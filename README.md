@@ -76,8 +76,8 @@ anyone without one shows their initials.
 **Reply**, **Edit** (your own text messages) and **Report Message** (other
 people’s). Header icons open notification settings, posting permissions, the
 member list and room search; hover any icon for its name. Click the space name
-at the top of the channel list for **Invite People**, **Create Channel**,
-**Edit Server Profile** and **Notification Settings**, or use **+** beside a
+at the top of the channel list for **Server Settings**, **Invite People**,
+**Create Channel**, **Edit Server Profile** and **Notification Settings**, or use **+** beside a
 channel category. **+** at
 the bottom of the server rail creates a space. Click the gear at the bottom
 left for **User Settings**, or your name for your status (see Presence).
@@ -197,8 +197,8 @@ The sticker button beside the emoji button sends a pack's stickers. Tick
 **Use everywhere** on a pack's header to use a room's pack in every room.
 Packs are read under the spec's names (`m.room.image_pack`,
 `m.image_pack.rooms`) and the unstable ones Cinny writes (`im.ponies.*`);
-"Use everywhere" is saved under both. Making or editing packs isn't here
-yet: use Cinny or FluffyChat for that.
+"Use everywhere" is saved under both. A space's pack is made and edited in
+its Server Settings (below).
 
 **Names:** as on Discord, you can have a nickname in each server: click the
 space name and **Edit Server Profile**, or right-click your own name in one
@@ -213,6 +213,24 @@ room of the space. In place of Discord's role colours, names carry a small
 the creators of a version 12 room, 100 and 50, as Element names them, and
 only above what every member has. They show in the timeline, reply quotes,
 the member list and profile cards ([live test](scripts/qa_names.py)).
+
+**Server settings:** click the space name and **Server Settings**. Discord's
+layout: **Overview** has the space's name, topic and icon (`m.room.name`,
+`m.room.topic`, `m.room.avatar`, which every client shows) and a banner,
+which Matrix has no event for: Untethered keeps it in its own state event
+(`io.github.koalexbear.untethered.banner`) and shows it over the channel
+list, and the page says other clients don't show it. **Channels** renames
+channels and sets their topics; their order is the drag in the channel list.
+**Emoji** lists the space's image packs: **Upload Emoji** and **Upload
+Sticker** add a PNG, JPEG, GIF or WebP (up to 1 MiB) under its file name,
+click a shortcode to rename it, choose what each one is offered as (emoji,
+sticker or both), or delete it; a space without a pack gets **Create Emoji
+Pack**. Each change reads the pack from the homeserver and writes it back
+with only that image changed, keeping what other clients added, and the
+pickers follow once it syncs. Every control asks the room's power levels
+first: a member who can't change something sees its value instead, and a
+space they can't change at all reads as a page to look at
+([live test](scripts/qa_server_settings.py)).
 
 **Replies:** Hover a message, click **Reply**, type your response, and send.
 The bar above the composer shows who you’re replying to; its **×** (Cancel

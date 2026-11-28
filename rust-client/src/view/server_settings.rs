@@ -209,9 +209,13 @@ impl App {
                 .into(),
             (None, false) => Space::new().into(),
         };
-        let content = column![heading(page.tab.title()), notice, note, body]
-            .spacing(20)
-            .max_width(740);
+        let content = column![
+            heading(page.tab.title()),
+            column![notice, note].spacing(8),
+            body
+        ]
+        .spacing(16)
+        .max_width(740);
         let close = column![
             with_tip(
                 button(container(icon(Icon::Close, 18., ICON)).center(36))
@@ -259,10 +263,13 @@ impl App {
             .width(Length::FillPortion(2))
             .height(Fill)
             .style(|_| surface(CHAT, 0.));
+        // A background of its own: the halves' fractional widths can leave
+        // a pixel between them, where the screen below would show.
         Some(opaque(
             container(row![left, right].height(Fill))
                 .width(Fill)
-                .height(Fill),
+                .height(Fill)
+                .style(|_| surface(SIDE, 0.)),
         ))
     }
 

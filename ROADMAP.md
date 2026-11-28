@@ -112,7 +112,7 @@ doesn't:
 | **M8. Forward** · done | Spec (content sent again) | Forward a message, attachments included, to another room or DM from its toolbar and right-click menu. Encrypted attachments are sent again with the same file and key, not uploaded again. | A message and an image forwarded from an encrypted room show in Element's DM as ordinary messages from you, and no new upload happens. |
 | **M9. Polls** · done | Accepted MSC3381 (sent and read under its unstable `org.matrix.msc3381.poll.*` names, as Element does) | Show, vote in and end polls (MSC3381, as Element does), with live results; create one from the composer's **+**. | A poll started in Element shows here; a vote here moves Element's count; ending it shows the same final tally in both. |
 | **M10. Voice messages** | Unstable MSC3245, as Element sends it | Record and send a voice message (MSC3245) from the composer, with a waveform; playing received ones is P2. | A voice message recorded here plays in Element with its waveform and length. |
-| **M11. Custom emoji and stickers** · done (using packs; making them is open) | Spec v1.19 (MSC2545 image packs) | Image packs (MSC2545) for a space and for your account, in the emoji picker, autocomplete and reactions, with a sticker picker. Packs work anywhere, as Discord sells with Nitro: your own packs, and packs from rooms you choose to use everywhere (`m.image_pack.rooms`). Animated ones play (P1). Cinny, FluffyChat, Nheko and SchildiChat show them; check Element before relying on it, and send the `:shortcode:` as fallback text. | An emoji pack added to a space appears in its rooms' picker, and in every room once you choose to use it everywhere; a custom emoji sent here renders in Cinny, and a client without image packs shows its `:shortcode:`. |
+| **M11. Custom emoji and stickers** · done | Spec v1.19 (MSC2545 image packs) | Image packs (MSC2545) for a space and for your account, in the emoji picker, autocomplete and reactions, with a sticker picker. Packs work anywhere, as Discord sells with Nitro: your own packs, and packs from rooms you choose to use everywhere (`m.image_pack.rooms`). Animated ones play (P1). Cinny, FluffyChat, Nheko and SchildiChat show them; check Element before relying on it, and send the `:shortcode:` as fallback text. | An emoji pack added to a space appears in its rooms' picker, and in every room once you choose to use it everywhere; a custom emoji sent here renders in Cinny, and a client without image packs shows its `:shortcode:`. |
 | **M12. Names** · done | Spec (per-room names); badges and colours client-side | Per-server nicknames (Matrix's per-room display names) and an Admin or Moderator badge, or a name colour, from the sender's power level, standing in for Discord's role colours. | A nickname set in one space shows only there, also in Element; a moderator's badge shows wherever their name does. |
 | **M13. Composer details** | Spec (`m.emote`); the rest client-side | Up arrow in an empty composer edits your last message; Escape marks the channel read; a message of only emoji shows larger; code blocks get syntax highlighting; `/me`, `/shrug` and `/spoiler`; spell check if Iced's editor allows it. | Each works as on Discord, and `/me` arrives in Element as an emote. |
 | **M14. Selection across messages** | Client | Drag a selection from one message into the next, and copy their text in order. Today a selection stays within one paragraph. | Dragging across three messages and pressing Ctrl+C pastes their three texts. |
@@ -169,7 +169,7 @@ source's resolution, with no tier to pay for.
 
 | Step | Matrix | Deliverable | Done when |
 |---|---|---|---|
-| **C1. Server settings** | Spec (name, picture, topic); banner: own state event | A settings page for a space: name, icon, banner, topic, and its channels' names, topics and order. | Changing a space's name, icon and topic here shows in Element. |
+| **C1. Server settings** · done | Spec (name, picture, topic; image packs, MSC2545); banner: own state event | A settings page for a space: name, icon, banner, topic, its channels' names and topics (order is N5's drag), and its emoji pack: upload emoji and stickers, rename, choose their use, delete, or create the pack. Gated on power levels; read-only otherwise. | Changing a space's name, icon and topic here shows in other clients; an emoji added, renamed or deleted here follows in the pickers and the pack's state event; a member without permission sees the page read-only. |
 | **C2. Roles and channel permissions** | Spec (power levels); role names and colours: own state event | Role presets on power levels (Admin, Moderator, Member, and named custom levels) and per-channel overrides, such as an announcement channel only moderators post in. | A second account meets every configured limit, as in the existing permission tests. |
 | **C3. Moderation history and join links** | Client (from room history); expiring links need a bot | A moderation log (kicks, bans, permission, name and topic changes, with who and when), the bans list, and the space's join links and pending invites, which a moderator can revoke. | A kick and a ban done in Element appear in the log here with their reasons. |
 
@@ -196,12 +196,15 @@ source's resolution, with no tier to pay for.
 - Profile pictures of members who never posted come from their membership
   event, so they appear once the member list has loaded.
 - A text selection stays within one paragraph (M14).
-- Image packs (M11) can be used but not made or edited here: uploading an
-  emoji to a space's pack belongs in C1's server settings, and your own
-  pack exists only under Cinny's unstable `im.ponies.user_emotes` (the spec
-  dropped personal packs). Custom emoji show their first frame, not their
-  animation, and a room's own pack under the unstable name is read when
-  its history is first opened.
+- Image packs (M11): a space's packs are made and edited in its Server
+  Settings (C1), but a channel's own pack and your own pack (only under
+  Cinny's unstable `im.ponies.user_emotes`; the spec dropped personal
+  packs) can't be edited here yet. Custom emoji show their first frame, not
+  their animation, and a room's own pack under the unstable name is read
+  when its history is first opened.
+- A space's banner (C1) is read when the space is first opened in a
+  session and whenever its Server Settings load, so another member's new
+  banner shows after that, not live.
 - Polls under MSC3381's stable `m.poll.*` names don't show: matrix-sdk's
   timeline reads only the unstable `org.matrix.msc3381.poll.*` events
   Element sends, which is also what Untethered sends. Editing a poll before

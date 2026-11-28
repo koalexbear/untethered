@@ -2096,12 +2096,12 @@ impl App {
                 .width(Fill)
                 .into()
         };
+        // A space's banner behind its name (server_settings.rs).
+        let head = self.banner_head(head);
         #[cfg_attr(
             not(any(target_os = "linux", target_arch = "wasm32")),
             allow(unused_mut)
         )]
-        // A space's banner behind its name (server_settings.rs).
-        let head = self.banner_head(head);
         let mut sidebar = column![head, line_rule(color!(0x1f2023))];
         #[cfg(any(target_os = "linux", target_arch = "wasm32"))]
         if self.logged_in
