@@ -154,6 +154,19 @@ impl Posting {
         )?;
         Some(self.actor(me)? >= min)
     }
+    /// Reacting needs the room's `m.reaction` level. In an encrypted room a
+    /// reaction goes out encrypted, and the homeserver checks
+    /// `m.room.encrypted`'s level instead.
+    pub fn can_react(&self, me: &str, encrypted: bool) -> Option<bool> {
+        let c = self.content()?;
+        let kind = if encrypted {
+            "m.room.encrypted"
+        } else {
+            "m.reaction"
+        };
+        let min = level(&c["events"], kind, level(c, "events_default", 0)?)?;
+        Some(self.actor(me)? >= min)
+    }
     /// The sender needs permission to send a redaction. Deleting someone
     /// else's event also requires the room's redaction power level.
     pub(crate) fn can_redact_message(&self, me: &str, sender: &str) -> bool {
@@ -479,6 +492,27 @@ mod tests {
                 .patch("@creator:h", Action::Restrict)
                 .is_none()
         );
+    }
+    #[test]
+    fn reacting_follows_the_level_the_homeserver_checks() {
+        let p = policy(
+            "11",
+            json!({"users": {"@helper:h": 25, "@mod:h": 50}, "events_default": 10,
+                "events": {"m.reaction": 25, "m.room.encrypted": 50}}),
+        );
+        assert_eq!(p.can_react("@member:h", false), Some(false));
+        assert_eq!(p.can_react("@helper:h", false), Some(true));
+        // Encrypted, a reaction is an m.room.encrypted event.
+        assert_eq!(p.can_react("@helper:h", true), Some(false));
+        assert_eq!(p.can_react("@mod:h", true), Some(true));
+        // Without its own level, reacting needs events_default.
+        let plain = policy(
+            "11",
+            json!({"users": {"@helper:h": 25}, "events_default": 10}),
+        );
+        assert_eq!(plain.can_react("@member:h", false), Some(false));
+        assert_eq!(plain.can_react("@helper:h", false), Some(true));
+        assert_eq!(Posting::default().can_react("@member:h", false), None);
     }
     #[test]
     fn an_older_snapshot_never_brings_back_a_replaced_document() {

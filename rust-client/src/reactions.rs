@@ -112,6 +112,27 @@ impl Toggle {
     }
 }
 impl App {
+    /// This account may add reactions in `room`, as its power levels say
+    /// (ROADMAP C2's "Add reactions"). Offered while they aren't known, as
+    /// posting is.
+    pub fn may_react(&self, room: &str) -> bool {
+        self.live
+            .list
+            .get(room)
+            .is_none_or(|r| r.posting.can_react(&self.matrix_id, r.encrypted) != Some(false))
+    }
+    /// The homeserver would take this change: adding a reaction needs the
+    /// room's reaction level, taking yours back its redaction level.
+    pub fn may_toggle(&self, op: &Toggle) -> bool {
+        if op.adds() {
+            return self.may_react(&op.room);
+        }
+        self.live.list.get(&op.room).is_none_or(|r| {
+            r.posting.content().is_none()
+                || r.posting
+                    .can_redact_message(&self.matrix_id, &self.matrix_id)
+        })
+    }
     /// Open the reaction picker on a message, or close it if it's open
     /// there; its search field takes the keyboard.
     pub fn toggle_reaction_picker(
@@ -119,7 +140,7 @@ impl App {
         id: String,
         beside_chips: bool,
     ) -> iced::Task<crate::Msg> {
-        if !self.visible_post(&id).is_some_and(|p| p.reactable) {
+        if !self.visible_post(&id).is_some_and(|p| p.reactable) || !self.may_react(&self.selected) {
             return iced::Task::none();
         }
         if self
@@ -146,6 +167,7 @@ impl App {
             || !self.verified
             || !self.connected
             || self.reaction_pending(&op.target, &op.key)
+            || !self.may_toggle(&op)
         {
             return;
         }

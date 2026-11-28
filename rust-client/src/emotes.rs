@@ -266,6 +266,7 @@ impl App {
             || !self.verified
             || !self.connected
             || self.reaction_pending(op.parts().1, op.parts().2)
+            || !self.may_toggle(&op)
         {
             return;
         }

@@ -262,7 +262,10 @@ and managing roles. The server's defaults are the space's own levels, and
 changing one changes the channels that had it; pick a channel to give it
 limits of its own, such as an announcement channel only moderators post in.
 A channel that differs says so and is listed under **Channels with their own
-permissions**; **Use the Server's Permissions** puts the defaults back. Each
+permissions**; **Use the Server's Permissions** puts the defaults back.
+Where your role can't post, the composer reads as read-only, and where it
+can't react, Add Reaction isn't offered (in an encrypted channel reactions
+need what posting needs, as the server sees only encrypted events). Each
 change is made on the room's current power levels, read just before writing,
 so the rest of them stays. Only what the homeserver would accept is offered:
 nothing above your own level, no one at or above it, and nothing where you

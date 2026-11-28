@@ -29,7 +29,9 @@ Server Settings' Roles tab and must:
 - show Helper in orange and MOD as the badges on Nora's and Mira's
   messages in general;
 - once Enzo makes Quinn an ordinary member again, show the Roles tab
-  read-only, and announcements' composer as read-only for Quinn.
+  read-only, and announcements' composer as read-only for Quinn, whose
+  message menu there offers no Add Reaction; once Enzo makes Quinn a Helper
+  in announcements, it offers Add Reaction again (posting stays read-only).
 --shots DIR keeps the screenshots; UNTETHERED_QA_UI_CLIENT runs another
 client build. From a worktree, point UNTETHERED_BACKEND (the seed step) at
 the main checkout's `.dev/backends/…/gomuks`.
@@ -169,11 +171,17 @@ def main():
                 content["users"].pop(me, None)
                 put_state(enzo_hdr, room, "m.room.power_levels", "", content)
 
+        def helper():
+            """Enzo makes Quinn a Helper (25) in announcements."""
+            content = levels(announcements)
+            content["users"][me] = 25
+            put_state(enzo_hdr, announcements, "m.room.power_levels", "", content)
+
         print(f"Synapse at {hs}: {enzo} owns Workshop (version 12) with general, announcements and vault; "
               f"{me} (Quinn) is Admin but in vault; {mira} and {nora} are members", flush=True)
         rooms = dict(workshop=workshop, general=general, announcements=announcements, vault=vault)
         people = dict(me=me, mira=mira, nora=nora, zed=zed)
-        api_calls = dict(state=state, levels=levels, send=send, react=react, invite=invite, demote=demote,
+        api_calls = dict(state=state, levels=levels, send=send, react=react, invite=invite, demote=demote, helper=helper,
                          mira=mira_hdr, nora=nora_hdr, power=power)
         look(tmp, args.shots, rooms, people, api_calls)
         print("PASS: the Roles tab names a custom role, gives roles across the space's rooms, sets an "
@@ -344,6 +352,31 @@ def look(tmp, shots, rooms, people, calls):
             tap(kde, *wait_for(f"{place} in the channel picker", lambda: entry(place, at, "server", "vault"), 10))
             away()
 
+        def press(button, pos):
+            kde.actions("pointer", [{"type": "pointerMove", "x": pos[0], "y": pos[1]}, {"type": "pause", "duration": 250},
+                                    {"type": "pointerDown", "button": button}, {"type": "pause", "duration": 80},
+                                    {"type": "pointerUp", "button": button}])
+
+        def message_menu(*line):
+            """Right-click the message that reads `line`: the menu's words."""
+            at = wait_for("the message", lambda: phrase(*line, rect=MAIN), 15)
+            for attempt in range(3):
+                press(2, at)
+                try:
+                    wait_for("the message menu", lambda: phrase("copy", "text", rect=WINDOW), 6)
+                    break
+                except RuntimeError:
+                    if attempt == 2:
+                        raise
+            found = {w for w, _, _ in words()}
+            chord(ESCAPE)
+            wait_for("the message menu closed", lambda: not phrase("copy", "text", rect=WINDOW), 10)
+            return found
+
+        def offers_reaction(*line):
+            """The message's menu has Add Reaction."""
+            return "reaction" in message_menu(*line)
+
         def level_of(room, user):
             content = levels(room)
             return content.get("users", {}).get(user, content.get("users_default", 0))
@@ -501,6 +534,21 @@ def look(tmp, shots, rooms, people, calls):
             close_settings()
             print("UI: as an ordinary member, Quinn sees announcements' composer read-only and the Roles tab "
                   "read-only, without Create Role or role pickers", flush=True)
+
+            # Reactions: offered only where the room's level allows them.
+            try:
+                assert not offers_reaction("mira", "announces"), "Add Reaction offered to a member"
+            finally:
+                shot("member-menu")
+            calls["helper"]()
+            wait_for("Quinn a Helper in announcements", lambda: level_of(rooms["announcements"], me) == 25, 20)
+            try:
+                wait_for("Add Reaction offered to a Helper", lambda: offers_reaction("mira", "announces"), 40)
+                assert phrase("read-only", "for", "your", rect=MAIN), "a Helper may post in announcements"
+            finally:
+                shot("helper-menu")
+            print("UI: in announcements Quinn's message menu has no Add Reaction as a member, and has it as a "
+                  "Helper (reactions need 25), while the composer stays read-only", flush=True)
 
         try:
             steps()
