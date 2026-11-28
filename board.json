@@ -38,9 +38,9 @@
     "rust-client/src/view/server_settings/roles.rs",
     "scripts/qa_roles.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Roles and channel permissions",
-   "updated": "2026-11-28T13:21:21Z",
+   "updated": "2026-11-28T13:33:13Z",
    "worktree": ".claude/worktrees/c2-roles-d127db"
   },
   "J5": {
