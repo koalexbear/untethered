@@ -339,6 +339,7 @@ impl App {
             Event::ProfileSaved { id, result } => self.profile_saved(id, result),
             Event::ProfileDirect { id, result } => self.profile_direct(id, result),
             Event::Packs(packs) => self.set_packs(packs),
+            Event::Folders(folders) => self.folders_synced(folders),
             Event::Rooms(list) => {
                 let left = self.live.apply_engine(list);
                 self.hide_blocked_invites();
@@ -361,6 +362,7 @@ impl App {
                 self.follow_nicknames();
                 // Channel names saved in Server Settings, once synced.
                 self.settings_synced();
+                self.rail_synced();
                 // A room community setup created opens once it's listed.
                 self.open_created();
                 self.open_profile_dm();
@@ -633,6 +635,7 @@ impl App {
             (Request::Poll(op), result) => self.poll_done(op, result.is_ok()),
             (Request::Pack(op), result) => self.pack_done(op, result.is_ok()),
             (Request::Arrange, result) => self.arranged(id, result.is_ok()),
+            (Request::ArrangeRail, result) => self.rail_arranged(id, result.is_ok()),
             (Request::Nickname(write), result) => self.nickname_done(write, result.is_ok()),
             (Request::Report, result) => self.report_result(result.is_ok()),
             (Request::ReadState(room, event), result) => {

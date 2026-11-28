@@ -271,9 +271,28 @@ async fn summary(room: &Room) -> RoomSummary {
         predecessor: room.predecessor_room().map(|p| p.room_id.to_string()),
         // Filled in for spaces by `snapshot`.
         child_order: Vec::new(),
+        space_order: if room.is_space() {
+            space_order(room).await
+        } else {
+            None
+        },
         me: super::names::own(room).await,
         id,
     }
+}
+
+/// A space's MSC3230 `order` (room account data), when it's one the MSC
+/// allows; Element ignores any other (ROADMAP N8, rail_order.rs).
+async fn space_order(room: &Room) -> Option<String> {
+    let raw = room
+        .account_data(RoomAccountDataEventType::from(super::rail::SPACE_ORDER))
+        .await
+        .ok()??;
+    let e: Value = raw.deserialize_as().ok()?;
+    e["content"]["order"]
+        .as_str()
+        .filter(|o| crate::channel_order::valid(o))
+        .map(str::to_owned)
 }
 
 /// A state event from the store as the App keeps it. Fields are read from

@@ -195,17 +195,15 @@ impl App {
         Task::none()
     }
 
-    /// The rail's sections, top to bottom.
+    /// The rail's sections, top to bottom, folders' servers included
+    /// (rail_order.rs).
     fn rail(&self) -> Vec<Section> {
-        let rooms = self.rooms();
         [Section::Direct, Section::All]
             .into_iter()
             .chain(
-                rooms
-                    .list
-                    .iter()
-                    .filter(|(_, r)| r.space)
-                    .map(|(id, _)| Section::Space(id.clone())),
+                crate::rail_order::flat(&self.rail_entries())
+                    .into_iter()
+                    .map(Section::Space),
             )
             .collect()
     }

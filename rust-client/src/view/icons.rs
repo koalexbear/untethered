@@ -62,6 +62,8 @@ pub(super) enum Icon {
     Shield,
     Download,
     File,
+    /// A server folder in the rail (rail_order.rs).
+    Folder,
     Lock,
     UserPlus,
     Send,
@@ -413,6 +415,19 @@ fn outline(icon: Icon) -> Path {
             b.line_to(p(20., 7.5));
             b.close();
             poly(b, &[(14., 2.), (14., 8.), (20., 8.)]);
+        }
+        Icon::Folder => {
+            b.move_to(p(3., 6.5));
+            b.quadratic_curve_to(p(3., 5.), p(4.5, 5.));
+            b.line_to(p(9., 5.));
+            b.line_to(p(11., 7.));
+            b.line_to(p(19.5, 7.));
+            b.quadratic_curve_to(p(21., 7.), p(21., 8.5));
+            b.line_to(p(21., 17.5));
+            b.quadratic_curve_to(p(21., 19.), p(19.5, 19.));
+            b.line_to(p(4.5, 19.));
+            b.quadratic_curve_to(p(3., 19.), p(3., 17.5));
+            b.close();
         }
         Icon::Lock => {
             b.rounded_rectangle(p(4., 11.), Size::new(16., 10.), 2.0.into());

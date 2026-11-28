@@ -37,6 +37,7 @@ mod previews;
 pub mod profile;
 #[cfg(debug_assertions)]
 pub mod qa;
+pub mod rail;
 mod rooms;
 pub mod rt;
 mod search;
@@ -252,6 +253,13 @@ pub enum Command {
     Arrange {
         id: i64,
         changes: Vec<arrange::Change>,
+    },
+    /// Reorder the server rail and its folders (ROADMAP N8): each space's
+    /// MSC3230 order, then the folders when they changed (rail.rs).
+    ArrangeRail {
+        id: i64,
+        orders: Vec<(String, String)>,
+        folders: Option<Vec<rail::Folder>>,
     },
     /// Show `name` as this account's name in each of `rooms` (ROADMAP M12:
     /// a server nickname is one per room of the space); None puts the
@@ -551,6 +559,8 @@ pub enum Event {
     Presence(Vec<(String, crate::presence::Presence)>),
     /// Every image pack this account can use (ROADMAP M11).
     Packs(packs::Packs),
+    /// The server rail's folders (ROADMAP N8), now and when they sync.
+    Folders(Vec<rail::Folder>),
     /// Whether the homeserver shares presence (N4): Unknown when the
     /// engine starts asking.
     PresenceSupport(crate::presence::Support),
@@ -885,6 +895,10 @@ pub struct RoomSummary {
     /// A space's `m.space.child` edges with what orders them (ROADMAP N5).
     #[serde(default)]
     pub child_order: Vec<ChildEdge>,
+    /// A space's place in the server rail: its MSC3230 `order`, when
+    /// valid (ROADMAP N8).
+    #[serde(default)]
+    pub space_order: Option<String>,
     /// This account's name in the room and when it was set (names.rs).
     #[serde(default)]
     pub me: Option<names::Own>,
@@ -1256,6 +1270,7 @@ impl Engine {
             self.events.clone(),
         ));
         tasks.spawn(messaging::account_data(client.clone(), self.events.clone()));
+        tasks.spawn(rail::watch(client.clone(), self.events.clone()));
         state::member_changes(&client, self.events.clone());
         typing::watch(&client, self.events.clone());
         let (typing, notices) = async_channel::unbounded();
@@ -1625,6 +1640,16 @@ impl Engine {
             Command::Arrange { id, changes } => {
                 self.job(id, move |client, _, _| async move {
                     arrange::arrange(&client, changes).await
+                })
+                .await
+            }
+            Command::ArrangeRail {
+                id,
+                orders,
+                folders,
+            } => {
+                self.job(id, move |client, _, _| async move {
+                    rail::arrange(&client, orders, folders).await
                 })
                 .await
             }
