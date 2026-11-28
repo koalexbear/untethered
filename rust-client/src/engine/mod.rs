@@ -17,7 +17,7 @@ pub mod arrange;
 pub mod browser;
 #[cfg(target_os = "linux")]
 mod calls;
-mod compose;
+pub(crate) mod compose;
 mod dms;
 pub mod explore;
 mod invites;
@@ -965,6 +965,9 @@ pub struct Message {
     /// A poll's question, answers and votes (ROADMAP M9).
     #[serde(default)]
     pub poll: Option<polls::Poll>,
+    /// An `m.emote` (`/me`), shown as "* Name text" (ROADMAP M13).
+    #[serde(default)]
+    pub emote: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]

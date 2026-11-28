@@ -52,7 +52,7 @@ use iced::{
     Border, Color, Element, Fill, Font, Length, Padding, Theme, border, color, font, keyboard,
     widget::{
         Column, Row, Space, button, column, container, image, mouse_area, opaque, row, rule,
-        scrollable, span, stack, text, text_editor, text_input, tooltip,
+        scrollable, stack, text, text_editor, text_input, tooltip,
     },
 };
 use icons::{ICON, Icon, icon, icon_button, with_tip};
@@ -3054,24 +3054,9 @@ impl App {
                 );
             } else if let Some(poll) = &p.poll {
                 message = message.push(self.poll_card(p, poll));
-            } else if let Some(doc) = p.rich.as_deref().filter(|_| caption) {
-                message = message.push(rich::view(
-                    self,
-                    p.event_id.as_deref(),
-                    doc,
-                    p.revision.is_some(),
-                ));
             } else if caption {
-                let mut spans = vec![span(p.text()).color(BODY)];
-                if p.revision.is_some() {
-                    spans.push(span(" (edited)").size(11).color(CHANNEL));
-                }
-                message = message.push(
-                    selectable::rich(spans)
-                        .size(16)
-                        .line_height(1.375)
-                        .on_link_click(iced::never),
-                );
+                // Formatted or plain, `/me` and jumbo emoji (view/rich.rs).
+                message = message.push(self.message_body(r, p));
             } else if p.revision.is_some() {
                 message = message.push(text("(edited)").size(11).color(CHANNEL));
             }
@@ -3392,6 +3377,14 @@ impl App {
         let editor = composer_editor(&self.editor, "composer", hint, Some(Msg::Draft), |press| {
             if let Some(popup) = self.completion_key(crate::autocomplete::Field::Composer, &press) {
                 return Some(popup);
+            }
+            // ↑ in an empty composer edits our last message; Escape keeps
+            // the focus and goes on to the app (composer.rs).
+            if let Some(edit) = self.edit_last_key(&press) {
+                return Some(text_editor::Binding::Custom(edit));
+            }
+            if crate::composer::lets_escape_through(&press) {
+                return None;
             }
             #[cfg(target_arch = "wasm32")]
             if press.modifiers.command()

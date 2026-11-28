@@ -105,6 +105,8 @@ pub struct Post {
     pub media: Option<crate::media::Media>,
     /// A poll's question, answers and votes (polls.rs).
     pub poll: Option<crate::polls::Poll>,
+    /// An action sent with `/me` (`m.emote`): "* Name text" (commands.rs).
+    pub emote: bool,
     pub sender: String,
     /// Plain text: what search, reply quotes, copying and notifications use.
     pub body: String,
@@ -352,6 +354,7 @@ impl Room {
             reply,
             media,
             poll: None,
+            emote: !redacted && content["msgtype"] == "m.emote",
             sender: string(&e["sender"]),
             body,
             formatted,

@@ -1,6 +1,7 @@
 //! Composer autocomplete, as on Discord: `@` lists the room's people, `#`
 //! its channels and `:` emoji once two letters follow, in a popup above the
 //! field. It works the same in the composer and while editing a message.
+//! A `/` that starts the composer lists the slash commands (commands.rs).
 //!
 //! The popup is worked out from the editor's text and cursor whenever it is
 //! needed, so it can't go stale: it closes as soon as the word at the cursor
@@ -52,6 +53,8 @@ pub enum Trigger {
     Room,
     /// `:`: emoji by shortcode.
     Emoji,
+    /// `/` at the very start of the composer: slash commands.
+    Command,
 }
 
 /// The word being completed: from its trigger character to the end of the
@@ -84,9 +87,13 @@ pub fn token(text: &str, line: usize, cursor: usize) -> Option<Token> {
         '@' => Trigger::Person,
         '#' => Trigger::Room,
         ':' => Trigger::Emoji,
+        '/' if line == 0 && start == 0 => Trigger::Command,
         _ => return None,
     };
     let query = word.as_str();
+    if trigger == Trigger::Command && !query.chars().all(|c| c.is_ascii_alphabetic()) {
+        return None;
+    }
     if trigger == Trigger::Emoji
         && (query.len() < 2
             || !query
@@ -170,6 +177,8 @@ pub enum Candidate {
         url: String,
         pack: String,
     },
+    /// A slash command (commands.rs).
+    Command(&'static crate::commands::Spec),
 }
 
 /// An open popup: its token, matches and selected row.
@@ -281,7 +290,9 @@ impl App {
     pub fn completion(&self) -> Option<Popup> {
         let field = self.completion.field?;
         let token = self.raw_token(field)?;
-        if self.completion.dismissed == Some((field, token.line, token.start)) {
+        if self.completion.dismissed == Some((field, token.line, token.start))
+            || (token.trigger == Trigger::Command && field != Field::Composer)
+        {
             return None;
         }
         let candidates = self.candidates(&token);
@@ -300,6 +311,10 @@ impl App {
         match token.trigger {
             Trigger::Person => self.people(&token.query),
             Trigger::Room => self.channels(&token.query),
+            Trigger::Command => crate::commands::matching(&token.query)
+                .into_iter()
+                .map(Candidate::Command)
+                .collect(),
             // The room's custom emoji first, as on Discord, then Unicode's.
             Trigger::Emoji => {
                 let mut out: Vec<Candidate> = self
@@ -551,6 +566,7 @@ impl App {
                 )
             }
             Candidate::Emoji(f) => (f.emoji.to_owned(), None),
+            Candidate::Command(spec) => (format!("/{}", spec.name), None),
             Candidate::Emote { shortcode, url, .. } => {
                 let label = format!(":{shortcode}:");
                 (
@@ -676,6 +692,25 @@ mod tests {
         assert_eq!(token("https://x.org/#top", 0, 18), None);
         assert_eq!(token("@mi ", 0, 4), None, "a space ends the token");
         assert_eq!(token("@mi", 0, 9), None, "a cursor past the end");
+    }
+
+    #[test]
+    fn a_slash_opens_commands_only_at_the_very_start() {
+        let t = token("/sh", 0, 3).unwrap();
+        assert_eq!(
+            (t.trigger, t.start, t.query.as_str()),
+            (Trigger::Command, 0, "sh")
+        );
+        assert_eq!(
+            token("/", 0, 1).unwrap().query,
+            "",
+            "a bare / lists them all"
+        );
+        assert_eq!(token("/me waves", 0, 9), None, "past the command");
+        assert_eq!(token("a /me", 0, 5), None, "not the first word");
+        assert_eq!(token("/me", 1, 3), None, "not the first line");
+        assert_eq!(token("/usr/bin", 0, 8), None, "a path");
+        assert_eq!(token("/2", 0, 2), None);
     }
 
     #[test]

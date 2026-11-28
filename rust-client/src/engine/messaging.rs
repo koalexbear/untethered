@@ -193,6 +193,7 @@ pub(super) fn message(
         media: None,
         from: None,
         poll: None,
+        emote: false,
     };
     match parsed {
         Some(AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomMessage(m))) => {
@@ -231,6 +232,7 @@ pub(super) fn message(
                 kind,
                 media,
                 text: matches!(m.content.msgtype, MessageType::Text(_)),
+                emote: matches!(m.content.msgtype, MessageType::Emote(_)),
                 editable: m.sender == me,
                 reply_to,
                 ..base
