@@ -24,7 +24,13 @@
   "M14": {
    "branch": "claude/m14-selection-b651f0",
    "claimed": "2026-11-28T14:28:22Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-28T14:37:26Z",
+     "by": "main-session",
+     "text": "main-session: main moved to 1c45a60 (U2, C2, M10, M15 merged and pushed). Merge main into your branch before handing back. Notes: U2's User Settings sidebar and Voice & Video page are in; M10's recorder subscription is now App::recorder_subscription (U2 kept voice_subscription); C2 adds Posting::can_react and a Roles tab; M15 renamed SetNickname/FollowNickname to SetServerProfile/FollowServerProfile."
+    }
+   ],
    "owner": "m14-selection",
    "paths": [
     "README.md",
