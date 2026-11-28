@@ -572,8 +572,10 @@ focus change never reopens capture.
 > cameras and the apps playing as tagged items instead of pick lists, the map
 > works in release builds, and `--switch-camera` and `--element-video
 > --dm-window` (camera switching, app audio, Stop app audio) pass on a release
-> client through it. `--window-share`, `--room-camera` and `--room-layout`
-> weren't run.
+> client through it, as do `--window-share`, `--room-camera` and
+> `--room-layout`. `--window-share` also needed back the media-proof room it
+> browses mid-share, which cc7c62c stopped seeding; it's now created once
+> the sharer is in the call.
 
 **Files:** `view.rs` (`call_bar`, `call_dock`, the restyle's `user_panel`),
 `view/icons.rs` (new glyphs: `Mic`, `MicOff`, `Headphones`, `HeadphonesOff`,

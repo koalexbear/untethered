@@ -552,6 +552,10 @@ def test_group(tmp,hs,name,root,backend,seed,http,secret,*,share=False,camera=Fa
                 check_theater(desks)
                 assert publications(3)==tracks
             if share:
+                # A room for Alice to browse while she shares. Not seeded:
+                # the client would open it before Atrium (cc7c62c).
+                http("POST",hs+"/_matrix/client/v3/createRoom",headers=credentials[0][1],
+                     json={"name":"media-proof","preset":"private_chat"})
                 from qa_window_share import window_share
                 window_share(stack,desks,secret,tracks,publications)
             if camera:
