@@ -114,6 +114,7 @@
     "README.md",
     "ROADMAP.md",
     "experiments/rtc-audio/README.md",
+    "experiments/rtc-audio/evidence/u5-incoming-video-card.png",
     "rust-client/docs/calls-parity-plan.md",
     "rust-client/src/incoming.rs",
     "rust-client/src/main.rs",
@@ -134,9 +135,9 @@
     "scripts/qa_rtc_audio.py",
     "scripts/test-media-interop.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Incoming call card and desktop notification",
-   "updated": "2026-11-28T14:43:16Z",
+   "updated": "2026-11-28T15:08:48Z",
    "worktree": ".claude/worktrees/u5-incoming-call-bece3a"
   },
   "n7-index": {
