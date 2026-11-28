@@ -108,6 +108,7 @@
    "paths": [
     "README.md",
     "ROADMAP.md",
+    "experiments/rtc-audio/README.md",
     "rust-client/docs/calls-parity-plan.md",
     "rust-client/src/incoming.rs",
     "rust-client/src/main.rs",
@@ -130,7 +131,7 @@
    ],
    "status": "working",
    "title": "Incoming call card and desktop notification",
-   "updated": "2026-11-28T14:37:36Z",
+   "updated": "2026-11-28T14:43:16Z",
    "worktree": ".claude/worktrees/u5-incoming-call-bece3a"
   },
   "n7-index": {
