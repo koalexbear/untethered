@@ -169,6 +169,8 @@
    ],
    "owner": "u2-voice-settings",
    "paths": [
+    "README.md",
+    "ROADMAP.md",
     "experiments/rtc-audio/*",
     "rust-client/docs/calls-parity-plan.md",
     "rust-client/src/bin/untethered-cameras.rs",
@@ -178,7 +180,9 @@
     "rust-client/src/desktop_call/*",
     "rust-client/src/hotkeys.rs",
     "rust-client/src/hotkeys/*",
+    "rust-client/src/main.rs",
     "rust-client/src/qa_layout.rs",
+    "rust-client/src/view.rs",
     "rust-client/src/view/user_settings.rs",
     "rust-client/src/view/voice_panel.rs",
     "rust-client/src/view/voice_settings.rs",
@@ -195,7 +199,7 @@
    ],
    "status": "working",
    "title": "Voice & Video settings page",
-   "updated": "2026-11-28T13:23:50Z",
+   "updated": "2026-11-28T13:24:02Z",
    "worktree": ".claude/worktrees/u2-voice-settings-44a6d7"
   }
  },
