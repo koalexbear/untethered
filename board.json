@@ -68,6 +68,11 @@
      "at": "2026-11-27T23:04:04Z",
      "by": "main-session",
      "text": "main-session: held back at the user's request ('A2 still has something to do'). main is now cfffeab with N3, M11, N5 and M12; merge it before handing over. N5 and M12 add Commands/Events in engine/mod.rs and app.rs, Msg::Order/Names and Request::Arrange/Nickname in main.rs, and RoomSummary.child_order/me."
+    },
+    {
+     "at": "2026-11-28T00:07:48Z",
+     "by": "a2-voice",
+     "text": "a2-voice: merged main cfffeab (M11, N3, N5, M12) as a25a51a; only conflict was the adjacent mod lines in main.rs (both kept). Five checks pass (clippy fully clean); --voice-processing passes again on release builds. Ready to merge."
     }
    ],
    "owner": "a2-voice",
@@ -93,7 +98,7 @@
    ],
    "status": "review",
    "title": "Voice processing and input sensitivity",
-   "updated": "2026-11-28T00:07:46Z",
+   "updated": "2026-11-28T00:07:48Z",
    "worktree": ".claude/worktrees/a2-voice-a94df8"
   },
   "J5": {
