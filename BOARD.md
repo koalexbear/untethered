@@ -5,7 +5,6 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
 | J5 | Sign-in everywhere | codex-j5 | `main` | working | 2026-11-27T22:26:13Z | `rust-client/src/engine/browser.rs`, `rust-client/src/engine/session.rs`, `rust-client/src/engine/worker.rs`, `rust-client/src/view/sdk_account.rs`, `rust-client/web/auth.js`, `rust-client/web/engine.js`, `rust-client/web/index.html`, `scripts/qa_matrix_sdk.py`, `scripts/qa_web_login.py` |
-| M10 | Voice messages | m10-voice-messages | `claude/m10-voice-messages-1e5189` | review | 2026-11-28T13:26:33Z | `README.md`, `ROADMAP.md`, `rust-client/Cargo.lock`, `rust-client/Cargo.toml`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/media.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/timeline.rs`, `rust-client/src/inline_player.rs`, `rust-client/src/main.rs`, `rust-client/src/media.rs`, `rust-client/src/rooms.rs`, `rust-client/src/rooms/engine.rs`, `rust-client/src/view.rs`, `rust-client/src/view/players.rs`, `rust-client/src/view/voice_message.rs`, `rust-client/src/voice_message.rs`, `rust-client/src/voice_message/*`, `scripts/qa_voice_messages.py` |
 | M14 | Selection across messages | m14-selection | `claude/m14-selection-b651f0` | working | 2026-11-28T14:28:22Z | `README.md`, `ROADMAP.md`, `rust-client/src/main.rs`, `rust-client/src/rich.rs`, `rust-client/src/selection.rs`, `rust-client/src/view.rs`, `rust-client/src/view/rich.rs`, `rust-client/src/view/selectable.rs`, `rust-client/src/view/selection.rs`, `scripts/qa_selection.py` |
 | M15 | Profile customization | m15-profiles | `claude/m15-profiles-51cb01` | review | 2026-11-28T13:26:54Z | `README.md`, `ROADMAP.md`, `rust-client/src/avatars.rs`, `rust-client/src/engine/app.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/names.rs`, `rust-client/src/engine/profile.rs`, `rust-client/src/engine/profile_fields.rs`, `rust-client/src/main.rs`, `rust-client/src/names.rs`, `rust-client/src/profile_fields.rs`, `rust-client/src/view.rs`, `rust-client/src/view/call_stage.rs`, `rust-client/src/view/names.rs`, `rust-client/src/view/profile.rs`, `rust-client/src/view/profile_fields.rs`, `rust-client/src/view/room_people.rs`, `scripts/qa_profiles.py` |
 | S6 | Performance budgets | s6-perf-budgets | `claude/s6-perf-budgets-7291bd` | working | 2026-11-28T14:21:24Z | `README.md`, `ROADMAP.md`, `rust-client/src/engine/app.rs`, `rust-client/src/main.rs`, `rust-client/src/perf.rs`, `scripts/perf_budgets.json`, `scripts/qa_performance.py` |
@@ -15,6 +14,7 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 
 ## Done
 
+- 2026-11-28 **M10** Voice messages (m10-voice-messages): merged as 07ab79e (main 1c45a60); recorder's voice_subscription renamed recorder_subscription in the U2 merge
 - 2026-11-28 **C2** Roles and channel permissions (c2-roles): merged as 8efc57c (main 1c45a60)
 - 2026-11-28 **fix-u1-fixtures** Retarget switch-camera and app-sound fixtures to U1's controls (u1-voice-panel): merged as 4532e28
 - 2026-11-28 **N8** Server rail order and folders (n8-server-rail): merged as de46d8d
@@ -44,4 +44,3 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 - 2026-11-27 **copy-image-zoom** Copy Image, and zoom in the viewer (part of P3) (main-session): merged as 372e13d
 - 2026-11-27 **N7** Search across a space (main-session): merged as eeda711
 - 2026-11-27 **fix-unread-counts** Unread badges trust the client's counts (main-session): merged as 93e2e7d
-- 2026-11-27 **N2** Remember where you were (main-session): merged as 3777467
