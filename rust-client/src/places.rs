@@ -434,6 +434,7 @@ mod tests {
             media: None,
             from: None,
             poll: None,
+            emote: false,
         }
     }
 

@@ -434,20 +434,22 @@ impl Timelines {
     ) -> Result<(), Failure> {
         let timeline = self.get(room).await?.timeline();
         match reply_to {
-            // Replies stay literal text, as with gomuks's base_content: a
-            // slash or Markdown in a reply is never a command.
+            // Replies stay literal text, as with gomuks's base_content: no
+            // Markdown. Slash commands still apply (commands.rs).
             Some(target) => {
                 let target = EventId::parse(target).map_err(|_| Failure::Unavailable)?;
                 timeline
-                    .send_reply(super::compose::literal(body, pills), target)
+                    .send_reply(crate::commands::content(body, pills, false), target)
                     .await
                     .map_err(|_| Failure::Failed)?;
             }
-            // Messages render Markdown like gomuks's send_message.
+            // Messages render Markdown like gomuks's send_message, after
+            // any slash command (commands.rs).
             None => {
                 timeline
                     .send(
-                        RoomMessageEventContent::from(super::compose::markdown(body, pills)).into(),
+                        RoomMessageEventContent::from(crate::commands::content(body, pills, true))
+                            .into(),
                     )
                     .await
                     .map_err(|_| Failure::Failed)?;
@@ -1018,6 +1020,7 @@ fn message(item: &EventTimelineItem, row: i64, me: &str, sources: &Sources) -> O
     let mut media = None;
     let mut formatted = None;
     let mut poll = None;
+    let mut emote = false;
     let (kind, body, edited) = match &content.kind {
         MsgLikeKind::Message(m) => {
             let kind = match m.msgtype() {
@@ -1032,6 +1035,7 @@ fn message(item: &EventTimelineItem, row: i64, me: &str, sources: &Sources) -> O
                 _ => Kind::Text,
             };
             text = matches!(m.msgtype(), MessageType::Text(_));
+            emote = matches!(m.msgtype(), MessageType::Emote(_));
             formatted = html_body(m.msgtype());
             mentions = m
                 .mentions()
@@ -1137,6 +1141,7 @@ fn message(item: &EventTimelineItem, row: i64, me: &str, sources: &Sources) -> O
         media,
         from: None,
         poll,
+        emote,
     })
 }
 
@@ -1169,6 +1174,7 @@ mod tests {
             media: None,
             from: None,
             poll: None,
+            emote: false,
         }
     }
 

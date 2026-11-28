@@ -38,6 +38,9 @@ pub enum Block {
         text: String,
         /// A code block inside a spoiler stays hidden with it.
         spoiler: Option<u16>,
+        /// Syntax colours for a named language (highlight.rs), worked out
+        /// once here rather than every frame.
+        painted: Vec<crate::highlight::Painted>,
     },
     Quote(Vec<Block>),
     /// `start` is None for a bulleted list.
@@ -631,10 +634,15 @@ impl Builder {
         if text.ends_with('\n') {
             text.pop();
         }
+        let painted = language
+            .as_deref()
+            .map(|l| crate::highlight::paint(l, &text))
+            .unwrap_or_default();
         self.push(Block::Code {
             language,
             text,
             spoiler,
+            painted,
         });
     }
 
@@ -966,6 +974,17 @@ mod tests {
         assert!(Doc::message(None, "a | b || c").is_none());
     }
 
+    /// The blocks without their syntax colours, which highlight.rs tests.
+    fn unpainted(mut blocks: Vec<Block>) -> Vec<Block> {
+        for b in &mut blocks {
+            if let Block::Code { painted, .. } = b {
+                assert!(!painted.is_empty(), "a named language is coloured");
+                painted.clear();
+            }
+        }
+        blocks
+    }
+
     #[test]
     fn code_blocks_keep_their_text_and_language() {
         let doc = Doc::html(concat!(
@@ -973,24 +992,26 @@ mod tests {
             "println!(\"&lt;hi&gt;\");\n}\n</code></pre>\n<p>after</p>",
         ));
         assert_eq!(
-            doc.blocks,
+            unpainted(doc.blocks),
             [
                 paragraph(vec![plain("before")]),
                 Block::Code {
                     language: Some("rust".into()),
                     text: "fn main() {\n    println!(\"<hi>\");\n}".into(),
                     spoiler: None,
+                    painted: Vec::new(),
                 },
                 paragraph(vec![plain("after")]),
             ]
         );
         let doc = Doc::markdown("```py\nprint('**not bold**')\n```");
         assert_eq!(
-            doc.blocks,
+            unpainted(doc.blocks),
             [Block::Code {
                 language: Some("py".into()),
                 text: "print('**not bold**')".into(),
                 spoiler: None,
+                painted: Vec::new(),
             }]
         );
     }

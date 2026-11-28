@@ -305,6 +305,11 @@ impl App {
         {
             return;
         }
+        // `/me` and `/spoiler` need a message after them (commands.rs).
+        if let Some(hint) = crate::commands::incomplete(&body) {
+            self.status = hint;
+            return;
+        }
         let reply = self.reply_drafts.get(&room).cloned();
         let (target, text, reply_to) = (
             room.clone(),
@@ -937,6 +942,7 @@ mod tests {
             media: None,
             from: None,
             poll: None,
+            emote: false,
         }
     }
 
@@ -1158,6 +1164,7 @@ mod tests {
                 media: None,
                 from: None,
                 poll: None,
+                emote: false,
             }],
             // An edit of "hello" came last; it has no message of its own.
             latest_event: Some("$edit".into()),
@@ -1237,6 +1244,7 @@ mod tests {
                 media: None,
                 from: None,
                 poll: None,
+                emote: false,
             }],
         });
         let original = app.original.as_ref().expect("the original opens");

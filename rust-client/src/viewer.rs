@@ -478,6 +478,7 @@ pub(crate) mod tests {
             })),
             from: None,
             poll: None,
+            emote: false,
         }
     }
 

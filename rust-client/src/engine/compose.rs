@@ -18,28 +18,43 @@ use matrix_sdk::ruma::{
 /// was: the source as `body`, and its HTML if the Markdown makes any.
 /// Trailing spaces go, like the one autocomplete leaves after a pick.
 pub fn markdown(body: String, pills: &[Pill]) -> Content {
-    let body = body.trim_end();
-    let parts = pills::split(body, pills);
-    let content = if pills::any(&parts) {
-        let html = FormattedBody::markdown(pills::markdown(&parts))
-            .map_or_else(|| pills::html(&parts), |f| f.body);
-        Content::text_html(pills::plain(&parts), html)
-    } else {
-        Content::text_markdown(body)
-    };
-    content.add_mentions(mentions(&parts))
+    let (plain, html, mentions) = parts(body.trim_end(), pills, true);
+    text(plain, html).add_mentions(mentions)
 }
 
-/// A reply, whose text stays literal (no Markdown, no commands).
+/// A reply, whose text stays literal (no Markdown; commands.rs still reads
+/// a slash command at its start).
 pub fn literal(body: String, pills: &[Pill]) -> Content {
-    let body = body.trim_end();
+    let (plain, html, mentions) = parts(body.trim_end(), pills, false);
+    text(plain, html).add_mentions(mentions)
+}
+
+/// What `body` sends as: its plain `body`, its HTML if it needs any, and
+/// the people it mentions. `markdown`: render Markdown, as messages do;
+/// otherwise only pills make HTML.
+pub fn parts(body: &str, pills: &[Pill], markdown: bool) -> (String, Option<String>, Mentions) {
     let parts = pills::split(body, pills);
-    let content = if pills::any(&parts) {
-        Content::text_html(pills::plain(&parts), pills::html(&parts))
+    let mentions = mentions(&parts);
+    if !pills::any(&parts) {
+        let html = markdown
+            .then(|| FormattedBody::markdown(body).map(|f| f.body))
+            .flatten();
+        return (body.to_owned(), html, mentions);
+    }
+    let html = if markdown {
+        FormattedBody::markdown(pills::markdown(&parts))
+            .map_or_else(|| pills::html(&parts), |f| f.body)
     } else {
-        Content::text_plain(body)
+        pills::html(&parts)
     };
-    content.add_mentions(mentions(&parts))
+    (pills::plain(&parts), Some(html), mentions)
+}
+
+fn text(plain: String, html: Option<String>) -> Content {
+    match html {
+        Some(html) => Content::text_html(plain, html),
+        None => Content::text_plain(plain),
+    }
 }
 
 fn mentions(parts: &[Part]) -> Mentions {

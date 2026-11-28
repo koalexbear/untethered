@@ -53,7 +53,7 @@ use iced::{
     Border, Color, Element, Fill, Font, Length, Padding, Theme, border, color, font, keyboard,
     widget::{
         Column, Row, Space, button, column, container, image, mouse_area, opaque, row, rule,
-        scrollable, span, stack, text, text_editor, text_input, tooltip,
+        scrollable, stack, text, text_editor, text_input, tooltip,
     },
 };
 use icons::{ICON, Icon, icon, icon_button, with_tip};
@@ -2749,24 +2749,9 @@ impl App {
                 );
             } else if let Some(poll) = &p.poll {
                 message = message.push(self.poll_card(p, poll));
-            } else if let Some(doc) = p.rich.as_deref().filter(|_| caption) {
-                message = message.push(rich::view(
-                    self,
-                    p.event_id.as_deref(),
-                    doc,
-                    p.revision.is_some(),
-                ));
             } else if caption {
-                let mut spans = vec![span(p.text()).color(BODY)];
-                if p.revision.is_some() {
-                    spans.push(span(" (edited)").size(11).color(CHANNEL));
-                }
-                message = message.push(
-                    selectable::rich(spans)
-                        .size(16)
-                        .line_height(1.375)
-                        .on_link_click(iced::never),
-                );
+                // Formatted or plain, `/me` and jumbo emoji (view/rich.rs).
+                message = message.push(self.message_body(r, p));
             } else if p.revision.is_some() {
                 message = message.push(text("(edited)").size(11).color(CHANNEL));
             }
@@ -2995,34 +2980,38 @@ impl App {
         } else {
             None
         };
-        if let Some((count, since)) = unread_banner {
+        // The banner's slot is always there, empty while the room is read:
+        // a banner appearing above the feed as a message arrives would move
+        // the scrollable, which loses its place and jumps to the newest
+        // message, reading it.
+        let banner: El = if let Some((count, since)) = unread_banner {
             let noun = if count == 1 { "message" } else { "messages" };
             let caption = since.map_or_else(
                 || format!("{count} new {noun}"),
                 |time| format!("{count} new {noun} since {time}"),
             );
             let mark = crate::context_menu::Event::MarkLatestRead(self.selected.clone());
-            viewport = viewport.push(
-                container(
-                    row![
-                        text(caption).size(14).color(Color::WHITE).width(Fill),
-                        button(text("Mark as Read").size(13).font(BOLD))
-                            .style(plain(Color::WHITE, color!(0xdee0fc)))
-                            .on_press_maybe(
-                                (self.verified
-                                    && self.connected
-                                    && !self.writing_read(&self.selected))
+            container(
+                row![
+                    text(caption).size(14).color(Color::WHITE).width(Fill),
+                    button(text("Mark as Read").size(13).font(BOLD))
+                        .style(plain(Color::WHITE, color!(0xdee0fc)))
+                        .on_press_maybe(
+                            (self.verified && self.connected && !self.writing_read(&self.selected))
                                 .then_some(Msg::ContextMenu(mark))
-                            ),
-                    ]
-                    .align_y(Center)
-                    .spacing(8),
-                )
-                .padding([4, 16])
-                .width(Fill)
-                .style(|_| surface(color!(0x4752c4), 0.)),
-            );
-        }
+                        ),
+                ]
+                .align_y(Center)
+                .spacing(8),
+            )
+            .padding([4, 16])
+            .width(Fill)
+            .style(|_| surface(color!(0x4752c4), 0.))
+            .into()
+        } else {
+            Space::new().into()
+        };
+        viewport = viewport.push(banner);
         if let Some(c) = original {
             let jump = |label: &'static str, msg: Msg| {
                 button(text(label).size(14).font(BOLD))
@@ -3087,6 +3076,14 @@ impl App {
         let editor = composer_editor(&self.editor, "composer", hint, Some(Msg::Draft), |press| {
             if let Some(popup) = self.completion_key(crate::autocomplete::Field::Composer, &press) {
                 return Some(popup);
+            }
+            // ↑ in an empty composer edits our last message; Escape keeps
+            // the focus and goes on to the app (composer.rs).
+            if let Some(edit) = self.edit_last_key(&press) {
+                return Some(text_editor::Binding::Custom(edit));
+            }
+            if crate::composer::lets_escape_through(&press) {
+                return None;
             }
             #[cfg(target_arch = "wasm32")]
             if press.modifiers.command()

@@ -44,6 +44,7 @@ impl App {
             Trigger::Person => "MEMBERS".to_owned(),
             Trigger::Room => "CHANNELS".to_owned(),
             Trigger::Emoji => format!("EMOJI MATCHING :{}", p.token.query),
+            Trigger::Command => "COMMANDS".to_owned(),
         };
         let mut rows = Column::new().spacing(2);
         for (i, c) in p.candidates.into_iter().enumerate() {
@@ -88,6 +89,25 @@ impl App {
                 Candidate::Emoji(f) => row![
                     text(f.emoji).size(20),
                     text(format!(":{}:", f.shortcode)).size(15).color(TEXT),
+                ]
+                .spacing(10)
+                .align_y(Center)
+                .height(24)
+                .into(),
+                Candidate::Command(spec) => row![
+                    text(format!("/{}", spec.name))
+                        .size(15)
+                        .font(BOLD)
+                        .color(TEXT)
+                        .wrapping(text::Wrapping::None),
+                    container(
+                        text(spec.about)
+                            .size(13)
+                            .color(CHANNEL)
+                            .wrapping(text::Wrapping::None)
+                    )
+                    .clip(true)
+                    .width(Fill),
                 ]
                 .spacing(10)
                 .align_y(Center)

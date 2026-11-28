@@ -276,6 +276,7 @@ fn post(m: Message, time: i64, previous: Option<&Post>) -> Post {
         reply: m.reply_to.map(|r| r.event_id),
         media,
         poll: m.poll.filter(|_| m.kind == Kind::Poll),
+        emote: m.emote && m.kind == Kind::Text,
         sender: m.sender,
         body,
         formatted: m.formatted,
@@ -332,6 +333,7 @@ mod tests {
             media: None,
             from: None,
             poll: None,
+            emote: false,
         }
     }
 

@@ -15,7 +15,9 @@ mod call_devices;
 #[cfg(target_os = "linux")]
 mod call_settings;
 mod channel_order;
+mod commands;
 mod community;
+mod composer;
 mod context_menu;
 #[cfg(not(target_arch = "wasm32"))]
 mod copy_image;
@@ -31,6 +33,7 @@ mod explore;
 #[cfg(not(target_arch = "wasm32"))]
 mod fonts;
 mod forward;
+mod highlight;
 #[cfg(target_os = "linux")]
 mod hotkeys;
 #[cfg(target_os = "linux")]
@@ -42,6 +45,7 @@ mod inline_player;
 mod instance;
 mod invites;
 mod joining;
+mod jumbo;
 mod link_previews;
 mod media;
 mod mentions;
@@ -362,6 +366,9 @@ enum Msg {
     ServerMenu(bool),
     /// Close the topmost menu, dialog or settings page.
     Escape,
+    /// An Escape no widget captured: the same, then cancel a reply or mark
+    /// the channel read (composer.rs).
+    FreeEscape,
     /// Alt+Shift+↓, Shift+Escape and Ctrl+/ (shortcuts.rs).
     Shortcut(shortcuts::Input),
     /// The sounds' switches (sounds.rs).
@@ -614,6 +621,8 @@ struct App {
     /// A channel or category being dragged in the sidebar (channel_order.rs).
     order: channel_order::Drag,
     composer_menu: bool,
+    /// The composer's keys (composer.rs).
+    composer: composer::State,
     started_dm: Option<String>,
     /// Ctrl+K's quick switcher (switcher.rs).
     switcher: Option<switcher::Switcher>,
@@ -781,6 +790,7 @@ impl App {
             emotes: Default::default(),
             order: Default::default(),
             composer_menu: false,
+            composer: Default::default(),
             started_dm: None,
             switcher: None,
             shortcuts: Default::default(),
@@ -1889,6 +1899,7 @@ impl App {
             Msg::ContextMenu(e) => return self.context_menu_event(e),
             #[cfg(target_os = "linux")]
             Msg::Escape if self.voice_popup.is_some() => self.voice_popup = None,
+            Msg::FreeEscape => return self.free_escape(),
             Msg::Escape => {
                 if self.switcher.is_some() {
                     return self.switcher(switcher::Input::Close);
@@ -1921,8 +1932,8 @@ impl App {
                     return self.explore(explore::Input::Close);
                 } else if self.reaction_picker.is_some() {
                     self.reaction_picker = None;
-                } else {
-                    self.completion.picker = None;
+                } else if self.completion.picker.take().is_none() && self.escape_is_free() {
+                    return self.escape_fallback();
                 }
             }
             Msg::Collapse(key) => {
@@ -2476,7 +2487,7 @@ fn main() -> iced::Result {
                     })
                 } else { iced::Subscription::none() },
                 #[cfg(not(target_arch = "wasm32"))]
-                iced::event::listen_with(|event, _, _| match event {
+                iced::event::listen_with(|event, status, _| match event {
                     // Page Up and Down scroll the messages, also while typing, as on Discord.
                     iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
                         key: iced::keyboard::Key::Named(iced::keyboard::key::Named::PageUp),
@@ -2506,12 +2517,17 @@ fn main() -> iced::Result {
                     }
                     // Escape also closes menus and dialogs while a text field has
                     // focus, as on Discord; the field itself captures the key.
+                    // One no field captured may mark the channel read (composer.rs).
                     // Shift+Escape marks the server read (shortcuts.rs).
                     iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
                         key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
                         modifiers,
                         ..
-                    }) if !modifiers.shift() => Some(Msg::Escape),
+                    }) if !modifiers.shift() => Some(if status == iced::event::Status::Ignored {
+                        Msg::FreeEscape
+                    } else {
+                        Msg::Escape
+                    }),
                     iced::Event::Window(iced::window::Event::Unfocused)=>Some(Msg::WindowFocus(false)),
                     iced::Event::Window(iced::window::Event::Focused)=>Some(Msg::WindowFocus(true)),
                     iced::Event::Window(iced::window::Event::FileDropped(path)) => {
@@ -2585,12 +2601,13 @@ fn main() -> iced::Result {
                         key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Space),
                         ..
                     } => Some(Msg::PlayerControl(player::Control::Toggle)),
+                    // Only keys no widget captured arrive here.
                     #[cfg(target_arch = "wasm32")]
                     iced::keyboard::Event::KeyPressed {
                         key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
                         modifiers,
                         ..
-                    } if !modifiers.shift() => Some(Msg::Escape),
+                    } if !modifiers.shift() => Some(Msg::FreeEscape),
                     #[cfg(target_arch = "wasm32")]
                     iced::keyboard::Event::KeyPressed {
                         key: iced::keyboard::Key::Named(iced::keyboard::key::Named::PageUp),

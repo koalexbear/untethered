@@ -25,6 +25,11 @@ mime = "0.3"
 web-time = "1"
 # Emoji shortcodes for composer autocomplete (emoji.rs); matrix-sdk-ui uses it too.
 emojis = "0.9"
+# Messages of only emoji show larger, counted by grapheme (jumbo.rs).
+unicode-segmentation = "1"
+# Syntax highlighting in code blocks (highlight.rs): syntect with pure-Rust
+# regexes, so it also builds for the browser and Windows.
+iced_highlighter = "0.14"
 # What matrix-sdk doesn't re-export: CollectStrategy for Olm-encrypted call
 # keys (engine/calls.rs) and the attachment encryptor, for uploads over the
 # browser's XHR (engine/media.rs).

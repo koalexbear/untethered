@@ -3,11 +3,13 @@
 use super::{BODY, CHANNEL, El, LINE, LINK, MUTED, Msg, TEXT, line_rule, plain, surface};
 use crate::{
     App,
-    rich::{Block, Doc, Link, Run},
+    highlight::Painted,
+    rich::{Block, Link, Run},
+    rooms::{Post, Room},
 };
 use iced::{
     Border, Color, Fill, Font, Length, Padding, color, font,
-    widget::{Column, button, container, hover, row, span, text, text::Span},
+    widget::{Column, button, column, container, hover, row, span, text, text::Span},
 };
 
 const SANS: Font = Font::with_name("Liberation Sans");
@@ -19,11 +21,18 @@ const SPOILER: Color = color!(0x1e1f22);
 const QUOTE_BAR: Color = color!(0x4e5058);
 const MENTION: Color = color!(0xc9cdfb);
 const MENTION_BACK: Color = color!(0x5865f2, 0.3);
+/// The text size of a message of only emoji, as Discord's jumbo emoji
+/// (jumbo.rs); custom emoji draw at 1.375 times it, about 48 px.
+const JUMBO: f32 = 36.;
 
 struct Context<'a> {
     app: &'a App,
     /// The message's event; spoilers in a message not yet sent can't open.
     event: Option<&'a str>,
+    /// Paragraphs' text size.
+    size: f32,
+    /// An action (`/me`): its text in italics, as Discord shows it.
+    italic: bool,
 }
 impl Context<'_> {
     fn revealed(&self, spoiler: u16) -> bool {
@@ -37,20 +46,84 @@ impl Context<'_> {
     }
 }
 
-/// `edited` adds "(edited)" after the last paragraph, as for plain text.
-pub(super) fn view<'a>(app: &'a App, event: Option<&'a str>, doc: &'a Doc, edited: bool) -> El<'a> {
-    blocks(&Context { app, event }, &doc.blocks, 0, edited).into()
+impl App {
+    /// A message's text, formatted or plain. An action (`/me`, `m.emote`)
+    /// follows "* Name", and a message of only emoji shows them larger
+    /// (ROADMAP M13). "(edited)" goes after the last paragraph.
+    pub(super) fn message_body<'a>(&'a self, room: &'a Room, p: &'a Post) -> El<'a> {
+        let jumbo = !p.emote && crate::jumbo::emoji_only(p.text(), p.rich.as_deref());
+        let c = Context {
+            app: self,
+            event: p.event_id.as_deref(),
+            size: if jumbo { JUMBO } else { 16. },
+            italic: p.emote,
+        };
+        let lead = p.emote.then(|| lead(room.display(&p.sender)));
+        let edited = p.revision.is_some();
+        if let Some(doc) = p.rich.as_deref() {
+            return blocks(&c, &doc.blocks, 0, edited, lead).into();
+        }
+        let mut spans = lead.unwrap_or_default();
+        spans.push(span(p.text()).font(italic(c.italic)).color(BODY));
+        if edited {
+            spans.push(span(" (edited)").size(11).color(CHANNEL));
+        }
+        super::selectable::rich(spans)
+            .size(c.size)
+            .line_height(1.375)
+            .on_link_click(|m: Msg| m)
+            .into()
+    }
 }
 
-fn blocks<'a>(c: &Context<'a>, blocks: &'a [Block], depth: usize, edited: bool) -> Column<'a, Msg> {
+/// "* Name " before an action's text, as Element and IRC show `/me`.
+fn lead<'a>(name: &str) -> Vec<Span<'a, Msg, Font>> {
+    vec![
+        span("* ").color(BODY),
+        span(name.to_owned()).font(super::BOLD).color(TEXT),
+        span(" ").color(BODY),
+    ]
+}
+
+fn italic(on: bool) -> Font {
+    Font {
+        style: if on {
+            font::Style::Italic
+        } else {
+            font::Style::Normal
+        },
+        ..SANS
+    }
+}
+
+/// `lead` goes before the first paragraph's text, or on a line of its own
+/// when the blocks start otherwise.
+fn blocks<'a>(
+    c: &Context<'a>,
+    blocks: &'a [Block],
+    depth: usize,
+    edited: bool,
+    lead: Option<Vec<Span<'a, Msg, Font>>>,
+) -> Column<'a, Msg> {
     let ends_in_text = matches!(
         blocks.last(),
         Some(Block::Paragraph(_) | Block::Heading(..))
     );
     let mut column = Column::new().spacing(4).width(Fill);
+    let mut lead = lead;
     for (i, b) in blocks.iter().enumerate() {
         let last = i + 1 == blocks.len();
-        column = column.push(block(c, b, depth, edited && last && ends_in_text));
+        let edited = edited && last && ends_in_text;
+        column = column.push(match (lead.take(), b) {
+            (Some(lead), Block::Paragraph(runs)) => paragraph(c, runs, c.size, false, edited, lead),
+            (Some(lead), b) => column![
+                paragraph(c, &[], c.size, false, false, lead),
+                block(c, b, depth, edited)
+            ]
+            .spacing(4)
+            .into(),
+            (None, b) => block(c, b, depth, edited),
+        });
     }
     if edited && !ends_in_text {
         column = column.push(text("(edited)").size(11).color(CHANNEL));
@@ -60,7 +133,7 @@ fn blocks<'a>(c: &Context<'a>, blocks: &'a [Block], depth: usize, edited: bool) 
 
 fn block<'a>(c: &Context<'a>, b: &'a Block, depth: usize, edited: bool) -> El<'a> {
     match b {
-        Block::Paragraph(runs) => paragraph(c, runs, 16., false, edited),
+        Block::Paragraph(runs) => paragraph(c, runs, c.size, false, edited, Vec::new()),
         Block::Heading(level, runs) => {
             let size = match level {
                 1 => 24.,
@@ -68,19 +141,20 @@ fn block<'a>(c: &Context<'a>, b: &'a Block, depth: usize, edited: bool) -> El<'a
                 3 => 18.,
                 _ => 16.,
             };
-            paragraph(c, runs, size, true, edited)
+            paragraph(c, runs, size, true, edited, Vec::new())
         }
         Block::Code {
             language,
             text,
             spoiler,
-        } => code(c, language.as_deref(), text, *spoiler),
+            painted,
+        } => code(c, language.as_deref(), text, *spoiler, painted),
         Block::Quote(inner) => row![
             container(iced::widget::Space::new())
                 .width(4)
                 .height(Fill)
                 .style(|_| surface(QUOTE_BAR, 4.)),
-            blocks(c, inner, depth, false)
+            blocks(c, inner, depth, false, None)
         ]
         .spacing(12)
         // The bar fills the quote's height; without this the row takes the
@@ -98,12 +172,16 @@ fn paragraph<'a>(
     size: f32,
     heading: bool,
     edited: bool,
+    lead: Vec<Span<'a, Msg, Font>>,
 ) -> El<'a> {
-    let mut spans: Vec<Span<'a, Msg, Font>> = runs.iter().map(|r| styled(c, r, heading)).collect();
+    let skip = lead.len();
+    let mut spans = lead;
+    spans.extend(runs.iter().map(|r| styled(c, r, heading)));
     // Custom emoji (ROADMAP M11): their span is an invisible em dash a bit
     // larger than the text, and the picture is drawn over it once it's here.
     let mut images = Vec::new();
     for (i, r) in runs.iter().enumerate() {
+        let i = i + skip;
         if let Some(url) = &r.style.emote {
             spans[i] = std::mem::replace(&mut spans[i], span(""))
                 .size(size * 1.375)
@@ -137,7 +215,7 @@ fn styled<'a>(c: &Context<'a>, r: &'a Run, heading: bool) -> Span<'a, Msg, Font>
             } else {
                 font::Weight::Normal
             },
-            style: if s.italic {
+            style: if s.italic || c.italic {
                 font::Style::Italic
             } else {
                 font::Style::Normal
@@ -202,6 +280,7 @@ fn code<'a>(
     language: Option<&'a str>,
     code: &'a str,
     spoiler: Option<u16>,
+    painted: &'a [Painted],
 ) -> El<'a> {
     let frame = |_: &iced::Theme| container::Style {
         background: Some(CODE.into()),
@@ -225,13 +304,13 @@ fn code<'a>(
             .into();
     }
     let block = container(
-        super::selectable::rich([span(code)])
+        super::selectable::rich(colored(code, painted))
             .font(MONO)
             .size(14)
             .line_height(1.375)
             .color(BODY)
             .wrapping(text::Wrapping::WordOrGlyph)
-            .on_link_click(iced::never),
+            .on_link_click(|m: Msg| m),
     )
     .padding(Padding {
         top: 8.,
@@ -267,6 +346,28 @@ fn code<'a>(
     )
 }
 
+/// The block's text as spans, in its syntax colours where it has them
+/// (highlight.rs); the rest in the block's own colour.
+fn colored<'a>(code: &'a str, painted: &'a [Painted]) -> Vec<Span<'a, Msg, Font>> {
+    let mut spans = Vec::with_capacity(painted.len() * 2 + 1);
+    let mut at = 0;
+    for (range, [r, g, b]) in painted {
+        // Ranges come in order and apart; anything else is skipped.
+        let Some(text) = code.get(range.clone()).filter(|_| range.start >= at) else {
+            continue;
+        };
+        if range.start > at {
+            spans.push(span(&code[at..range.start]));
+        }
+        spans.push(span(text).color(Color::from_rgb8(*r, *g, *b)));
+        at = range.end;
+    }
+    if at < code.len() || spans.is_empty() {
+        spans.push(span(&code[at..]));
+    }
+    spans
+}
+
 fn list<'a>(c: &Context<'a>, start: Option<u64>, items: &'a [Vec<Block>], depth: usize) -> El<'a> {
     let last = start.map(|n| n.saturating_add(items.len() as u64));
     // Room for the widest number.
@@ -285,7 +386,7 @@ fn list<'a>(c: &Context<'a>, start: Option<u64>, items: &'a [Vec<Block>], depth:
                     .color(BODY)
                     .width(width)
                     .align_x(text::Alignment::Right),
-                blocks(c, item, depth + 1, false)
+                blocks(c, item, depth + 1, false, None)
             ]
             .spacing(6),
         );
