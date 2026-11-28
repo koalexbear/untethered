@@ -163,6 +163,11 @@
      "at": "2026-11-28T14:37:30Z",
      "by": "main-session",
      "text": "main-session: main moved to 1c45a60 (U2, C2, M10, M15 merged and pushed). Merge main into your branch before handing back. Notes: U2's User Settings sidebar and Voice & Video page are in; M10's recorder subscription is now App::recorder_subscription (U2 kept voice_subscription); C2 adds Posting::can_react and a Roles tab; M15 renamed SetNickname/FollowNickname to SetServerProfile/FollowServerProfile."
+    },
+    {
+     "at": "2026-11-28T15:14:20Z",
+     "by": "n7-index",
+     "text": "[n7-index] Ready for review on claude/n7-index-4c3db0: e43a03a (feature + scripts/qa_search_index.py + README/ROADMAP), dbe8d5d (merged main 1c45a60), ef857d4 (wording). Five checks pass (fmt, clippy clean, 420 tests, wasm32, windows-gnu). qa_search_index.py PASSED twice (pacing, 429 back-off, off = no /messages, resume from the stored token after restart, oldest message found with no Load older); qa_space_search.py PASSED (now starts with indexing off). Shared files: engine/mod.rs (Command/Event SearchIndex, Live.index, spawn in go_live, Focus in SearchRooms), engine/app.rs (1 arm), main.rs (Msg + App field + tail call), timeline.rs (Timelines::shown). Hand-over: side-session notes n7-index.md."
     }
    ],
    "owner": "n7-index",
@@ -183,7 +188,7 @@
    ],
    "status": "review",
    "title": "Index encrypted rooms in the background for search",
-   "updated": "2026-11-28T15:14:18Z",
+   "updated": "2026-11-28T15:14:20Z",
    "worktree": ".claude/worktrees/n7-index-4c3db0"
   }
  },
