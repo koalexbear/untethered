@@ -172,6 +172,7 @@
     "rust-client/src/view/voice_panel.rs",
     "rust-client/src/view/voice_settings.rs",
     "scripts/qa_desktop_dm.py",
+    "scripts/qa_events.py",
     "scripts/qa_layout.py",
     "scripts/qa_room_ptt.py",
     "scripts/qa_room_volume.py",
@@ -182,7 +183,7 @@
    ],
    "status": "working",
    "title": "Voice Connected panel and user-panel Mute/Deafen",
-   "updated": "2026-11-28T09:39:14Z",
+   "updated": "2026-11-28T09:45:27Z",
    "worktree": ".claude/worktrees/u1-voice-panel-678cab"
   }
  },
