@@ -166,6 +166,11 @@
      "at": "2026-11-28T14:28:22Z",
      "by": "m14-selection",
      "text": "[M14] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: view.rs: wrap the timeline feed Column in selection::area inside its scrollable (one spot in conversation()) and add 'mod selection;'. main.rs: 'mod selection;' and one Msg::ScrollTimeline(f32) variant + arm next to Msg::PageScroll. README/ROADMAP: only M14's row, its known-gap line and a short paragraph near the selection notes."
+    },
+    {
+     "at": "2026-11-28T14:35:04Z",
+     "by": "n7-index",
+     "text": "[n7-index] I'm adding one small accessor to rust-client/src/engine/timeline.rs: Timelines::shown() (the rooms with an open Timeline segment), as a new method at the end of impl Timelines, so background search indexing skips rooms open in the App. No other changes there."
     }
    ],
    "owner": "m10-voice-messages",
