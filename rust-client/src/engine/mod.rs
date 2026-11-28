@@ -1235,7 +1235,11 @@ impl Engine {
             self.events.clone(),
             changes,
         ));
-        tasks.spawn(rooms::updates(client.clone(), self.events.clone()));
+        tasks.spawn(rooms::updates(
+            client.clone(),
+            sync.state(),
+            self.events.clone(),
+        ));
         tasks.spawn(messaging::account_data(client.clone(), self.events.clone()));
         state::member_changes(&client, self.events.clone());
         typing::watch(&client, self.events.clone());

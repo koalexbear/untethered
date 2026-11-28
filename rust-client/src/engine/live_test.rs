@@ -1855,3 +1855,150 @@ async fn matrix_sdk_room_upgrades() {
     println!("matrix-sdk: the archive's divider says its older history isn't available");
     stop(app, engine).await;
 }
+
+/// A room left on another device while the app was closed drops out of the
+/// room list once the app syncs again: when it was the room open (the first
+/// listed, as alpha is here), and when the homeserver expired the app's
+/// sliding sync connection meanwhile, so the next sync starts afresh and
+/// never mentions the room (bravo). The fixture's account has rooms "alpha"
+/// and "bravo"; `token` is another device of the same account; writing
+/// `expire` in `signals` has the fixture restart Synapse without its sliding
+/// sync connections, and it answers with `expired`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "run scripts/qa_left_rooms.py (disposable Synapse)"]
+async fn matrix_sdk_room_left_while_closed() {
+    let fixture: Value =
+        serde_json::from_slice(&std::fs::read(env::var("UNTETHERED_QA_FIXTURE").unwrap()).unwrap())
+            .unwrap();
+    let dir = PathBuf::from(env::var_os("UNTETHERED_PROFILE").unwrap());
+    let server = fixture["server"].as_str().unwrap().to_owned();
+    let token = fixture["token"].as_str().unwrap().to_owned();
+    let signals = PathBuf::from(fixture["signals"].as_str().unwrap());
+    let named = |app: &App, name: &str| app.live.list.values().any(|r| r.name == name);
+    let names = |app: &App| {
+        let mut names: Vec<_> = app.live.list.values().map(|r| r.name.clone()).collect();
+        names.sort();
+        names
+    };
+    let other_device = reqwest::Client::new();
+    let call = async |path: &[&str], body: Value| -> Value {
+        let mut url = url::Url::parse(&server).unwrap();
+        url.path_segments_mut()
+            .unwrap()
+            .extend(["_matrix", "client", "v3"])
+            .extend(path);
+        let response = other_device
+            .post(url)
+            .bearer_auth(&token)
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert!(
+            response.status().is_success(),
+            "{path:?}: {}",
+            response.status()
+        );
+        response.json().await.unwrap()
+    };
+    let create = async |name: &str| {
+        call(
+            &["createRoom"],
+            serde_json::json!({"name": name, "preset": "private_chat"}),
+        )
+        .await["room_id"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+
+    let (mut app, rx, engine) = sign_in(
+        &dir,
+        &server,
+        fixture["username"].as_str().unwrap(),
+        fixture["password"].as_str().unwrap(),
+    )
+    .await;
+    wait(&mut app, &rx, "alpha and bravo listed", |a| {
+        named(a, "alpha") && named(a, "bravo")
+    })
+    .await;
+    // One more sync response after the first, so the position the app
+    // restarts from is a settled one, as after any real session.
+    create("charlie").await;
+    wait(&mut app, &rx, "charlie listed", |a| named(a, "charlie")).await;
+    let alpha = app
+        .live
+        .list
+        .iter()
+        .find(|(_, r)| r.name == "alpha")
+        .map(|(id, _)| id.clone())
+        .unwrap();
+    assert_eq!(app.selected, alpha);
+    stop(app, engine).await;
+
+    // While the app is closed, the other device leaves alpha; delta, made
+    // after that, shows when the app has synced past the leave.
+    call(&["rooms", &alpha, "leave"], serde_json::json!({})).await;
+    create("delta").await;
+
+    let (mut app, rx, engine) = session_at(&dir);
+    wait(&mut app, &rx, "restored", |a| a.logged_in).await;
+    wait(&mut app, &rx, "delta listed after restart", |a| {
+        named(a, "delta")
+    })
+    .await;
+    let dropped = tokio::time::timeout(
+        Duration::from_secs(15),
+        wait(&mut app, &rx, "alpha dropped", |a| !named(a, "alpha")),
+    )
+    .await;
+    assert!(
+        dropped.is_ok(),
+        "alpha, left while the app was closed, is still listed: {:?}",
+        names(&app)
+    );
+    assert!(named(&app, "bravo") && named(&app, "charlie"));
+    assert_ne!(app.selected, alpha);
+    println!(
+        "matrix-sdk: a room left elsewhere while the app was closed dropped out after restart: {:?}",
+        names(&app)
+    );
+    let bravo = app
+        .live
+        .list
+        .iter()
+        .find(|(_, r)| r.name == "bravo")
+        .map(|(id, _)| id.clone())
+        .unwrap();
+    stop(app, engine).await;
+
+    // Closed again: bravo is left elsewhere and echo made, then the
+    // homeserver forgets the app's sliding sync connection.
+    call(&["rooms", &bravo, "leave"], serde_json::json!({})).await;
+    create("echo").await;
+    std::fs::write(signals.join("expire"), "").unwrap();
+    signal(&signals, "expired").await;
+
+    let (mut app, rx, engine) = session_at(&dir);
+    wait(&mut app, &rx, "restored", |a| a.logged_in).await;
+    wait(&mut app, &rx, "echo listed after a fresh sync", |a| {
+        named(a, "echo")
+    })
+    .await;
+    let dropped = tokio::time::timeout(
+        Duration::from_secs(15),
+        wait(&mut app, &rx, "bravo dropped", |a| !named(a, "bravo")),
+    )
+    .await;
+    assert!(
+        dropped.is_ok(),
+        "bravo, left while the app was closed and its connection expired, is still listed: {:?}",
+        names(&app)
+    );
+    println!(
+        "matrix-sdk: after the homeserver expired the sliding sync connection, the room left meanwhile dropped out too: {:?}",
+        names(&app)
+    );
+    stop(app, engine).await;
+}
