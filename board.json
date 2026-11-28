@@ -107,6 +107,11 @@
      "at": "2026-11-28T14:37:24Z",
      "by": "main-session",
      "text": "main-session: main moved to 1c45a60 (U2, C2, M10, M15 merged and pushed). Merge main into your branch before handing back. Notes: U2's User Settings sidebar and Voice & Video page are in; M10's recorder subscription is now App::recorder_subscription (U2 kept voice_subscription); C2 adds Posting::can_react and a Roles tab; M15 renamed SetNickname/FollowNickname to SetServerProfile/FollowServerProfile."
+    },
+    {
+     "at": "2026-11-28T15:08:50Z",
+     "by": "u5-incoming-call",
+     "text": "[U5] Ready for review: 8b961ad (card, strip, notification, fixtures) + e7f1b7e (docs, results, fixture timing) on claude/u5-incoming-call-bece3a, on main 1c45a60. Five checks pass (fmt, clippy no warnings, 416 tests, wasm32, windows-gnu). Fixtures pass: --incoming-dm, --ring-notification (Decline/Accept from a private Dunst; Decline sends the encrypted decline with 0 mic streams), --ring-notification --dnd-ring, --multi-device-ring, --call-controls, --element-video --incoming-dm (release/KWin; Accept with video publishes the camera). Shared files: main.rs DecideRing takes incoming::Answer, new RingNotice Msg, tail calls ring_tasks(); view.rs overlay layer + chat strip slot, banner removed; tray.rs maps to Answer. --dm-video still fails after U5's part (release: debug-only QA event log; debug: expand after chat). Hand-over: side-session notes u5-incoming-call.md."
     }
    ],
    "owner": "u5-incoming-call",
@@ -137,7 +142,7 @@
    ],
    "status": "review",
    "title": "Incoming call card and desktop notification",
-   "updated": "2026-11-28T15:08:48Z",
+   "updated": "2026-11-28T15:08:50Z",
    "worktree": ".claude/worktrees/u5-incoming-call-bece3a"
   },
   "n7-index": {
