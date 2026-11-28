@@ -24,7 +24,13 @@
   "M13": {
    "branch": "claude/m13-composer-15b65f",
    "claimed": "2026-11-28T09:26:45Z",
-   "notes": [],
+   "notes": [
+    {
+     "at": "2026-11-28T09:29:05Z",
+     "by": "n8-server-rail",
+     "text": "[N8] shares README.md, ROADMAP.md, rust-client/src/main.rs, rust-client/src/view.rs: N8 server rail: view.rs only the rail column in screen() (spaces loop \u2192 server_rail.rs) and a mod line; main.rs a mod line, Msg::Rail, App.rail field, one update arm, a subscription line; README/ROADMAP only N8's row and lines. engine/mod.rs: RoomSummary.space_order, Command::SpaceOrder/SaveFolders, Event::Folders; rooms.rs: rail order"
+    }
+   ],
    "owner": "m13-composer",
    "paths": [
     "README.md",
@@ -50,6 +56,33 @@
    "title": "Composer details",
    "updated": "2026-11-28T09:26:45Z",
    "worktree": ".claude/worktrees/m13-composer-15b65f"
+  },
+  "N8": {
+   "branch": "claude/n8-server-rail-3c3a7d",
+   "claimed": "2026-11-28T09:29:05Z",
+   "notes": [],
+   "owner": "n8-server-rail",
+   "paths": [
+    "README.md",
+    "ROADMAP.md",
+    "rust-client/src/channel_order.rs",
+    "rust-client/src/engine/app.rs",
+    "rust-client/src/engine/mod.rs",
+    "rust-client/src/engine/rail.rs",
+    "rust-client/src/engine/rooms.rs",
+    "rust-client/src/main.rs",
+    "rust-client/src/rail_order.rs",
+    "rust-client/src/rooms.rs",
+    "rust-client/src/rooms/engine.rs",
+    "rust-client/src/view.rs",
+    "rust-client/src/view/channel_order.rs",
+    "rust-client/src/view/server_rail.rs",
+    "scripts/qa_server_rail.py"
+   ],
+   "status": "working",
+   "title": "Server rail order and folders",
+   "updated": "2026-11-28T09:29:05Z",
+   "worktree": ".claude/worktrees/n8-server-rail-3c3a7d"
   }
  },
  "done": [
