@@ -5,10 +5,10 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 | ID | Title | Agent | Branch | Status | Updated | Paths |
 |---|---|---|---|---|---|---|
 | J5 | Sign-in everywhere | codex-j5 | `main` | working | 2026-11-27T22:26:13Z | `rust-client/src/engine/browser.rs`, `rust-client/src/engine/session.rs`, `rust-client/src/engine/worker.rs`, `rust-client/src/view/sdk_account.rs`, `rust-client/web/auth.js`, `rust-client/web/engine.js`, `rust-client/web/index.html`, `scripts/qa_matrix_sdk.py`, `scripts/qa_web_login.py` |
-| fix-left-rooms | Rooms left elsewhere while closed stay listed | fix-room-ptt | `claude/great-lamport-46e7ea` | review | 2026-11-28T00:04:54Z | `rust-client/docs/matrix-sdk-migration.md`, `rust-client/src/engine/live_test.rs`, `rust-client/src/engine/mod.rs`, `rust-client/src/engine/rooms.rs`, `scripts/qa_left_rooms.py` |
 
 ## Done
 
+- 2026-11-28 **fix-left-rooms** Rooms left elsewhere while closed stay listed (fix-room-ptt): merged as b6f46ea
 - 2026-11-28 **fix-room-ptt** Fix --room-ptt: open Atrium without joining (fix-room-ptt): merged as b6f46ea
 - 2026-11-28 **A2** Voice processing and input sensitivity (a2-voice): merged as f785f79 (main b6f46ea)
 - 2026-11-27 **M12** Per-server nicknames and role badges (m12-names): merged as cfffeab
@@ -38,4 +38,3 @@ Written by `scripts/work.py`; see AGENTS.md. Don't edit by hand.
 - 2026-11-27 **M6** Message deletion and persistent drafts (codex-m6): merged as 60f368e (PR #6)
 - 2026-11-27 **J1** Invites with Accept and Decline (main-session): merged as 09754bb
 - 2026-11-27 **M7** Link previews (main-session): merged as a3de2bf
-- 2026-11-27 **roadmap-nitro** Roadmap: Nitro features, free where Matrix allows (main-session): merged as e732170
