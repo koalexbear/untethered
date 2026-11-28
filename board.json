@@ -198,6 +198,11 @@
      "at": "2026-11-28T09:52:23Z",
      "by": "u1-voice-panel",
      "text": "Progress: panel, user-panel Mute/Deafen with device menus, Voice Settings popup, pre-join mute and the UNTETHERED_QA_LAYOUT control map are built (uncommitted). --call-controls and --call-devices pass; running --room-ptt, then --voice-room (with joining muted), --voice-processing, --room-ptt --global."
+    },
+    {
+     "at": "2026-11-28T10:07:12Z",
+     "by": "u1-voice-panel",
+     "text": "Ready for review: 31a5191 on claude/u1-voice-panel-678cab (based on main b6f46ea). Five checks pass; --call-controls, --call-devices, --room-ptt (plain, --global), --voice-room (Clara joins muted: SFU muted in all 58 samples; Theater mute/unmute) and --voice-processing pass. Shared-file edits: view.rs (call_bar/call_dock removed, call_preview, user_panel gets Mute/Deafen, theater dock), main.rs (VoiceMenu/QaLayout msgs, call handlers, Escape arm, two subscriptions), icons.rs (7 glyphs appended), explore.rs sidebar foot, README call section, ROADMAP Phase 5 paragraph. Not run: KWin fixtures; qa_switch_camera.py and qa_app_sound.py still OCR the old Devices panel. Notes: side-session-notes/.../u1-voice-panel.md"
     }
    ],
    "owner": "u1-voice-panel",
@@ -231,7 +236,7 @@
    ],
    "status": "review",
    "title": "Voice Connected panel and user-panel Mute/Deafen",
-   "updated": "2026-11-28T10:07:10Z",
+   "updated": "2026-11-28T10:07:12Z",
    "worktree": ".claude/worktrees/u1-voice-panel-678cab"
   }
  },
