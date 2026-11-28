@@ -167,9 +167,9 @@
     "rust-client/src/view/room_people.rs",
     "scripts/qa_profiles.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Profile customization",
-   "updated": "2026-11-28T13:23:52Z",
+   "updated": "2026-11-28T13:26:11Z",
    "worktree": ".claude/worktrees/m15-profiles-51cb01"
   },
   "U2": {
