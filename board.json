@@ -44,9 +44,9 @@
     "scripts/qa_switch_camera.py",
     "scripts/qa_voice_room.py"
    ],
-   "status": "working",
+   "status": "review",
    "title": "Retarget switch-camera and app-sound fixtures to U1's controls",
-   "updated": "2026-11-28T11:53:09Z",
+   "updated": "2026-11-28T11:58:18Z",
    "worktree": ".claude/worktrees/u1-voice-panel-678cab"
   }
  },
