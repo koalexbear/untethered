@@ -3285,34 +3285,38 @@ impl App {
         } else {
             None
         };
-        if let Some((count, since)) = unread_banner {
+        // The banner's slot is always there, empty while the room is read:
+        // a banner appearing above the feed as a message arrives would move
+        // the scrollable, which loses its place and jumps to the newest
+        // message, reading it.
+        let banner: El = if let Some((count, since)) = unread_banner {
             let noun = if count == 1 { "message" } else { "messages" };
             let caption = since.map_or_else(
                 || format!("{count} new {noun}"),
                 |time| format!("{count} new {noun} since {time}"),
             );
             let mark = crate::context_menu::Event::MarkLatestRead(self.selected.clone());
-            viewport = viewport.push(
-                container(
-                    row![
-                        text(caption).size(14).color(Color::WHITE).width(Fill),
-                        button(text("Mark as Read").size(13).font(BOLD))
-                            .style(plain(Color::WHITE, color!(0xdee0fc)))
-                            .on_press_maybe(
-                                (self.verified
-                                    && self.connected
-                                    && !self.writing_read(&self.selected))
+            container(
+                row![
+                    text(caption).size(14).color(Color::WHITE).width(Fill),
+                    button(text("Mark as Read").size(13).font(BOLD))
+                        .style(plain(Color::WHITE, color!(0xdee0fc)))
+                        .on_press_maybe(
+                            (self.verified && self.connected && !self.writing_read(&self.selected))
                                 .then_some(Msg::ContextMenu(mark))
-                            ),
-                    ]
-                    .align_y(Center)
-                    .spacing(8),
-                )
-                .padding([4, 16])
-                .width(Fill)
-                .style(|_| surface(color!(0x4752c4), 0.)),
-            );
-        }
+                        ),
+                ]
+                .align_y(Center)
+                .spacing(8),
+            )
+            .padding([4, 16])
+            .width(Fill)
+            .style(|_| surface(color!(0x4752c4), 0.))
+            .into()
+        } else {
+            Space::new().into()
+        };
+        viewport = viewport.push(banner);
         if let Some(c) = original {
             let jump = |label: &'static str, msg: Msg| {
                 button(text(label).size(14).font(BOLD))

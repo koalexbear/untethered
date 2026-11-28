@@ -400,6 +400,22 @@ nobody. A channel becomes a `matrix.to` room link. The smiley button beside
 **Send** opens the emoji picker and inserts at the cursor. [Element
 test](scripts/replies-element.md#composer-autocomplete).
 
+**Composer shortcuts and commands:** As on Discord, **↑** in an empty
+composer edits your last message in the channel, and **Escape** marks the
+channel read once nothing else is open (it first closes menus, pickers and
+the autocomplete list, then cancels an edit or a reply) and leaves the
+composer focused. Typing `/` at the start of the composer lists the
+commands: `/me text` sends an action (`m.emote`), which shows as
+"* Name text", as Element shows it; `/shrug text` adds ¯\\\_(ツ)\_/¯ to the
+end; `/spoiler text` hides the whole message (`data-mx-spoiler`, with
+`||text||` for clients without HTML). Any other text starting with a slash is
+sent as written. A message of only emoji, Unicode or custom, up to 27 of
+them, shows them larger, and code blocks that name their language
+(```` ```rust ````) get syntax colours. There's no spell check yet: Iced's
+text editor can't check spelling or mark a word, and the browser build's
+editor is drawn on a canvas the browser can't check. Test:
+[`scripts/qa_composer_details.py`](scripts/qa_composer_details.py).
+
 **Typing indicators:** While someone else writes in the open room, the line
 under the composer reads **Mira is typing…**, **Mira and Jo are typing…**
 (up to three names) or **Several people are typing…**, with the names the
